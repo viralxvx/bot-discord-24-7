@@ -2,12 +2,12 @@ from flask import Flask
 from threading import Thread
 import discord
 import re
-import os
 from discord.ext import commands
+import os
 
-# ====== 1. TOKEN y CANAL OBJETIVO ======
-TOKEN = os.getenv("TOKEN")  # El token se toma desde una variable de entorno
-CANAL_OBJETIVO = "🧵go-viral"  # nombre exacto del canal
+# ====== 1. TOKEN y CANAL OBJETIVO desde variables de entorno ======
+TOKEN = os.environ["TOKEN"]
+CANAL_OBJETIVO = os.environ["CANAL_OBJETIVO"]
 
 # ====== 2. INTENTS Y BOT SETUP ======
 intents = discord.Intents.all()
@@ -100,7 +100,7 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# ====== 6. KEEP ALIVE PARA GLITCH ======
+# ====== 6. KEEP ALIVE PARA SERVIDORES COMO RAILWAY ======
 app = Flask('')
 
 @app.route('/')
