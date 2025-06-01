@@ -40,7 +40,25 @@ async def on_ready():
                     print("No tengo permisos para anclar el mensaje.")
                 break
 
-# ====== 5. FILTRO DE MENSAJES ======
+# ====== 5. MENSAJE DE BIENVENIDA AUTOMÁTICO ======
+@bot.event
+async def on_member_join(member):
+    canal_presentate = discord.utils.get(member.guild.text_channels, name="👉preséntate")
+    if canal_presentate:
+        mensaje = (
+            f"👋 ¡Bienvenid@ a **VX** {member.mention}!\n\n"
+            "Te deseamos muchos éxitos creando contenido viral. 🎯\n\n"
+            "✅ Para comenzar, por favor sigue estos pasos:\n"
+            "1️⃣ Lee las 3 guías en 📖guías\n"
+            "2️⃣ Revisa las normas en ✅normas-generales\n"
+            "3️⃣ Inspírate con 🏆victorias\n"
+            "4️⃣ Estudia las estrategias en ♟estrategias-probadas\n\n"
+            "Cuando hayas terminado, ve a 🏋entrenamiento y solicita ayuda para crear tu primer post.\n\n"
+            "¡Mucho éxito y a romperla! 🚀"
+        )
+        await canal_presentate.send(mensaje)
+
+# ====== 6. FILTRO DE MENSAJES ======
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
@@ -100,7 +118,7 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# ====== 6. KEEP ALIVE PARA SERVIDORES COMO RAILWAY ======
+# ====== 7. KEEP ALIVE PARA SERVIDORES COMO RAILWAY ======
 app = Flask('')
 
 @app.route('/')
