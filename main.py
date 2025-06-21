@@ -21,8 +21,7 @@ MENSAJE_NORMAS = (
     "🔹 Debes reaccionar a tu propia publicación con 👍.\n"
     "🔹 Solo se permiten enlaces de X (Twitter) con este formato:\n"
     "https://x.com/usuario/status/1234567890123456789\n"
-    "(no debe contener signos de interrogación ni parámetros al final)\n\n"
-    "❌ Publicaciones que no cumplan serán eliminadas automáticamente."
+    "❌ Publicaciones con texto adicional o formato incorrecto serán eliminadas."
 )
 
 # ====== 4. CUANDO SE CONECTA ======
@@ -42,43 +41,39 @@ async def on_ready():
                     print("No tengo permisos para anclar el mensaje.")
                 break
 
-# ====== 5. MENSAJE DE BIENVENIDA ======
+# ====== 5. BIENVENIDA NUEVOS USUARIOS ======
 @bot.event
 async def on_member_join(member):
     canal_presentate = discord.utils.get(member.guild.text_channels, name="👉preséntate")
     if canal_presentate:
         mensaje = (
             f"👋 ¡Bienvenid@ a **VX** {member.mention}!\n\n"
-            "Te deseamos muchos éxitos creando contenido viral. 🎯\n\n"
-            "✅ Para comenzar, por favor sigue estos pasos:\n"
-            "1️⃣ Lee las 3 guías en 📖guías\n"
-            "2️⃣ Revisa las normas en ✅normas-generales\n"
-            "3️⃣ Inspírate con 🏆victorias\n"
-            "4️⃣ Estudia las estrategias en ♟estrategias-probadas\n\n"
-            "Cuando hayas terminado, ve a 🏋entrenamiento y solicita ayuda para crear tu primer post.\n\n"
-            "¡Mucho éxito y a romperla! 🚀"
+            "✅ Sigue estos pasos:\n"
+            "📖 Lee las 3 guías\n"
+            "✅ Revisa las normas\n"
+            "🏆 Mira las victorias\n"
+            "♟ Estudia las estrategias\n"
+            "🏋 Luego solicita ayuda para tu primer post."
         )
         await canal_presentate.send(mensaje)
 
-# ====== 6. FILTRO DE MENSAJES EN go-viral ======
+# ====== 6. FILTRO DE MENSAJES Y REACCIONES ======
 @bot.event
 async def on_message(message):
     if message.author == bot.user or message.channel.name != CANAL_OBJETIVO:
         return
 
-    # 1. Verificar formato del link
-    urls = re.findall(r"https://x\.com/[^\s]+", message.content)
-    for url in urls:
-        if "?" in url:
-            await message.delete()
-            advertencia = await message.channel.send(
-                f"{message.author.mention} tu publicación fue eliminada porque el enlace de X contiene parámetros.\n"
-                f"Usa este formato: https://x.com/usuario/status/1234567890123456789"
-            )
-            await advertencia.delete(delay=15)
-            return
+    # 1. Verificar que el mensaje SOLO contenga un link de X válido (sin texto)
+    urls = re.findall(r"https://x\.com/[^\s]+", message.content.strip())
+    if len(urls) != 1 or "?" in urls[0] or message.content.strip() != urls[0]:
+        await message.delete()
+        advertencia = await message.channel.send(
+            f"{message.author.mention} solo se permite **un link válido de X** sin texto adicional.\nFormato: https://x.com/usuario/status/1234567890123456789"
+        )
+        await advertencia.delete(delay=15)
+        return
 
-    # 2. Revisar publicaciones previas del canal
+    # 2. Revisar historial de mensajes
     mensajes = []
     async for msg in message.channel.history(limit=100):
         if msg.id == message.id:
@@ -86,14 +81,12 @@ async def on_message(message):
         if msg.author != bot.user:
             mensajes.append(msg)
 
-    # 3. Verifica si el usuario ya publicó recientemente
+    # 3. Revisar si el usuario ya publicó recientemente
     publicaciones_usuario = [m for m in mensajes if m.author == message.author]
     if publicaciones_usuario:
         ultima_publicacion = publicaciones_usuario[0]
         ahora = datetime.datetime.utcnow()
         diferencia = ahora - ultima_publicacion.created_at.replace(tzinfo=None)
-
-        # Verifica si hay al menos 2 publicaciones de otros usuarios después
         otros = [m for m in mensajes if m.author != message.author]
         if len(otros) < 2 and diferencia.total_seconds() < 86400:
             await message.delete()
@@ -104,7 +97,7 @@ async def on_message(message):
             await advertencia.delete(delay=15)
             return
 
-    # 4. Verifica si el usuario ha reaccionado con 🔥 a todos los mensajes anteriores
+    # 4. Verificar que ha reaccionado con 🔥 a todas las publicaciones anteriores
     no_apoyados = []
     for msg in mensajes:
         apoyo = False
@@ -125,9 +118,7 @@ async def on_message(message):
         await advertencia.delete(delay=15)
         return
 
-    # 5. Verifica si reaccionó a su propio post con 👍
-    await bot.process_commands(message)  # Procesar comandos primero
-
+    # 5. Esperar reacción 👍 en su propio mensaje (1 minuto)
     def check_reaccion_propia(reaction, user):
         return (
             reaction.message.id == message.id and
@@ -140,12 +131,32 @@ async def on_message(message):
     except:
         await message.delete()
         advertencia = await message.channel.send(
-            f"{message.author.mention} tu publicación fue eliminada. Debes reaccionar con 👍 a tu propia publicación para validarla."
+            f"{message.author.mention} tu publicación fue eliminada.\nDebes reaccionar con 👍 a tu propio mensaje para validarlo."
         )
         await advertencia.delete(delay=15)
         return
 
-# ====== 7. KEEP ALIVE PARA SERVIDORES COMO RAILWAY ======
+    await bot.process_commands(message)
+
+# 7. RESTRINGE REACCIONES PERMITIDAS
+@bot.event
+async def on_reaction_add(reaction, user):
+    if user.bot:
+        return
+    if reaction.message.channel.name != CANAL_OBJETIVO:
+        return
+
+    autor = reaction.message.author
+
+    # Solo 🔥 de OTROS usuarios a publicaciones de otros
+    if user == autor:
+        if str(reaction.emoji) != "👍":
+            await reaction.remove(user)
+    else:
+        if str(reaction.emoji) != "🔥":
+            await reaction.remove(user)
+
+# ====== 8. KEEP ALIVE PARA RAILWAY ======
 app = Flask('')
 
 @app.route('/')
