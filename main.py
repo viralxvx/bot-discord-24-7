@@ -6,25 +6,21 @@ import os
 import datetime
 from discord.ext import commands
 
-# ====== 1. TOKEN y CANAL OBJETIVO desde variables de entorno ======
 TOKEN = os.environ["TOKEN"]
 CANAL_OBJETIVO = os.environ["CANAL_OBJETIVO"]
 
-# ====== 2. INTENTS Y BOT SETUP ======
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ====== 3. MENSAJE FIJO ======
 MENSAJE_NORMAS = (
     "📌 Bienvenid@ al canal 🧵go-viral\n\n"
-    "🔹 Reacciona con 🔥 a todas las publicaciones anteriores antes de publicar.\n"
+    "🔹 Reacciona con 🔥 a todas las publicaciones desde tu última publicación antes de volver a publicar.\n"
     "🔹 Debes reaccionar a tu propia publicación con 👍.\n"
     "🔹 Solo se permiten enlaces de X (Twitter) con este formato:\n"
     "https://x.com/usuario/status/1234567890123456789\n"
     "❌ Publicaciones con texto adicional o formato incorrecto serán eliminadas."
 )
 
-# ====== 4. CUANDO SE CONECTA ======
 @bot.event
 async def on_ready():
     print(f"Bot conectado como {bot.user}")
@@ -41,7 +37,6 @@ async def on_ready():
                     print("No tengo permisos para anclar el mensaje.")
                 break
 
-# ====== 5. BIENVENIDA NUEVOS USUARIOS ======
 @bot.event
 async def on_member_join(member):
     canal_presentate = discord.utils.get(member.guild.text_channels, name="👉preséntate")
@@ -57,13 +52,12 @@ async def on_member_join(member):
         )
         await canal_presentate.send(mensaje)
 
-# ====== 6. FILTRO DE MENSAJES Y REACCIONES ======
 @bot.event
 async def on_message(message):
     if message.author == bot.user or message.channel.name != CANAL_OBJETIVO:
         return
 
-    # 1. Verificar que el mensaje SOLO contenga un link de X válido (sin texto)
+    # Validar link de X y que sea el único contenido
     urls = re.findall(r"https://x\.com/[^\s]+", message.content.strip())
     if len(urls) != 1 or "?" in urls[0] or message.content.strip() != urls[0]:
         await message.delete()
@@ -73,33 +67,42 @@ async def on_message(message):
         await advertencia.delete(delay=15)
         return
 
-    # 2. Revisar historial de mensajes
+    # Obtener mensajes anteriores
     mensajes = []
     async for msg in message.channel.history(limit=100):
-        if msg.id == message.id:
+        if msg.id == message.id or msg.author == bot.user:
             continue
-        if msg.author != bot.user:
-            mensajes.append(msg)
+        mensajes.append(msg)
 
-    # 3. Revisar si el usuario ya publicó recientemente
-    publicaciones_usuario = [m for m in mensajes if m.author == message.author]
-    if publicaciones_usuario:
-        ultima_publicacion = publicaciones_usuario[0]
-        ahora = datetime.datetime.utcnow()
-        diferencia = ahora - ultima_publicacion.created_at.replace(tzinfo=None)
-        otros = [m for m in mensajes if m.author != message.author]
-        if len(otros) < 2 and diferencia.total_seconds() < 86400:
-            await message.delete()
-            advertencia = await message.channel.send(
-                f"{message.author.mention} aún no puedes publicar.\n"
-                f"Debes esperar al menos 2 publicaciones de otros miembros o 24 horas desde tu última publicación."
-            )
-            await advertencia.delete(delay=15)
-            return
+    # Buscar última publicación del usuario
+    ultima_publicacion = None
+    for msg in mensajes:
+        if msg.author == message.author:
+            ultima_publicacion = msg
+            break
 
-    # 4. Verificar que ha reaccionado con 🔥 a todas las publicaciones anteriores
+    # Si no tiene publicaciones anteriores, permitir (primera vez)
+    if not ultima_publicacion:
+        await bot.process_commands(message)
+        return
+
+    # Verificar si hay al menos 2 publicaciones de otros miembros o han pasado 24h
+    ahora = datetime.datetime.utcnow()
+    diferencia = ahora - ultima_publicacion.created_at.replace(tzinfo=None)
+    publicaciones_despues = [m for m in mensajes if m.created_at > ultima_publicacion.created_at and m.author != message.author]
+    if len(publicaciones_despues) < 2 and diferencia.total_seconds() < 86400:
+        await message.delete()
+        advertencia = await message.channel.send(
+            f"{message.author.mention} aún no puedes publicar.\nDebes esperar al menos 2 publicaciones de otros miembros o 24 horas desde tu última publicación."
+        )
+        await advertencia.delete(delay=15)
+        return
+
+    # Verificar que haya reaccionado con 🔥 a TODAS las publicaciones desde su última
     no_apoyados = []
     for msg in mensajes:
+        if msg.created_at <= ultima_publicacion.created_at:
+            break  # Solo revisar desde su última publicación hacia adelante
         apoyo = False
         for reaction in msg.reactions:
             if str(reaction.emoji) == "🔥":
@@ -113,12 +116,12 @@ async def on_message(message):
     if no_apoyados:
         await message.delete()
         advertencia = await message.channel.send(
-            f"{message.author.mention} debes reaccionar con 🔥 a **todas las publicaciones anteriores** antes de publicar."
+            f"{message.author.mention} debes reaccionar con 🔥 a **todas las publicaciones desde tu última publicación** antes de publicar."
         )
         await advertencia.delete(delay=15)
         return
 
-    # 5. Esperar reacción 👍 en su propio mensaje (1 minuto)
+    # Esperar reacción 👍 en su propio mensaje
     def check_reaccion_propia(reaction, user):
         return (
             reaction.message.id == message.id and
@@ -138,17 +141,12 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# 7. RESTRINGE REACCIONES PERMITIDAS
 @bot.event
 async def on_reaction_add(reaction, user):
-    if user.bot:
-        return
-    if reaction.message.channel.name != CANAL_OBJETIVO:
+    if user.bot or reaction.message.channel.name != CANAL_OBJETIVO:
         return
 
     autor = reaction.message.author
-
-    # Solo 🔥 de OTROS usuarios a publicaciones de otros
     if user == autor:
         if str(reaction.emoji) != "👍":
             await reaction.remove(user)
@@ -156,7 +154,7 @@ async def on_reaction_add(reaction, user):
         if str(reaction.emoji) != "🔥":
             await reaction.remove(user)
 
-# ====== 8. KEEP ALIVE PARA RAILWAY ======
+# ====== KEEP ALIVE ======
 app = Flask('')
 
 @app.route('/')
