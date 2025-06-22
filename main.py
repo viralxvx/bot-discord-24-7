@@ -16,7 +16,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ====== 3. MENSAJE FIJO ======
 MENSAJE_NORMAS = (
-    "📌 Bienvenid@ al canal 🧥go-viral\n\n"
+    "📌 Bienvenid@ al canal 🧵go-viral\n\n"
     "🔹 Reacciona con 🔥 a todas las publicaciones anteriores antes de publicar.\n"
     "🔹 Debes reaccionar a tu propia publicación con 👍.\n"
     "🔹 Solo se permiten enlaces de X (Twitter) con este formato:\n"
