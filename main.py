@@ -43,7 +43,7 @@ async def on_member_join(member):
     if canal_presentate:
         mensaje = (
             f"👋 ¡Bienvenid@ a **VX** {member.mention}!\n\n"
-            "✅ Sigue estos pasos:\n"
+            "Sigue estos pasos:\n"
             "📖 Lee las 3 guías\n"
             "✅ Revisa las normas\n"
             "🏆 Mira las victorias\n"
@@ -141,18 +141,21 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
+# ✅ NUEVO EVENTO: RESTRICCIÓN DE REACCIONES
 @bot.event
 async def on_reaction_add(reaction, user):
     if user.bot or reaction.message.channel.name != CANAL_OBJETIVO:
         return
 
     autor = reaction.message.author
-    if user == autor:
-        if str(reaction.emoji) != "👍":
-            await reaction.remove(user)
-    else:
-        if str(reaction.emoji) != "🔥":
-            await reaction.remove(user)
+    emoji_valido = "👍" if user == autor else "🔥"
+
+    if str(reaction.emoji) != emoji_valido:
+        await reaction.remove(user)
+        advertencia = await reaction.message.channel.send(
+            f"{user.mention} solo se permite reaccionar con {emoji_valido} en este canal."
+        )
+        await advertencia.delete(delay=15)
 
 # ====== KEEP ALIVE ======
 app = Flask('')
