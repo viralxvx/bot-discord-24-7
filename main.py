@@ -13,6 +13,7 @@ CANAL_LOGS = "📝logs"
 CANAL_REPORTES = "⛔reporte-de-incumplimiento"
 
 intents = discord.Intents.all()
+intents.members = True  # Asegura que el bot pueda ver miembros y menciones
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 MENSAJE_NORMAS = (
@@ -95,7 +96,8 @@ async def on_message(message):
         nombre_msg = await bot.wait_for("message", check=check, timeout=60)
         reportado = nombre_msg.mentions[0] if nombre_msg.mentions else None
         if not reportado:
-            return await message.channel.send("❌ Usuario no reconocido.")
+            await message.channel.send("❌ Usuario no reconocido. Asegúrate de mencionar a un usuario válido con @nombre.")
+            return
 
         await message.channel.send("¿Qué norma está violando? (RT, LIKE, COMENTARIO, FORMATO)")
         razon_msg = await bot.wait_for("message", check=check, timeout=60)
