@@ -38,6 +38,13 @@ ticket_counter = 0  # Contador para tickets
 active_conversations = {}  # Diccionario para rastrear conversaciones activas {user_id: {"message_ids": [], "last_time": datetime}}
 faq_data = {}  # Diccionario para almacenar preguntas y respuestas del canal flujo-de-soporte
 
+# Respuestas predefinidas como fallback si no están en flujo-de-soporte
+FAQ_FALLBACK = {
+    "✅ ¿Cómo funciona VX?": "VX es una comunidad donde crecemos apoyándonos. Tú apoyas, y luego te apoyan. Publicas tu post después de apoyar a los demás. 🔥 = apoyaste, 👍 = tu propio post.",
+    "✅ ¿Cómo publico mi post?": "Para publicar: 1️⃣ Apoya todos los posts anteriores (like + RT + comentario) 2️⃣ Reacciona con 🔥 en Discord 3️⃣ Luego publica tu post y colócale 👍. No uses 🔥 en tu propio post.",
+    "✅ ¿Cómo subo de nivel?": "Subes de nivel participando activamente, apoyando a todos y siendo constante. Los niveles traen beneficios como prioridad, mentoría y más."
+}
+
 @bot.event
 async def on_ready():
     global ticket_counter, faq_data
@@ -60,6 +67,9 @@ async def on_ready():
                         response.append(line.strip())
                 if question and response:
                     faq_data[question] = "\n".join(response)
+    # Usar fallback si no hay datos en el canal
+    if not faq_data:
+        faq_data.update(FAQ_FALLBACK)
     for guild in bot.guilds:
         for channel in guild.text_channels:
             if channel.name == CANAL_OBJETIVO:
@@ -89,7 +99,7 @@ async def on_ready():
                         await msg.unpin()
                 fijado = await channel.send(
                     "🔧 **Soporte Técnico:**\n\n"
-                    "Escribe 'Hola' para comenzar o usa el menú para seleccionar una opción. \u2705"
+                    "Escribe 'Hola' para abrir el menú de opciones. \u2705"
                 )
                 await fijado.pin()
     verificar_inactividad.start()
@@ -233,8 +243,11 @@ class SupportMenu(View):
             options=[
                 SelectOption(label="Generar ticket", description="Crear un ticket para seguimiento"),
                 SelectOption(label="Hablar con humano", description="Conectar con un administrador"),
-                SelectOption(label="Cerrar consulta", description="Finalizar la interacción")
-            ] + [SelectOption(label=q, description=f"Ver respuesta para {q}") for q in faq_data.keys()]
+                SelectOption(label="Cerrar consulta", description="Finalizar la interacción"),
+                SelectOption(label="✅ ¿Cómo funciona VX?", description="Aprende cómo funciona la comunidad"),
+                SelectOption(label="✅ ¿Cómo publico mi post?", description="Pasos para publicar tu contenido"),
+                SelectOption(label="✅ ¿Cómo subo de nivel?", description="Cómo avanzar en la comunidad")
+            ]
         )
         self.select.callback = self.select_callback
         self.add_item(self.select)
@@ -292,13 +305,12 @@ class SupportMenu(View):
                         pass
             del active_conversations[user_id]
             await interaction.response.send_message("✅ ¡Consulta cerrada! Si necesitas más ayuda, vuelve cuando quieras. ¡Éxito con tu post y gracias por ser parte de VX! 🚀", ephemeral=True)
-        else:  # Respuesta a pregunta frecuente
-            question = self.select.values[0]
-            if question in faq_data:
-                msg = await interaction.response.send_message(faq_data[question], ephemeral=True)
-                if user_id in active_conversations:
-                    active_conversations[user_id]["message_ids"].append(msg.id)
-                    active_conversations[user_id]["last_time"] = datetime.datetime.utcnow()
+        elif self.select.values[0] in ["✅ ¿Cómo funciona VX?", "✅ ¿Cómo publico mi post?", "✅ ¿Cómo subo de nivel?"]:
+            response = faq_data.get(self.select.values[0], FAQ_FALLBACK.get(self.select.values[0], "No se encontró la respuesta."))
+            msg = await interaction.response.send_message(response, ephemeral=True)
+            if user_id in active_conversations:
+                active_conversations[user_id]["message_ids"].append(msg.id)
+                active_conversations[user_id]["last_time"] = datetime.datetime.utcnow()
 
 @bot.event
 async def on_message(message):
@@ -331,17 +343,9 @@ async def on_message(message):
             await message.delete()
             return
 
-        # Saludo inicial o invitación al menú
-        if any(s in message.content.lower() for s in ["hola", "buenas", "hey", "¿alguien ahí?"]):
-            respuesta = "👋 ¡Hola! Soy el bot de soporte de la comunidad VX. Usa el menú para seleccionar una opción."
-            msg = await message.channel.send(respuesta, view=SupportMenu(message.author, message.content))
-            active_conversations[user_id]["message_ids"].append(msg.id)
-            active_conversations[user_id]["last_time"] = datetime.datetime.utcnow()
-            await message.delete()
-            return
-
-        # Si no es saludo, invita a usar el menú
-        await message.channel.send(f"🔍 Usa el menú 'Selecciona una opción' para obtener ayuda con: {', '.join(faq_data.keys())}.", view=SupportMenu(message.author, message.content))
+        # Mostrar menú al escribir cualquier cosa (incluyendo "Hola")
+        msg = await message.channel.send("👋 Usa el menú 'Selecciona una opción' para obtener ayuda.", view=SupportMenu(message.author, message.content))
+        active_conversations[user_id]["message_ids"].append(msg.id)
         active_conversations[user_id]["last_time"] = datetime.datetime.utcnow()
         await message.delete()
 
