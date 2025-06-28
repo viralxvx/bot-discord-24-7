@@ -34,7 +34,7 @@ ultima_publicacion_dict = {}
 amonestaciones = defaultdict(list)
 baneos_temporales = defaultdict(lambda: None)
 ticket_counter = 0  # Contador para tickets
-active_conversations = {}  # Diccionario para rastrear conversaciones activas {user_id: message_ids}
+active_conversations = {}  # Diccionario para rastrear conversaciones activas {user_id: {"message_ids": [], "last_time": datetime}}
 
 @bot.event
 async def on_ready():
@@ -136,15 +136,6 @@ async def clean_inactive_conversations():
                     msg = await canal_soporte.fetch_message(msg_id)
                     await msg.delete()
                     await registrar_log(f"Conversation cleaned for user {user_id} - Message {msg_id} deleted due to inactivity")
-                except:
-                    pass
-            del active_conversations[user_id]
-        elif not any(msg.async for msg in canal_soporte.history(limit=10)):  # Si no hay actividad reciente
-            for msg_id in message_ids:
-                try:
-                    msg = await canal_soporte.fetch_message(msg_id)
-                    await msg.delete()
-                    await registrar_log(f"Conversation cleaned for user {user_id} - Message {msg_id} deleted due to no activity")
                 except:
                     pass
             del active_conversations[user_id]
@@ -300,7 +291,7 @@ async def on_message(message):
 
     elif message.channel.name == CANAL_SOPORTE and not message.author.bot:
         user_id = message.author.id
-        canal_soporte = discord.utils.get(bot.get_all_channels(), name=CANAl_SOPORTE)
+        canal_soporte = discord.utils.get(bot.get_all_channels(), name=CANAL_SOPORTE)
         if user_id not in active_conversations:
             active_conversations[user_id] = {"message_ids": [], "last_time": datetime.datetime.utcnow()}
         if message.content.lower() in ["salir", "cancelar", "fin", "ver reglas"]:
