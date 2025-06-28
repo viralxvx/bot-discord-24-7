@@ -69,7 +69,7 @@ async def registrar_log(texto):
 
 @tasks.loop(hours=24)
 async def verificar_inactividad():
-    canal = discord.utils.get(bot.get_all_channels(), name=CANAl_OBJETIVO)
+    canal = discord.utils.get(bot.get_all_channels(), name=CANAL_OBJETIVO)
     ahora = datetime.datetime.utcnow()
     for miembro in canal.members:
         if miembro.bot:
