@@ -14,6 +14,7 @@ CANAL_OBJETIVO = os.environ["CANAL_OBJETIVO"]
 CANAL_LOGS = "📝logs"
 CANAL_REPORTES = "⛔reporte-de-incumplimiento"
 CANAL_SOPORTE = "👨🔧soporte"
+CANAL_FLUJO_SOPORTE = "flujo-de-soporte"  # Canal para FAQs
 ADMIN_ID = os.environ.get("ADMIN_ID", "1174775323649392844")  # Valor por defecto
 INACTIVITY_TIMEOUT = 300  # 5 minutos en segundos
 
@@ -35,12 +36,48 @@ amonestaciones = defaultdict(list)
 baneos_temporales = defaultdict(lambda: None)
 ticket_counter = 0  # Contador para tickets
 active_conversations = {}  # Diccionario para rastrear conversaciones activas {user_id: {"message_ids": [], "last_time": datetime}}
+faq_data = {}  # Diccionario para almacenar preguntas y respuestas del canal flujo-de-soporte
+
+def get_response(message_content):
+    content = message_content.lower()
+    if any(s in content for s in ["hola", "buenas", "hey"]):
+        return "👋 ¡Hola! Soy el bot de soporte de la comunidad VX. ¿En qué puedo ayudarte hoy?\nPuedes preguntar:\n✅ ¿Cómo funciona VX?\n✅ ¿Cómo publico mi post?\n✅ ¿Cómo subo de nivel?"
+    if any(q in content for q in ["cómo funciona vx", "qué es vx"]):
+        return "VX es una comunidad donde crecemos apoyándonos. Tú apoyas, y luego te apoyan. Publicas tu post después de apoyar a los demás. 🔥 = apoyaste, 👍 = tu propio post."
+    if any(q in content for q in ["cómo publico", "subo mi post"]):
+        return "Para publicar:\n1️⃣ Apoya todos los posts anteriores (like + RT + comentario)\n2️⃣ Reacciona con 🔥 en Discord\n3️⃣ Luego publica tu post y colócale 👍.\nNo uses 🔥 en tu propio post."
+    if any(q in content for q in ["qué significa 🔥", "qué significa 👍"]):
+        return "🔥 = apoyaste el post (like + RT + comentario).\n👍 = solo para tu propio post, después de apoyar a los demás."
+    if "cómo subo de nivel" in content:
+        return "Subes de nivel participando activamente, apoyando a todos y siendo constante. Los niveles traen beneficios como prioridad, mentoría y más."
+    if "reglas" in content:
+        return "Las reglas están fijadas en el canal 📌 #reglas. Si no las encuentras, pídelas aquí con: `Ver reglas`."
+    if any(q in content for q in ["reportar", "infracción"]):
+        return "Para reportar: entra al canal de reportes, elige el botón adecuado, adjunta evidencia. Un moderador lo revisará."
+    return None
 
 @bot.event
 async def on_ready():
-    global ticket_counter
+    global ticket_counter, faq_data
     print(f"Bot conectado como {bot.user}")
     await registrar_log(f"Bot iniciado. ADMIN_ID cargado: {ADMIN_ID}")
+    # Cargar FAQ desde el canal flujo-de-soporte
+    canal_flujo = discord.utils.get(bot.get_all_channels(), name=CANAL_FLUJO_SOPORTE)
+    if canal_flujo:
+        async for msg in canal_flujo.history(limit=100):
+            if msg.author == bot.user and msg.pinned:
+                lines = msg.content.split("\n")
+                question = None
+                response = []
+                for line in lines:
+                    if line.startswith("**Pregunta:**"):
+                        question = line.replace("**Pregunta:**", "").strip()
+                    elif line.startswith("**Respuesta:**"):
+                        response = [line.replace("**Respuesta:**", "").strip()]
+                    elif question and not line.startswith("**"):
+                        response.append(line.strip())
+                if question and response:
+                    faq_data[question] = "\n".join(response)
     for guild in bot.guilds:
         for channel in guild.text_channels:
             if channel.name == CANAL_OBJETIVO:
@@ -211,12 +248,12 @@ class SupportMenu(View):
         self.autor = autor
         self.query = query
         self.select = Select(
-            placeholder="🔧 ¿Qué deseas hacer?",
+            placeholder="🔧 Selecciona una opción",
             options=[
                 SelectOption(label="Generar ticket", description="Crear un ticket para seguimiento"),
                 SelectOption(label="Hablar con humano", description="Conectar con un administrador"),
-                SelectOption(label="Cerrar consulta", description="Finalizar la interacción"),
-            ]
+                SelectOption(label="Cerrar consulta", description="Finalizar la interacción")
+            ] + [SelectOption(label=q, description=f"Ver respuesta para {q}") for q in faq_data.keys()]
         )
         self.select.callback = self.select_callback
         self.add_item(self.select)
@@ -262,7 +299,7 @@ class SupportMenu(View):
             except Exception as e:
                 await registrar_log(f"Error in support transfer: {str(e)}")
                 await interaction.response.send_message(f"❌ Error al contactar al administrador: {str(e)}. Intenta de nuevo.", ephemeral=True)
-        else:  # Cerrar consulta
+        elif self.select.values[0] == "Cerrar consulta":
             canal_soporte = discord.utils.get(bot.get_all_channels(), name=CANAL_SOPORTE)
             if user_id in active_conversations and "message_ids" in active_conversations[user_id]:
                 for msg_id in active_conversations[user_id]["message_ids"]:
@@ -274,6 +311,13 @@ class SupportMenu(View):
                         pass
             del active_conversations[user_id]
             await interaction.response.send_message("✅ ¡Consulta cerrada! Si necesitas más ayuda, vuelve cuando quieras. ¡Éxito con tu post y gracias por ser parte de VX! 🚀", ephemeral=True)
+        else:  # Respuesta a pregunta frecuente
+            question = self.select.values[0]
+            if question in faq_data:
+                msg = await interaction.response.send_message(faq_data[question], ephemeral=True)
+                if user_id in active_conversations:
+                    active_conversations[user_id]["message_ids"].append(msg.id)
+                    active_conversations[user_id]["last_time"] = datetime.datetime.utcnow()
 
 @bot.event
 async def on_message(message):
@@ -306,109 +350,17 @@ async def on_message(message):
             await message.delete()
             return
 
-        # Saludo inicial
-        saludos = ["hola", "buenas", "hey", "¿alguien ahí?"]
-        if any(s in message.content.lower() for s in saludos):
-            respuesta = (
-                "Hola 👋 Soy el bot de soporte de la comunidad VX. ¿En qué puedo ayudarte hoy?\n"
-                "(Puedes preguntarme cosas como:\n"
-                "✅ ¿Cómo publico mi post?\n"
-                "✅ ¿Cómo funciona VX?\n"
-                "✅ ¿Cómo subo de nivel?\n"
-                "✅ ¿Qué significan los 🔥 y 👍 en Discord?\n"
-                "✅ ¿Dónde encuentro las reglas?)"
-            )
-            msg = await message.channel.send(respuesta, view=SupportMenu(message.author, message.content))
+        # Saludo inicial o respuesta basada en palabras clave
+        response = get_response(message.content)
+        if response:
+            msg = await message.channel.send(response, view=SupportMenu(message.author, message.content))
             active_conversations[user_id]["message_ids"].append(msg.id)
             active_conversations[user_id]["last_time"] = datetime.datetime.utcnow()
             await message.delete()
             return
 
-        await message.channel.send(f"🔍 Analizando tu solicitud: '{message.content}'...\nPor favor, espera.")
-        # Preguntas frecuentes y casos especiales
-        respuesta = None
-        if any(q in message.content.lower() for q in ["qué es vx", "¿cómo funciona esto", "para qué sirve la comunidad"]):
-            respuesta = (
-                "VX es una comunidad diseñada para ayudarte a hacer crecer tus publicaciones, ideas o proyectos en redes sociales a través de apoyo mutuo 🤝\n"
-                "🔁 Tú apoyas a los demás y ellos te apoyan a ti.\n"
-                "📲 Publicas tu contenido después de haber dado apoyo.\n"
-                "🔥 Cada reacción 🔥 en Discord indica que apoyaste el post de otro miembro."
-            )
-        elif any(q in message.content.lower() for q in ["dónde publico", "cómo subo mi contenido", "cuándo puedo compartir mi publicación"]):
-            respuesta = (
-                "Para publicar tu post sigue estos pasos:\n"
-                "1️⃣ Apoya las publicaciones de tus compañeros desde el canal designado (like, RT y comentario).\n"
-                "2️⃣ Coloca una 🔥 en Discord en todas las publicaciones de otros miembros desde tu último post.\n"
-                "3️⃣ Cuando hayas apoyado todas, publica tu post en el canal correspondiente.\n"
-                "4️⃣ A tu propio post, colócale un 👍 (no 🔥).\n"
-                "📌 Consejo: Solo puedes reaccionar con 🔥 en las publicaciones de otros, y con 👍 en la tuya."
-            )
-        elif "qué significan los 🔥 y 👍 en discord" in message.content.lower():
-            respuesta = (
-                "🔥 Significa que ya apoyaste el post de ese compañero (like + RT + comentario).\n"
-                "👍 Solo se pone en tu propia publicación, después de apoyar a todos los demás.\n"
-                "📌 No se debe usar 🔥 en tu propio post."
-            )
-        elif "cómo subo de nivel" in message.content.lower():
-            respuesta = (
-                "Subes de nivel siendo constante y apoyando activamente a tus compañeros.\n"
-                "🎯 Algunos criterios:\n"
-                "- Participación diaria\n"
-                "- Apoyo completo a todos los del canal\n"
-                "- Buen engagement en tu contenido\n"
-                "- Comportamiento positivo en la comunidad\n"
-                "🚀 Al subir de nivel puedes tener beneficios como: prioridad en publicaciones, mentoría, soporte personalizado, etc."
-            )
-        elif "dónde encuentro las reglas" in message.content.lower():
-            respuesta = (
-                "Las reglas están fijadas en el canal 📌 #reglas o en el mensaje anclado del canal principal.\n"
-                "Si no las ves, dime: 'Ver reglas' y te las muestro por aquí 👇"
-            )
-        elif "cómo reporto una infracción" in message.content.lower() or "cómo reporto un incumplimiento" in message.content.lower():
-            respuesta = (
-                "Para reportar una infracción, sigue estos pasos:\n"
-                "1️⃣ Ve al canal de reportes\n"
-                "2️⃣ Selecciona el botón correspondiente a la infracción (ej: 'No apoyó', 'Puso 🔥 sin apoyar')\n"
-                "3️⃣ Adjunta evidencia (captura o link)\n"
-                "El equipo de moderación lo revisará lo antes posible."
-            )
-        elif "no puedo publicar mi post" in message.content.lower():
-            respuesta = (
-                "Verifica lo siguiente:\n"
-                "✅ ¿Apoyaste todas las publicaciones de otros miembros desde tu último post?\n"
-                "✅ ¿Pusiste 🔥 en los posts de los demás?\n"
-                "✅ ¿Pusiste 👍 solo en el tuyo?\n"
-                "Si todo está bien y sigue sin dejarte publicar, envíame un mensaje con el error que ves y lo revisaré."
-            )
-        elif "puse mal una reacción" in message.content.lower():
-            respuesta = (
-                "No te preocupes, puedes editar tu reacción.\n"
-                "Si pusiste 🔥 en tu propio post, elimínalo y coloca 👍.\n"
-                "Si reaccionaste sin apoyar, apoya correctamente o elimina la 🔥."
-            )
-        elif any(q in message.content.lower() for q in ["puedo invitar a más gente", "cómo me uno a un grupo de apoyo", "qué hago si alguien no me apoya"]):
-            respuesta = (
-                "¡Claro! Aquí algunas respuestas rápidas:\n"
-                "📢 Puedes invitar personas a VX compartiéndoles el link de acceso.\n"
-                "🤝 Para unirte a un grupo de apoyo o 'squad', consulta con un moderador o ve al canal #squads.\n"
-                "🚨 Si alguien no te apoya, repórtalo usando el botón de reporte o etiqueta a un moderador con evidencia."
-            )
-
-        if respuesta:
-            msg = await message.channel.send(respuesta, view=SupportMenu(message.author, message.content))
-        else:
-            respuesta = (
-                f"No estoy seguro de cómo ayudarte con '{message.content}'. "
-                "Intenta con una de estas preguntas:\n"
-                "✅ ¿Cómo publico mi post?\n"
-                "✅ ¿Cómo funciona VX?\n"
-                "✅ ¿Cómo subo de nivel?\n"
-                "✅ ¿Qué significan los 🔥 y 👍 en Discord?\n"
-                "✅ ¿Dónde encuentro las reglas?\n"
-                "¿Necesitas más ayuda? Usa el menú."
-            )
-            msg = await message.channel.send(respuesta, view=SupportMenu(message.author, message.content))
-        active_conversations[user_id]["message_ids"].append(msg.id)
+        # Si no hay coincidencia, invita a usar el menú
+        await message.channel.send(f"🔍 No entendí tu solicitud: '{message.content}'. Usa el menú para seleccionar una opción o escribe una pregunta.", view=SupportMenu(message.author, message.content))
         active_conversations[user_id]["last_time"] = datetime.datetime.utcnow()
         await message.delete()
 
