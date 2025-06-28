@@ -14,15 +14,15 @@ CANAL_OBJETIVO = os.environ["CANAL_OBJETIVO"]
 CANAL_LOGS = "📝logs"
 CANAL_REPORTES = "⛔reporte-de-incumplimiento"
 CANAL_SOPORTE = "👨🔧soporte"
-ADMIN_ID = os.environ.get("ADMIN_ID", "1174775323649392844")  # Valor por defecto para depuración
+ADMIN_ID = os.environ.get("ADMIN_ID", "1174775323649392844")  # Valor por defecto
 
 intents = discord.Intents.all()
-intents.members = True  # Asegura que el bot pueda ver miembros y menciones
+intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 MENSAJE_NORMAS = (
     "📌 Bienvenid@ al canal 🧵go-viral\n\n"
-    "🔹 Reacciona con 🔥 a todas las publicaciones desde tu última publicación antes de volver a publicar.\n"
+    "🔹 Reacciona con 🔥 a todas las publicaciones de otros miembros desde tu última publicación antes de volver a publicar.\n"
     "🔹 Debes reaccionar a tu propia publicación con 👍.\n"
     "🔹 Solo se permiten enlaces de X (Twitter) con este formato:\n"
     "https://x.com/usuario/status/1234567890123456789\n"
@@ -31,10 +31,12 @@ MENSAJE_NORMAS = (
 
 ultima_publicacion_dict = {}
 amonestaciones = defaultdict(list)
-baneos_temporales = defaultdict(lambda: None)  # Almacena la fecha de inicio del baneo temporal
+baneos_temporales = defaultdict(lambda: None)
+ticket_counter = 0  # Contador para tickets
 
 @bot.event
 async def on_ready():
+    global ticket_counter
     print(f"Bot conectado como {bot.user}")
     await registrar_log(f"Bot iniciado. ADMIN_ID cargado: {ADMIN_ID}")
     for guild in bot.guilds:
@@ -67,7 +69,7 @@ async def on_ready():
                 fijado = await channel.send(
                     "🔧 **Soporte Técnico:**\n\n"
                     "Escribe tu pregunta o problema aquí. El bot intentará ayudarte.\n"
-                    "Si no hay solución, selecciona 'Hablar con humano' para contactar a un administrador. \u2705"
+                    "Usa el menú para más opciones. \u2705"
                 )
                 await fijado.pin()
     verificar_inactividad.start()
@@ -121,7 +123,6 @@ class ReportMenu(View):
         super().__init__(timeout=60)
         self.reportado = reportado
         self.autor = autor
-
         self.select = Select(
             placeholder="✉️ Selecciona la infracción",
             options=[
@@ -136,7 +137,6 @@ class ReportMenu(View):
 
     async def select_callback(self, interaction: Interaction):
         razon = self.select.values[0].upper()
-
         ahora = datetime.datetime.utcnow()
         if self.reportado.id not in amonestaciones:
             amonestaciones[self.reportado.id] = []
@@ -145,7 +145,6 @@ class ReportMenu(View):
         ]
         amonestaciones[self.reportado.id].append(ahora)
         cantidad = len(amonestaciones[self.reportado.id])
-
         try:
             await self.reportado.send(
                 f"⚠️ Has recibido una amonestación por: **{razon}**.\n"
@@ -154,7 +153,6 @@ class ReportMenu(View):
             )
         except:
             pass
-
         logs_channel = discord.utils.get(self.autor.guild.text_channels, name=CANAL_LOGS)
         if logs_channel:
             await logs_channel.send(
@@ -164,7 +162,6 @@ class ReportMenu(View):
                 f"📌 Infracción: `{razon}`\n"
                 f"📆 Amonestaciones en 7 días: `{cantidad}`"
             )
-
         role_baneado = discord.utils.get(self.autor.guild.roles, name="baneado")
         if cantidad >= 6 and baneos_temporales[self.reportado.id]:
             try:
@@ -173,7 +170,7 @@ class ReportMenu(View):
                 pass
             await self.autor.guild.kick(self.reportado, reason="Expulsado por reincidencia")
             await logs_channel.send(f"❌ {self.reportado.name} fue **expulsado permanentemente** por reincidir.")
-        elif cantidad == 3 and not baneos_temporales[self.reportado.id]:
+        elif quantity == 3 and not baneos_temporales[self.reportado.id]:
             if role_baneado:
                 try:
                     await self.reportado.send("🚫 Has sido **baneado por 7 días** tras recibir 3 amonestaciones.")
@@ -184,26 +181,44 @@ class ReportMenu(View):
                 await logs_channel.send(f"🚫 {self.reportado.name} ha sido **baneado por 7 días**.")
         elif cantidad < 3:
             await logs_channel.send(f"ℹ️ {self.reportado.name} ha recibido una amonestación, total: {cantidad}.")
-
         await interaction.response.send_message("✅ Reporte registrado con éxito.", ephemeral=True)
 
 class SupportMenu(View):
-    def __init__(self, autor):
+    def __init__(self, autor, query):
         super().__init__(timeout=60)
         self.autor = autor
+        self.query = query
         self.select = Select(
-            placeholder="🤔 ¿Necesitas más ayuda?",
+            placeholder="🔧 ¿Qué deseas hacer?",
             options=[
-                SelectOption(label="Sí, hablar con humano", description="Conectar con un administrador"),
-                SelectOption(label="No, gracias", description="Cerrar la consulta"),
+                SelectOption(label="Generar ticket", description="Crear un ticket para seguimiento"),
+                SelectOption(label="Hablar con humano", description="Conectar con un administrador"),
+                SelectOption(label="Cerrar consulta", description="Finalizar la interacción"),
             ]
         )
         self.select.callback = self.select_callback
         self.add_item(self.select)
 
     async def select_callback(self, interaction: Interaction):
-        await registrar_log(f"Support request from {self.autor.name} (ID: {self.autor.id}) - Selected: {self.select.values[0]}")
-        if self.select.values[0] == "Sí, hablar con humano":
+        global ticket_counter
+        await registrar_log(f"Support request from {self.autor.name} (ID: {self.autor.id}) - Query: {self.query} - Selected: {self.select.values[0]}")
+        if self.select.values[0] == "Generar ticket":
+            ticket_counter += 1
+            ticket_id = f"ticket-{ticket_counter:03d}"
+            admin = bot.get_user(int(ADMIN_ID))
+            if not admin:
+                await registrar_log(f"Error: Admin user with ID {ADMIN_ID} not found")
+                await interaction.response.send_message("❌ No pude encontrar al administrador para el ticket.", ephemeral=True)
+                return
+            try:
+                await self.autor.send(f"🎫 Se ha generado el ticket #{ticket_id} para tu consulta: '{self.query}'. Un administrador te contactará pronto.")
+                await admin.send(f"🎫 Nuevo ticket #{ticket_id} solicitado por {self.autor.mention} en #{CANAL_SOPORTE}: '{self.query}'. Por favor, responde.")
+                await interaction.response.send_message(f"✅ Ticket #{ticket_id} generado. Te contactarán pronto.", ephemeral=True)
+                await registrar_log(f"Ticket #{ticket_id} created for {self.autor.name}")
+            except Exception as e:
+                await registrar_log(f"Error generating ticket: {str(e)}")
+                await interaction.response.send_message(f"❌ Error al generar el ticket: {str(e)}. Intenta de nuevo.", ephemeral=True)
+        elif self.select.values[0] == "Hablar con humano":
             admin = bot.get_user(int(ADMIN_ID))
             await registrar_log(f"Attempting to notify admin with ID: {ADMIN_ID}")
             if not admin:
@@ -217,15 +232,15 @@ class SupportMenu(View):
                 )
                 await registrar_log(f"Sending notification to admin {admin.name}")
                 await admin.send(
-                    f"⚠️ Nuevo soporte solicitado por {self.autor.mention} en #{CANAL_SOPORTE}. Por favor, contáctalo en privado o responde en el canal."
+                    f"⚠️ Nuevo soporte solicitado por {self.autor.mention} en #{CANAL_SOPORTE}: '{self.query}'. Por favor, contáctalo."
                 )
                 await interaction.response.send_message("✅ He notificado a un administrador. Te contactarán pronto.", ephemeral=True)
                 await registrar_log(f"Support transferred successfully to {admin.name}")
             except Exception as e:
                 await registrar_log(f"Error in support transfer: {str(e)}")
                 await interaction.response.send_message(f"❌ Error al contactar al administrador: {str(e)}. Intenta de nuevo.", ephemeral=True)
-        else:
-            await interaction.response.send_message("✅ ¡Gracias por usar el soporte! Si necesitas más ayuda, vuelve cuando quieras.", ephemeral=True)
+        else:  # Cerrar consulta
+            await interaction.response.send_message("✅ ¡Consulta cerrada! Si necesitas más ayuda, vuelve cuando quieras.", ephemeral=True)
 
 @bot.event
 async def on_message(message):
@@ -244,9 +259,23 @@ async def on_message(message):
         if message.content.lower() in ["salir", "cancelar", "fin"]:
             await message.channel.send("✅ Consulta cerrada. ¡Vuelve si necesitas ayuda!")
             return
-        await message.channel.send(f"🔍 Estoy analizando tu solicitud: '{message.content}'...\nPor favor, espera un momento.")
-        respuesta = f"Basado en mi conocimiento, respecto a '{message.content}', te sugiero lo siguiente: [Respuesta generada por Grok 3].\n¿Necesitas más ayuda? Usa el menú."
-        await message.channel.send(respuesta, view=SupportMenu(message.author))
+        await message.channel.send(f"🔍 Analizando tu solicitud: '{message.content}'...\nPor favor, espera.")
+        # Lógica de respuesta natural con Grok 3 (actualizada)
+        if "publicar mi post" in message.content.lower():
+            respuesta = (
+                "¡Claro! Para publicar tu post correctamente en 🧵go-viral:\n"
+                "1) Reacciona con 🔥 con todas las publicaciones de otros miembros desde tu último post.\n"
+                "2) Usa un enlace válido de X (ej. https://x.com/usuario/status/1234567890123456789) sin texto adicional.\n"
+                "3) Reacciona con 👍 a tu propio post después de publicarlo.\n"
+                "¿Necesitas más ayuda? Usa el menú."
+            )
+        else:
+            respuesta = (
+                f"No estoy seguro de cómo ayudarte con '{message.content}'. "
+                "Basado en mi conocimiento general, te sugiero revisar las normas del servidor. "
+                "¿Necesitas más ayuda? Usa el menú."
+            )
+        await message.channel.send(respuesta, view=SupportMenu(message.author, message.content))
         await message.delete()
 
     elif message.author == bot.user or message.channel.name != CANAL_OBJETIVO:
@@ -265,9 +294,9 @@ async def on_message(message):
         return
 
     # Clean the URL by removing query parameters
-    url = urls[0].split('?')[0]  # Take only the base URL before '?'
+    url = urls[0].split('?')[0]
     
-    # Validate the URL format (e.g., https://x.com/username/status/1234567890123456789)
+    # Validate the URL format
     url_pattern = r"https://x\.com/[^/]+/status/\d+"
     if not re.match(url_pattern, url):
         await message.delete()
@@ -277,11 +306,9 @@ async def on_message(message):
         await advertencia.delete(delay=15)
         return
 
-    # Optional: Log if the URL was cleaned (had query parameters)
     if '?' in urls[0]:
         await registrar_log(f"URL cleaned from {urls[0]} to {url} for user {message.author.name}")
 
-    # Delete the original message and repost with the cleaned URL
     await message.delete()
     new_message = await message.channel.send(url)
 
@@ -305,27 +332,20 @@ async def on_message(message):
     ahora = datetime.datetime.utcnow()
     diferencia = ahora - ultima_publicacion.created_at.replace(tzinfo=None)
     publicaciones_despues = [m for m in mensajes if m.created_at > ultima_publicacion.created_at and m.author != message.author]
-    if len(publicaciones_despues) < 2 and diferencia.total_seconds() < 86400:
-        await new_message.delete()
-        advertencia = await message.channel.send(
-            f"{message.author.mention} aún no puedes publicar.\nDebes esperar al menos 2 publicaciones de otros miembros o 24 horas desde tu última publicación."
-        )
-        await advertencia.delete(delay=15)
-        return
 
+    # Verificar que todas las publicaciones posteriores tengan reacción 🔥 del autor
     no_apoyados = []
     for msg in mensajes:
-        if msg.created_at <= ultima_publicacion.created_at:
-            break
-        apoyo = False
-        for reaction in msg.reactions:
-            if str(reaction.emoji) == "🔥":
-                async for user in reaction.users():
-                    if user == message.author:
-                        apoyo = True
-                        break
-        if not apoyo:
-            no_apoyados.append(msg)
+        if msg.created_at > ultima_publicacion.created_at and msg.author != message.author:
+            apoyo = False
+            for reaction in msg.reactions:
+                if str(reaction.emoji) == "🔥":
+                    async for user in reaction.users():
+                        if user == message.author:
+                            apoyo = True
+                            break
+            if not apoyo:
+                no_apoyados.append(msg)
 
     if no_apoyados:
         await new_message.delete()
@@ -333,7 +353,6 @@ async def on_message(message):
             f"{message.author.mention} debes reaccionar con 🔥 a **todas las publicaciones desde tu última publicación** antes de publicar."
         )
         await advertencia.delete(delay=15)
-
         urls_faltantes = [m.jump_url for m in no_apoyados]
         mensaje = (
             f"👋 {message.author.mention}, te faltan reacciones con 🔥 a los siguientes posts para poder publicar:\n" +
@@ -343,12 +362,16 @@ async def on_message(message):
         await registrar_log(f"{message.author.name} intentó publicar sin reaccionar a {len(no_apoyados)} publicaciones.")
         return
 
-    def check_reaccion_propia(reaction, user):
-        return (
-            reaction.message.id == new_message.id and
-            str(reaction.emoji) == "👍" and
-            user == message.author
+    if len(publicaciones_despues) < 1 and diferencia.total_seconds() < 86400:
+        await new_message.delete()
+        advertencia = await message.channel.send(
+            f"{message.author.mention} aún no puedes publicar.\nDebes esperar al menos 24 horas desde tu última publicación si no hay otras publicaciones."
         )
+        await advertencia.delete(delay=15)
+        return
+
+    def check_reaccion_propia(reaction, user):
+        return reaction.message.id == new_message.id and str(reaction.emoji) == "👍" and user == message.author
 
     try:
         await bot.wait_for("reaction_add", timeout=60, check=check_reaccion_propia)
@@ -367,13 +390,11 @@ async def on_message(message):
 async def on_reaction_add(reaction, user):
     if user.bot or reaction.message.channel.name != CANAL_OBJETIVO:
         return
-
     autor = reaction.message.author
     emoji_valido = "👍" if user == autor else "🔥"
-
     if str(reaction.emoji) != emoji_valido:
         await reaction.remove(user)
-        advertencia = await reaction.message.channel.send(
+        advertencia = await reaction.channel.send(
             f"{user.mention} Solo se permite reaccionar con 🔥 a las publicaciones de tus compañer@s en este canal."
         )
         await advertencia.delete(delay=15)
