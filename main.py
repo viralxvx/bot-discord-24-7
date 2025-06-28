@@ -167,10 +167,8 @@ async def on_member_join(member):
 
 async def registrar_log(texto):
     canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
-    if canal_log:
+    if canal_log and texto:  # Verificar que el canal existe y el texto no esté vacío
         await canal_log.send(f"[{datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] {texto}")
-    else:
-        print(f"Log channel {CANAL_LOGS} not found: {texto}")
 
 @tasks.loop(hours=24)
 async def verificar_inactividad():
@@ -355,6 +353,9 @@ class SupportMenu(View):
 @bot.event
 async def on_message(message):
     global active_conversations
+    # Ignorar mensajes del bot en el canal de logs para evitar bucles
+    if message.author == bot.user and message.channel.name == CANAL_LOGS:
+        return
     await registrar_log(f"💬 Mensaje en #{message.channel.name} por {message.author.name} (ID: {message.author.id}): {message.content}")
     if message.channel.name == CANAL_REPORTES and not message.author.bot:
         if message.mentions:
@@ -506,7 +507,7 @@ async def on_message(message):
 
     # Monitoreo de normas
     elif message.channel.name in [CANAL_NORMAS_GENERALES, CANAL_X_NORMAS] and not message.author.bot:
-        canal_anuncios = discord.utils.get(message.guild.text_channels, name=CANAl_ANUNCIOS)
+        canal_anuncios = discord.utils.get(message.guild.text_channels, name=CANAL_ANUNCIOS)
         if canal_anuncios:
             await canal_anuncios.send(
                 f"📢 **Actualización de Normas**: Se ha modificado una norma en #{message.channel.name}. Revisa los detalles en {message.jump_url}"
