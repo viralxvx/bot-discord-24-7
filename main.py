@@ -151,7 +151,7 @@ async def verificar_inactividad():
 
 @tasks.loop(minutes=1)  # Verifica inactividad cada minuto
 async def clean_inactive_conversations():
-    canal_soporte = discord.utils.get(bot.get_all_channels(), name=CANAl_SOPORTE)
+    canal_soporte = discord.utils.get(bot.get_all_channels(), name=CANAL_SOPORTE)
     if not canal_soporte:
         return
     ahora = datetime.datetime.utcnow()
@@ -349,113 +349,112 @@ async def on_message(message):
         active_conversations[user_id]["last_time"] = datetime.datetime.utcnow()
         await message.delete()
 
-    elif message.author == bot.user or message.channel.name != CANAL_OBJETIVO:
-        return
+    elif message.channel.name == CANAL_OBJETIVO and not message.author.bot:
+        # Extract URLs from the message
+        urls = re.findall(r"https://x\.com/[^\s]+", message.content.strip())
+        
+        # Check if there's exactly one URL and no additional text
+        if len(urls) != 1 or (len(urls) == 1 and message.content.strip() != urls[0]):
+            await message.delete()
+            advertencia = await message.channel.send(
+                f"{message.author.mention} solo se permite **un link válido de X** sin texto adicional.\nFormato: https://x.com/usuario/status/1234567890123456789"
+            )
+            await advertencia.delete(delay=15)
+            return
 
-    # Extract URLs from the message
-    urls = re.findall(r"https://x\.com/[^\s]+", message.content.strip())
-    
-    # Check if there's exactly one URL and no additional text
-    if len(urls) != 1 or (len(urls) == 1 and message.content.strip() != urls[0]):
-        await message.delete()
-        advertencia = await message.channel.send(
-            f"{message.author.mention} solo se permite **un link válido de X** sin texto adicional.\nFormato: https://x.com/usuario/status/1234567890123456789"
-        )
-        await advertencia.delete(delay=15)
-        return
+        # Clean the URL by removing query parameters
+        url = urls[0].split('?')[0]
+        
+        # Validate the URL format
+        url_pattern = r"https://x\.com/[^/]+/status/\d+"
+        if not re.match(url_pattern, url):
+            await message.delete()
+            advertencia = await message.channel.send(
+                f"{message.author.mention} el enlace no tiene el formato correcto.\nFormato: https://x.com/usuario/status/1234567890123456789"
+            )
+            await advertencia.delete(delay=15)
+            return
 
-    # Clean the URL by removing query parameters
-    url = urls[0].split('?')[0]
-    
-    # Validate the URL format
-    url_pattern = r"https://x\.com/[^/]+/status/\d+"
-    if not re.match(url_pattern, url):
-        await message.delete()
-        advertencia = await message.channel.send(
-            f"{message.author.mention} el enlace no tiene el formato correcto.\nFormato: https://x.com/usuario/status/1234567890123456789"
-        )
-        await advertencia.delete(delay=15)
-        return
+        if '?' in urls[0]:
+            await registrar_log(f"URL cleaned from {urls[0]} to {url} for user {message.author.name}")
 
-    if '?' in urls[0]:
-        await registrar_log(f"URL cleaned from {urls[0]} to {url} for user {message.author.name}")
+        # No eliminar ni reenviar, usar el mensaje original
+        new_message = message
 
-    await message.delete()
-    new_message = await message.channel.send(url)
+        mensajes = []
+        async for msg in message.channel.history(limit=100):
+            if msg.id == new_message.id or msg.author == bot.user:
+                continue
+            mensajes.append(msg)
 
-    mensajes = []
-    async for msg in message.channel.history(limit=100):
-        if msg.id == new_message.id or msg.author == bot.user:
-            continue
-        mensajes.append(msg)
+        ultima_publicacion = None
+        for msg in mensajes:
+            if msg.author == message.author:
+                ultima_publicacion = msg
+                break
 
-    ultima_publicacion = None
-    for msg in mensajes:
-        if msg.author == message.author:
-            ultima_publicacion = msg
-            break
+        if not ultima_publicacion:
+            ultima_publicacion_dict[message.author.id] = datetime.datetime.utcnow()
+            return
 
-    if not ultima_publicacion:
+        ahora = datetime.datetime.utcnow()
+        diferencia = ahora - ultima_publicacion.created_at.replace(tzinfo=None)
+        publicaciones_despues = [m for m in mensajes if m.created_at > ultima_publicacion.created_at and m.author != message.author]
+
+        # Verificar que todas las publicaciones posteriores tengan reacción 🔥 del autor
+        no_apoyados = []
+        for msg in mensajes:
+            if msg.created_at > ultima_publicacion.created_at and msg.author != message.author:
+                apoyo = False
+                for reaction in msg.reactions:
+                    if str(reaction.emoji) == "🔥":
+                        async for user in reaction.users():
+                            if user == message.author:
+                                apoyo = True
+                                break
+                if not apoyo:
+                    no_apoyados.append(msg)
+
+        if no_apoyados:
+            await new_message.delete()
+            advertencia = await message.channel.send(
+                f"{message.author.mention} debes reaccionar con 🔥 a **todas las publicaciones desde tu última publicación** antes de publicar."
+            )
+            await advertencia.delete(delay=15)
+            urls_faltantes = [m.jump_url for m in no_apoyados]
+            mensaje = (
+                f"👋 {message.author.mention}, te faltan reacciones con 🔥 a los siguientes posts para poder publicar:\n" +
+                "\n".join(urls_faltantes)
+            )
+            await message.author.send(mensaje)
+            await registrar_log(f"{message.author.name} intentó publicar sin reaccionar a {len(no_apoyados)} publicaciones.")
+            return
+
+        if len(publicaciones_despues) < 1 and diferencia.total_seconds() < 86400:
+            await new_message.delete()
+            advertencia = await message.channel.send(
+                f"{message.author.mention} aún no puedes publicar.\nDebes esperar al menos 24 horas desde tu última publicación si no hay otras publicaciones."
+            )
+            await advertencia.delete(delay=15)
+            return
+
+        def check_reaccion_propia(reaction, user):
+            return reaction.message.id == new_message.id and str(reaction.emoji) == "👍" and user == message.author
+
+        try:
+            await bot.wait_for("reaction_add", timeout=60, check=check_reaccion_propia)
+        except:
+            await new_message.delete()
+            advertencia = await message.channel.send(
+                f"{message.author.mention} tu publicación fue eliminada.\nDebes reaccionar con 👍 a tu propio mensaje para validarlo."
+            )
+            await advertencia.delete(delay=15)
+            return
+
         ultima_publicacion_dict[message.author.id] = datetime.datetime.utcnow()
-        await bot.process_commands(message)
-        return
 
-    ahora = datetime.datetime.utcnow()
-    diferencia = ahora - ultima_publicacion.created_at.replace(tzinfo=None)
-    publicaciones_despues = [m for m in mensajes if m.created_at > ultima_publicacion.created_at and m.author != message.author]
-
-    # Verificar que todas las publicaciones posteriores tengan reacción 🔥 del autor
-    no_apoyados = []
-    for msg in mensajes:
-        if msg.created_at > ultima_publicacion.created_at and msg.author != message.author:
-            apoyo = False
-            for reaction in msg.reactions:
-                if str(reaction.emoji) == "🔥":
-                    async for user in reaction.users():
-                        if user == message.author:
-                            apoyo = True
-                            break
-            if not apoyo:
-                no_apoyados.append(msg)
-
-    if no_apoyados:
-        await new_message.delete()
-        advertencia = await message.channel.send(
-            f"{message.author.mention} debes reaccionar con 🔥 a **todas las publicaciones desde tu última publicación** antes de publicar."
-        )
-        await advertencia.delete(delay=15)
-        urls_faltantes = [m.jump_url for m in no_apoyados]
-        mensaje = (
-            f"👋 {message.author.mention}, te faltan reacciones con 🔥 a los siguientes posts para poder publicar:\n" +
-            "\n".join(urls_faltantes)
-        )
-        await message.author.send(mensaje)
-        await registrar_log(f"{message.author.name} intentó publicar sin reaccionar a {len(no_apoyados)} publicaciones.")
-        return
-
-    if len(publicaciones_despues) < 1 and diferencia.total_seconds() < 86400:
-        await new_message.delete()
-        advertencia = await message.channel.send(
-            f"{message.author.mention} aún no puedes publicar.\nDebes esperar al menos 24 horas desde tu última publicación si no hay otras publicaciones."
-        )
-        await advertencia.delete(delay=15)
-        return
-
-    def check_reaccion_propia(reaction, user):
-        return reaction.message.id == new_message.id and str(reaction.emoji) == "👍" and user == message.author
-
-    try:
-        await bot.wait_for("reaction_add", timeout=60, check=check_reaccion_propia)
-    except:
-        await new_message.delete()
-        advertencia = await message.channel.send(
-            f"{message.author.mention} tu publicación fue eliminada.\nDebes reaccionar con 👍 a tu propio mensaje para validarlo."
-        )
-        await advertencia.delete(delay=15)
-        return
-
-    ultima_publicacion_dict[message.author.id] = datetime.datetime.utcnow()
-    await bot.process_commands(message)
+elif message.author == bot.user:
+    return
 
 @bot.event
 async def on_reaction_add(reaction, user):
