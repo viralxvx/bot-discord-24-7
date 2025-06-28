@@ -517,17 +517,25 @@ async def on_message(message):
 @bot.event
 async def on_reaction_add(reaction, user):
     await registrar_log(f"👍 Reacción añadida por {user.name} (ID: {user.id}) en #{reaction.message.channel.name}: {reaction.emoji}")
-    if user.bot or reaction.channel.name != CANAL_OBJETIVO:
+    if user.bot or reaction.message.channel.name != CANAL_OBJETIVO:
         return
     autor = reaction.message.author
     emoji_valido = "👍" if user == autor else "🔥"
-    if str(reaction.emoji) != emoji_valido:
-        await reaction.remove(user)
-        advertencia = await reaction.channel.send(
-            f"{user.mention} Solo se permite reaccionar con 🔥 a las publicaciones de tus compañer@s en este canal."
-        )
-        await advertencia.delete(delay=15)
-        await registrar_log(f"❌ Reacción inválida removida de {user.name} en #{reaction.message.channel.name}")
+    if reaction.message.channel.name == CANAL_OBJETIVO:
+        if str(reaction.emoji) != emoji_valido:
+            await reaction.remove(user)
+            advertencia = await reaction.message.channel.send(
+                f"{user.mention} Solo se permite reaccionar con 🔥 a las publicaciones de tus compañer@s o 👍 a tu propia publicación en este canal."
+            )
+            await advertencia.delete(delay=15)
+            await registrar_log(f"❌ Reacción inválida {reaction.emoji} removida de {user.name} en #{reaction.message.channel.name}")
+        elif str(reaction.emoji) == "🔥" and user == autor:
+            await reaction.remove(user)
+            advertencia = await reaction.message.channel.send(
+                f"{user.mention} No puedes reaccionar con 🔥 a tu propia publicación. Usa 👍."
+            )
+            await advertencia.delete(delay=15)
+            await registrar_log(f"❌ Reacción 🔥 removida de {user.name} en su propia publicación en #{reaction.message.channel.name}")
 
 @bot.event
 async def on_member_remove(member):
