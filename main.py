@@ -237,7 +237,7 @@ async def on_reaction_add(reaction, user):
     if str(reaction.emoji) != emoji_valido:
         await reaction.remove(user)
         advertencia = await reaction.message.channel.send(
-            f"{user.mention} solo se permite reaccionar con {emoji_valido} en este canal."
+            f"{user.mention} Solo se permite reaccionar con 🔥 a las publicaciones de tus compañer@s en este canal."
         )
         await advertencia.delete(delay=15)
 
