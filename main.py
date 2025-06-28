@@ -136,11 +136,15 @@ async def on_ready():
                         await msg.unpin()
                 fijado = await channel.send(MENSAJE_NORMAS)
                 await fijado.pin()
-    # Anunciar inicio o actualización
+    # Registrar código anterior y notificar cambios
+    with open("main.py", "r") as f:
+        codigo_anterior = f.read()
+    await registrar_log(f"💾 Código anterior guardado:\n```python\n{codigo_anterior}\n```")
+    await registrar_log(f"✅ Nuevas implementaciones:\n- Logs en tiempo real para todo el servidor\n- Persistencia de estado con state.json\n- Copia de seguridad del código\n- Notificaciones en 🔔anuncios para mejoras y normas")
     canal_anuncios = discord.utils.get(bot.get_all_channels(), name=CANAL_ANUNCIOS)
     if canal_anuncios:
         await canal_anuncios.send(
-            "🚀 **Bot Actualizado/Iniciado**: El bot se ha reiniciado o actualizado. Los datos anteriores se han preservado. Consulta 📝logs para detalles."
+            "🚀 **Actualización del Bot**: Se han añadido logs en tiempo real, persistencia de datos, copias de seguridad del código y notificaciones para normas. Revisa 📝logs para detalles."
         )
     verificar_inactividad.start()
     clean_inactive_conversations.start()
@@ -502,7 +506,7 @@ async def on_message(message):
 
     # Monitoreo de normas
     elif message.channel.name in [CANAL_NORMAS_GENERALES, CANAL_X_NORMAS] and not message.author.bot:
-        canal_anuncios = discord.utils.get(message.guild.text_channels, name=CANAL_ANUNCIOS)
+        canal_anuncios = discord.utils.get(message.guild.text_channels, name=CANAl_ANUNCIOS)
         if canal_anuncios:
             await canal_anuncios.send(
                 f"📢 **Actualización de Normas**: Se ha modificado una norma en #{message.channel.name}. Revisa los detalles en {message.jump_url}"
@@ -544,17 +548,6 @@ def keep_alive():
 # Guardar estado al cerrar
 import atexit
 atexit.register(save_state)
-
-# Registrar código anterior y cambios
-with open("main.py", "r") as f:
-    codigo_anterior = f.read()
-await registrar_log(f"💾 Código anterior guardado:\n```python\n{codigo_anterior}\n```")
-await registrar_log(f"✅ Nuevas implementaciones:\n- Logs en tiempo real para todo el servidor\n- Persistencia de estado con state.json\n- Copia de seguridad del código\n- Notificaciones en 🔔anuncios para mejoras y normas")
-canal_anuncios = discord.utils.get(bot.get_all_channels(), name=CANAL_ANUNCIOS)
-if canal_anuncios:
-    await canal_anuncios.send(
-        "🚀 **Actualización del Bot**: Se han añadido logs en tiempo real, persistencia de datos, copias de seguridad del código y notificaciones para normas. Revisa 📝logs para detalles."
-    )
 
 keep_alive()
 bot.run(TOKEN)
