@@ -69,7 +69,7 @@ async def registrar_log(texto):
 
 @tasks.loop(hours=24)
 async def verificar_inactividad():
-    canal = discord.utils.get(bot.get_all_channels(), name=CANAL_OBJETIVO)
+    canal = discord.utils.get(bot.get_all_channels(), name=CANAl_OBJETIVO)
     ahora = datetime.datetime.utcnow()
     for miembro in canal.members:
         if miembro.bot:
@@ -115,7 +115,7 @@ async def on_message(message):
         razon = razon_msg.content.strip()
         await registrar_log(f"Debug: Received violation: '{razon}'")
 
-        # No reevaluar reportado aquí, usar el ya identificado
+        # Usar reportado directamente sin reevaluar
         amonestaciones[reportado.id].append(datetime.datetime.utcnow())
         cantidad = len([a for a in amonestaciones[reportado.id] if datetime.datetime.utcnow() - a < datetime.timedelta(days=7)])
 
