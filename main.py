@@ -6,6 +6,8 @@ import os
 import datetime
 from discord.ext import commands, tasks
 from collections import defaultdict
+from discord.ui import View, Select
+from discord import SelectOption, Interaction
 
 TOKEN = os.environ["TOKEN"]
 CANAL_OBJETIVO = os.environ["CANAL_OBJETIVO"]
@@ -27,6 +29,7 @@ MENSAJE_NORMAS = (
 
 ultima_publicacion_dict = {}
 amonestaciones = defaultdict(list)
+baneos_temporales = defaultdict(lambda: None)  # Almacena la fecha de inicio del baneo temporal
 
 @bot.event
 async def on_ready():
@@ -43,6 +46,17 @@ async def on_ready():
                 except discord.Forbidden:
                     print("No tengo permisos para anclar el mensaje.")
                 break
+            elif channel.name == CANAL_REPORTES:
+                async for msg in channel.history(limit=20):
+                    if msg.author == bot.user and msg.pinned:
+                        await msg.unpin()
+                fijado = await channel.send(
+                    "🔖 **Cómo Reportar Correctamente:**\n\n"
+                    "1. Menciona a un usuario (ej. @Sharon) en un mensaje.\n"
+                    "2. Selecciona la infracción del menú que aparecerá. \u2705\n\n"
+                    "El bot registrará el reporte en 📜logs."
+                )
+                await fijado.pin()
     verificar_inactividad.start()
 
 @bot.event
@@ -65,7 +79,7 @@ async def registrar_log(texto):
     if canal_log:
         await canal_log.send(f"[{datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] {texto}")
     else:
-        print(f"Log channel {CANAL_LOGS} not found: {texto}")  # Depuración si el canal no existe
+        print(f"Log channel {CANAL_LOGS} not found: {texto}")
 
 @tasks.loop(hours=24)
 async def verificar_inactividad():
@@ -89,50 +103,89 @@ async def verificar_inactividad():
                 await miembro.send("Has sido **baneado por 7 días** por no publicar en 🧵go-viral.")
                 await registrar_log(f"🟠 {miembro.name} fue baneado por inactividad.")
 
+class ReportMenu(View):
+    def __init__(self, reportado, autor):
+        super().__init__(timeout=60)
+        self.reportado = reportado
+        self.autor = autor
+
+        self.select = Select(
+            placeholder="✉️ Selecciona la infracción",
+            options=[
+                SelectOption(label="RT", description="No hizo retweet"),
+                SelectOption(label="LIKE", description="No dio like"),
+                SelectOption(label="COMENTARIO", description="No comentó"),
+                SelectOption(label="FORMATO", description="Formato incorrecto"),
+            ]
+        )
+        self.select.callback = self.select_callback
+        self.add_item(self.select)
+
+    async def select_callback(self, interaction: Interaction):
+        razon = self.select.values[0].upper()
+
+        ahora = datetime.datetime.utcnow()
+        if self.reportado.id not in amonestaciones:
+            amonestaciones[self.reportado.id] = []
+        amonestaciones[self.reportado.id] = [
+            t for t in amonestaciones[self.reportado.id] if (ahora - t).total_seconds() < 7 * 86400
+        ]
+        amonestaciones[self.reportado.id].append(ahora)
+        cantidad = len(amonestaciones[self.reportado.id])
+
+        try:
+            await self.reportado.send(
+                f"⚠️ Has recibido una amonestación por: **{razon}**.\n"
+                f"📌 Tres amonestaciones en una semana te banean por 7 días.\n"
+                f"🔀 Si reincides tras un baneo, serás expulsado definitivamente."
+            )
+        except:
+            pass
+
+        logs_channel = discord.utils.get(self.autor.guild.text_channels, name=CANAL_LOGS)
+        if logs_channel:
+            await logs_channel.send(
+                f"📜 **Reporte registrado**\n"
+                f"👤 Reportado: {self.reportado.mention}\n"
+                f"📣 Reportado por: {self.autor.mention}\n"
+                f"📌 Infracción: `{razon}`\n"
+                f"📆 Amonestaciones en 7 días: `{cantidad}`"
+            )
+
+        role_baneado = discord.utils.get(self.autor.guild.roles, name="baneado")
+        if cantidad >= 6 and baneos_temporales[self.reportado.id]:
+            try:
+                await self.reportado.send("⛔ Has sido **expulsado permanentemente** del servidor por reincidir.")
+            except:
+                pass
+            await self.autor.guild.kick(self.reportado, reason="Expulsado por reincidencia")
+            await logs_channel.send(f"❌ {self.reportado.name} fue **expulsado permanentemente** por reincidir.")
+        elif cantidad == 3 and not baneos_temporales[self.reportado.id]:
+            if role_baneado:
+                try:
+                    await self.reportado.send("🚫 Has sido **baneado por 7 días** tras recibir 3 amonestaciones.")
+                except:
+                    pass
+                await self.reportado.add_roles(role_baneado, reason="3 amonestaciones en 7 días")
+                baneos_temporales[self.reportado.id] = ahora
+                await logs_channel.send(f"🚫 {self.reportado.name} ha sido **baneado por 7 días**.")
+        elif cantidad < 3:
+            await logs_channel.send(f"ℹ️ {self.reportado.name} ha recibido una amonestación, total: {cantidad}.")
+
+        await interaction.response.send_message("✅ Reporte registrado con éxito.", ephemeral=True)
+
 @bot.event
 async def on_message(message):
     if message.channel.name == CANAL_REPORTES and not message.author.bot:
-        def check(m): return m.author == message.author and m.channel == message.channel
-
-        await message.channel.send("¿A quién deseas reportar? Menciona al usuario.")
-        nombre_msg = await bot.wait_for("message", check=check, timeout=60)
-        await registrar_log(f"Debug: Received message content: '{nombre_msg.content}'")
-        await registrar_log(f"Debug: Raw mentions: {nombre_msg.raw_mentions}")
-        await registrar_log(f"Debug: Mentions object: {nombre_msg.mentions}")
-        reportado = next((m for m in nombre_msg.mentions), None)
-        if not reportado:
-            username = nombre_msg.content.replace("@", "").split("#")[0]
-            reportado = discord.utils.get(message.guild.members, name=username)
-            await registrar_log(f"Debug: Attempted username search for: '{username}'")
-        if not reportado:
-            await message.channel.send("❌ Usuario no reconocido. Asegúrate de mencionar a un usuario válido con @nombre.")
-            await registrar_log(f"Debug: Failed to recognize user from content: '{nombre_msg.content}'")
-            return
-
-        await registrar_log(f"Debug: User identified: {reportado.name} (ID: {reportado.id})")
-        await message.channel.send("¿Qué norma está violando? (RT, LIKE, COMENTARIO, FORMATO)")
-        razon_msg = await bot.wait_for("message", check=check, timeout=60)
-        razon = razon_msg.content.strip()
-        await registrar_log(f"Debug: Received violation: '{razon}'")
-
-        # Usar reportado directamente sin reevaluar
-        amonestaciones[reportado.id].append(datetime.datetime.utcnow())
-        cantidad = len([a for a in amonestaciones[reportado.id] if datetime.datetime.utcnow() - a < datetime.timedelta(days=7)])
-
-        if cantidad >= 6:
-            await message.guild.kick(reportado, reason="Expulsado tras múltiples amonestaciones.")
-            await reportado.send("Has sido **expulsado permanentemente** tras múltiples reportes acumulados.")
-            await registrar_log(f"🔴 {reportado.name} fue expulsado tras 6 reportes en una semana.")
-        elif cantidad == 3:
-            role = discord.utils.get(message.guild.roles, name="baneado")
-            if role:
-                await reportado.add_roles(role, reason="3 amonestaciones en una semana.")
-            await reportado.send("Has sido **baneado por 7 días** tras 3 reportes en una semana.")
-            await registrar_log(f"🟠 {reportado.name} fue baneado por 3 amonestaciones.")
+        if message.mentions:
+            reportado = message.mentions[0]
+            await message.channel.send(
+                f"📃 Reportando a {reportado.mention}\nSelecciona la infracción que ha cometido:",
+                view=ReportMenu(reportado, message.author)
+            )
+            await message.delete()
         else:
-            await reportado.send(f"⚠️ Has recibido una amonestación por: {razon}")
-            await registrar_log(f"⚠️ {reportado.name} recibió amonestación por: {razon}")
-        return
+            await message.channel.send("⚠️ Por favor, menciona a un usuario para reportar (ej. @Sharon).")
 
     if message.author == bot.user or message.channel.name != CANAL_OBJETIVO:
         return
