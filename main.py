@@ -14,7 +14,7 @@ CANAL_OBJETIVO = os.environ["CANAL_OBJETIVO"]
 CANAL_LOGS = "📝logs"
 CANAL_REPORTES = "⛔reporte-de-incumplimiento"
 CANAL_SOPORTE = "👨🔧soporte"
-ADMIN_ID = os.environ.get("ADMIN_ID", "TU_ID_AQUI")  # Reemplaza con tu ID de Discord
+ADMIN_ID = os.environ.get("ADMIN_ID", "1174775323649392844")  # Valor por defecto para depuración
 
 intents = discord.Intents.all()
 intents.members = True  # Asegura que el bot pueda ver miembros y menciones
@@ -202,7 +202,11 @@ class SupportMenu(View):
 
     async def select_callback(self, interaction: Interaction):
         if self.select.values[0] == "Sí, hablar con humano":
-            admin = bot.get_user(int(ADMIN_ID))  # Obtener al administrador por ID
+            admin = bot.get_user(int(ADMIN_ID))
+            if not admin:
+                await interaction.response.send_message("❌ No pude encontrar al administrador. Intenta de nuevo más tarde.", ephemeral=True)
+                await registrar_log(f"Error: No se encontró el usuario con ID {ADMIN_ID}")
+                return
             try:
                 await self.autor.send(
                     f"🔧 Te he conectado con un administrador. Por favor, espera a que {admin.mention} te responda."
@@ -211,8 +215,10 @@ class SupportMenu(View):
                     f"⚠️ Nuevo soporte solicitado por {self.autor.mention} en #{CANAL_SOPORTE}. Por favor, contáctalo en privado o responde en el canal."
                 )
                 await interaction.response.send_message("✅ He notificado a un administrador. Te contactarán pronto.", ephemeral=True)
-            except:
-                await interaction.response.send_message("❌ No pude contactar al administrador. Intenta de nuevo más tarde.", ephemeral=True)
+                await registrar_log(f"Soporte transferido a {admin.name} por {self.autor.name}")
+            except Exception as e:
+                await interaction.response.send_message(f"❌ Error al contactar al administrador: {str(e)}. Intenta de nuevo.", ephemeral=True)
+                await registrar_log(f"Error en transferencia de soporte: {str(e)}")
         else:
             await interaction.response.send_message("✅ ¡Gracias por usar el soporte! Si necesitas más ayuda, vuelve cuando quieras.", ephemeral=True)
 
@@ -234,7 +240,6 @@ async def on_message(message):
             await message.channel.send("✅ Consulta cerrada. ¡Vuelve si necesitas ayuda!")
             return
         await message.channel.send(f"🔍 Estoy analizando tu solicitud: '{message.content}'...\nPor favor, espera un momento.")
-        # Simulación de respuesta (puedes personalizar con lógica de Grok 3)
         respuesta = f"Basado en mi conocimiento, respecto a '{message.content}', te sugiero lo siguiente: [Respuesta generada por Grok 3].\n¿Necesitas más ayuda? Usa el menú."
         await message.channel.send(respuesta, view=SupportMenu(message.author))
         await message.delete()
