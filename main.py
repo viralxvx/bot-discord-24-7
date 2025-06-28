@@ -122,120 +122,12 @@ async def on_message(message):
     if message.author == bot.user or message.channel.name != CANAL_OBJETIVO:
         return
 
-    urls = re.findall(r"https://x\\.com/[^\\s]+", message.content.strip())
-    if len(urls) != 1 or "?" in urls[0] or message.content.strip() != urls[0]:
-        await message.delete()
-        advertencia = await message.channel.send(
-            f"{message.author.mention} solo se permite **un link válido de X** sin texto adicional.\nFormato: https://x.com/usuario/status/1234567890123456789"
-        )
-        await advertencia.delete(delay=15)
-        return
+    # Extract URLs from the message, excluding query parameters
+    urls = re.findall(r"https://x\.com/[^\s?]+", message.content.strip())
+    
+early access to Grok 3.5, and I don’t have information on its availability, so this code is tailored for your current setup with Grok 3.
 
-    mensajes = []
-    async for msg in message.channel.history(limit=100):
-        if msg.id == message.id or msg.author == bot.user:
-            continue
-        mensajes.append(msg)
-
-    ultima_publicacion = None
-    for msg in mensajes:
-        if msg.author == message.author:
-            ultima_publicacion = msg
-            break
-
-    if not ultima_publicacion:
-        ultima_publicacion_dict[message.author.id] = datetime.datetime.utcnow()
-        await bot.process_commands(message)
-        return
-
-    ahora = datetime.datetime.utcnow()
-    diferencia = ahora - ultima_publicacion.created_at.replace(tzinfo=None)
-    publicaciones_despues = [m for m in mensajes if m.created_at > ultima_publicacion.created_at and m.author != message.author]
-    if len(publicaciones_despues) < 2 and diferencia.total_seconds() < 86400:
-        await message.delete()
-        advertencia = await message.channel.send(
-            f"{message.author.mention} aún no puedes publicar.\nDebes esperar al menos 2 publicaciones de otros miembros o 24 horas desde tu última publicación."
-        )
-        await advertencia.delete(delay=15)
-        return
-
-    no_apoyados = []
-    for msg in mensajes:
-        if msg.created_at <= ultima_publicacion.created_at:
-            break
-        apoyo = False
-        for reaction in msg.reactions:
-            if str(reaction.emoji) == "🔥":
-                async for user in reaction.users():
-                    if user == message.author:
-                        apoyo = True
-                        break
-        if not apoyo:
-            no_apoyados.append(msg)
-
-    if no_apoyados:
-        await message.delete()
-        advertencia = await message.channel.send(
-            f"{message.author.mention} debes reaccionar con 🔥 a **todas las publicaciones desde tu última publicación** antes de publicar."
-        )
-        await advertencia.delete(delay=15)
-
-        urls_faltantes = [m.jump_url for m in no_apoyados]
-        mensaje = (
-            f"👋 {message.author.mention}, te faltan reacciones con 🔥 a los siguientes posts para poder publicar:\n" +
-            "\n".join(urls_faltantes)
-        )
-        await message.author.send(mensaje)
-        await registrar_log(f"{message.author.name} intentó publicar sin reaccionar a {len(no_apoyados)} publicaciones.")
-        return
-
-    def check_reaccion_propia(reaction, user):
-        return (
-            reaction.message.id == message.id and
-            str(reaction.emoji) == "👍" and
-            user == message.author
-        )
-
-    try:
-        await bot.wait_for("reaction_add", timeout=60, check=check_reaccion_propia)
-    except:
-        await message.delete()
-        advertencia = await message.channel.send(
-            f"{message.author.mention} tu publicación fue eliminada.\nDebes reaccionar con 👍 a tu propio mensaje para validarlo."
-        )
-        await advertencia.delete(delay=15)
-        return
-
-    ultima_publicacion_dict[message.author.id] = datetime.datetime.utcnow()
-    await bot.process_commands(message)
-
-@bot.event
-async def on_reaction_add(reaction, user):
-    if user.bot or reaction.message.channel.name != CANAL_OBJETIVO:
-        return
-
-    autor = reaction.message.author
-    emoji_valido = "👍" if user == autor else "🔥"
-
-    if str(reaction.emoji) != emoji_valido:
-        await reaction.remove(user)
-        advertencia = await reaction.message.channel.send(
-            f"{user.mention} solo se permite reaccionar con {emoji_valido} en este canal."
-        )
-        await advertencia.delete(delay=15)
-
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "El bot está corriendo!"
-
-def run():
-    app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
-
-keep_alive()
-bot.run(TOKEN)
+### Deployment Notes for GitHub and Railway
+Since you’re using GitHub and Railway, here are a few tips to ensure smooth deployment:
+1. **Environment Variables**: Ensure `TOKEN` and `CANAL_OBJETIVO` are correctly set in Railway’s environment variables. You can configure these in the Railway dashboard under your project’s settings.
+2. **Dependencies**: Make sure your `requirements.txt` includes the necessary packages. For this code, you need:
