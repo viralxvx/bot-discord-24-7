@@ -13,6 +13,8 @@ TOKEN = os.environ["TOKEN"]
 CANAL_OBJETIVO = os.environ["CANAL_OBJETIVO"]
 CANAL_LOGS = "📝logs"
 CANAL_REPORTES = "⛔reporte-de-incumplimiento"
+CANAL_SOPORTE = "👨🔧soporte"
+ADMIN_ID = os.environ.get("ADMIN_ID", "TU_ID_AQUI")  # Reemplaza con tu ID de Discord
 
 intents = discord.Intents.all()
 intents.members = True  # Asegura que el bot pueda ver miembros y menciones
@@ -55,6 +57,16 @@ async def on_ready():
                     "1. Menciona a un usuario (ej. @Sharon) en un mensaje.\n"
                     "2. Selecciona la infracción del menú que aparecerá. \u2705\n\n"
                     "El bot registrará el reporte en 📜logs."
+                )
+                await fijado.pin()
+            elif channel.name == CANAL_SOPORTE:
+                async for msg in channel.history(limit=20):
+                    if msg.author == bot.user and msg.pinned:
+                        await msg.unpin()
+                fijado = await channel.send(
+                    "🔧 **Soporte Técnico:**\n\n"
+                    "Escribe tu pregunta o problema aquí. El bot intentará ayudarte.\n"
+                    "Si no hay solución, selecciona 'Hablar con humano' para contactar a un administrador. \u2705"
                 )
                 await fijado.pin()
     verificar_inactividad.start()
@@ -174,6 +186,36 @@ class ReportMenu(View):
 
         await interaction.response.send_message("✅ Reporte registrado con éxito.", ephemeral=True)
 
+class SupportMenu(View):
+    def __init__(self, autor):
+        super().__init__(timeout=60)
+        self.autor = autor
+        self.select = Select(
+            placeholder="🤔 ¿Necesitas más ayuda?",
+            options=[
+                SelectOption(label="Sí, hablar con humano", description="Conectar con un administrador"),
+                SelectOption(label="No, gracias", description="Cerrar la consulta"),
+            ]
+        )
+        self.select.callback = self.select_callback
+        self.add_item(self.select)
+
+    async def select_callback(self, interaction: Interaction):
+        if self.select.values[0] == "Sí, hablar con humano":
+            admin = bot.get_user(int(ADMIN_ID))  # Obtener al administrador por ID
+            try:
+                await self.autor.send(
+                    f"🔧 Te he conectado con un administrador. Por favor, espera a que {admin.mention} te responda."
+                )
+                await admin.send(
+                    f"⚠️ Nuevo soporte solicitado por {self.autor.mention} en #{CANAL_SOPORTE}. Por favor, contáctalo en privado o responde en el canal."
+                )
+                await interaction.response.send_message("✅ He notificado a un administrador. Te contactarán pronto.", ephemeral=True)
+            except:
+                await interaction.response.send_message("❌ No pude contactar al administrador. Intenta de nuevo más tarde.", ephemeral=True)
+        else:
+            await interaction.response.send_message("✅ ¡Gracias por usar el soporte! Si necesitas más ayuda, vuelve cuando quieras.", ephemeral=True)
+
 @bot.event
 async def on_message(message):
     if message.channel.name == CANAL_REPORTES and not message.author.bot:
@@ -187,7 +229,17 @@ async def on_message(message):
         else:
             await message.channel.send("⚠️ Por favor, menciona a un usuario para reportar (ej. @Sharon).")
 
-    if message.author == bot.user or message.channel.name != CANAL_OBJETIVO:
+    elif message.channel.name == CANAL_SOPORTE and not message.author.bot:
+        if message.content.lower() in ["salir", "cancelar", "fin"]:
+            await message.channel.send("✅ Consulta cerrada. ¡Vuelve si necesitas ayuda!")
+            return
+        await message.channel.send(f"🔍 Estoy analizando tu solicitud: '{message.content}'...\nPor favor, espera un momento.")
+        # Simulación de respuesta (puedes personalizar con lógica de Grok 3)
+        respuesta = f"Basado en mi conocimiento, respecto a '{message.content}', te sugiero lo siguiente: [Respuesta generada por Grok 3].\n¿Necesitas más ayuda? Usa el menú."
+        await message.channel.send(respuesta, view=SupportMenu(message.author))
+        await message.delete()
+
+    elif message.author == bot.user or message.channel.name != CANAL_OBJETIVO:
         return
 
     # Extract URLs from the message
