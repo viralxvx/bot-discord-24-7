@@ -4,10 +4,13 @@ import discord
 import re
 import os
 import datetime
-from discord.ext import commands
+from discord.ext import commands, tasks
+from collections import defaultdict
 
 TOKEN = os.environ["TOKEN"]
 CANAL_OBJETIVO = os.environ["CANAL_OBJETIVO"]
+CANAL_LOGS = "📝logs"
+CANAL_REPORTES = "⛔reporte-de-incumplimiento"
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
@@ -20,6 +23,9 @@ MENSAJE_NORMAS = (
     "https://x.com/usuario/status/1234567890123456789\n"
     "❌ Publicaciones con texto adicional o formato incorrecto serán eliminadas."
 )
+
+ultima_publicacion_dict = {}
+amonestaciones = defaultdict(list)
 
 @bot.event
 async def on_ready():
@@ -36,6 +42,7 @@ async def on_ready():
                 except discord.Forbidden:
                     print("No tengo permisos para anclar el mensaje.")
                 break
+    verificar_inactividad.start()
 
 @bot.event
 async def on_member_join(member):
@@ -52,13 +59,70 @@ async def on_member_join(member):
         )
         await canal_presentate.send(mensaje)
 
+async def registrar_log(texto):
+    canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
+    if canal_log:
+        await canal_log.send(f"[{datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] {texto}")
+
+@tasks.loop(hours=24)
+async def verificar_inactividad():
+    canal = discord.utils.get(bot.get_all_channels(), name=CANAL_OBJETIVO)
+    ahora = datetime.datetime.utcnow()
+    for miembro in canal.members:
+        if miembro.bot:
+            continue
+        ultima = ultima_publicacion_dict.get(miembro.id)
+        if not ultima:
+            ultima = ahora - datetime.timedelta(days=4)
+        dias_inactivo = (ahora - ultima).days
+        if dias_inactivo >= 6:
+            await canal.guild.kick(miembro, reason="Expulsado por 6 días de inactividad tras baneo.")
+            await miembro.send("Has sido **expulsado permanentemente** por reincidir en la inactividad.")
+            await registrar_log(f"🔴 {miembro.name} fue expulsado por reincidir tras baneo.")
+        elif dias_inactivo >= 3:
+            role = discord.utils.get(canal.guild.roles, name="baneado")
+            if role:
+                await miembro.add_roles(role, reason="Inactividad por más de 3 días.")
+                await miembro.send("Has sido **baneado por 7 días** por no publicar en 🧵go-viral.")
+                await registrar_log(f"🟠 {miembro.name} fue baneado por inactividad.")
+
 @bot.event
 async def on_message(message):
+    if message.channel.name == CANAL_REPORTES and not message.author.bot:
+        def check(m): return m.author == message.author and m.channel == message.channel
+
+        await message.channel.send("¿A quién deseas reportar? Menciona al usuario.")
+        nombre_msg = await bot.wait_for("message", check=check, timeout=60)
+        reportado = nombre_msg.mentions[0] if nombre_msg.mentions else None
+        if not reportado:
+            return await message.channel.send("❌ Usuario no reconocido.")
+
+        await message.channel.send("¿Qué norma está violando? (RT, LIKE, COMENTARIO, FORMATO)")
+        razon_msg = await bot.wait_for("message", check=check, timeout=60)
+        razon = razon_msg.content.strip()
+
+        amonestaciones[reportado.id].append(datetime.datetime.utcnow())
+        cantidad = len([a for a in amonestaciones[reportado.id] if datetime.datetime.utcnow() - a < datetime.timedelta(days=7)])
+
+        if cantidad >= 6:
+            await message.guild.kick(reportado, reason="Expulsado tras múltiples amonestaciones.")
+            await reportado.send("Has sido **expulsado permanentemente** tras múltiples reportes acumulados.")
+            await registrar_log(f"🔴 {reportado.name} fue expulsado tras 6 reportes en una semana.")
+        elif cantidad == 3:
+            role = discord.utils.get(message.guild.roles, name="baneado")
+            if role:
+                await reportado.add_roles(role, reason="3 amonestaciones en una semana.")
+            await reportado.send("Has sido **baneado por 7 días** tras 3 reportes en una semana.")
+            await registrar_log(f"🟠 {reportado.name} fue baneado por 3 amonestaciones.")
+        else:
+            await reportado.send(f"⚠️ Has recibido una amonestación por: {razon}")
+            await registrar_log(f"⚠️ {reportado.name} recibió amonestación por: {razon}")
+        return
+
     if message.author == bot.user or message.channel.name != CANAL_OBJETIVO:
         return
 
-    # Validar link de X y que sea el único contenido
-    urls = re.findall(r"https://x\.com/[^\s]+", message.content.strip())
+    urls = re.findall(r"https://x\\.com/[^\\s]+", message.content.strip())
     if len(urls) != 1 or "?" in urls[0] or message.content.strip() != urls[0]:
         await message.delete()
         advertencia = await message.channel.send(
@@ -67,26 +131,23 @@ async def on_message(message):
         await advertencia.delete(delay=15)
         return
 
-    # Obtener mensajes anteriores
     mensajes = []
     async for msg in message.channel.history(limit=100):
         if msg.id == message.id or msg.author == bot.user:
             continue
         mensajes.append(msg)
 
-    # Buscar última publicación del usuario
     ultima_publicacion = None
     for msg in mensajes:
         if msg.author == message.author:
             ultima_publicacion = msg
             break
 
-    # Si no tiene publicaciones anteriores, permitir (primera vez)
     if not ultima_publicacion:
+        ultima_publicacion_dict[message.author.id] = datetime.datetime.utcnow()
         await bot.process_commands(message)
         return
 
-    # Verificar si hay al menos 2 publicaciones de otros miembros o han pasado 24h
     ahora = datetime.datetime.utcnow()
     diferencia = ahora - ultima_publicacion.created_at.replace(tzinfo=None)
     publicaciones_despues = [m for m in mensajes if m.created_at > ultima_publicacion.created_at and m.author != message.author]
@@ -98,11 +159,10 @@ async def on_message(message):
         await advertencia.delete(delay=15)
         return
 
-    # Verificar que haya reaccionado con 🔥 a TODAS las publicaciones desde su última
     no_apoyados = []
     for msg in mensajes:
         if msg.created_at <= ultima_publicacion.created_at:
-            break  # Solo revisar desde su última publicación hacia adelante
+            break
         apoyo = False
         for reaction in msg.reactions:
             if str(reaction.emoji) == "🔥":
@@ -119,9 +179,16 @@ async def on_message(message):
             f"{message.author.mention} debes reaccionar con 🔥 a **todas las publicaciones desde tu última publicación** antes de publicar."
         )
         await advertencia.delete(delay=15)
+
+        urls_faltantes = [m.jump_url for m in no_apoyados]
+        mensaje = (
+            f"👋 {message.author.mention}, te faltan reacciones con 🔥 a los siguientes posts para poder publicar:\n" +
+            "\n".join(urls_faltantes)
+        )
+        await message.author.send(mensaje)
+        await registrar_log(f"{message.author.name} intentó publicar sin reaccionar a {len(no_apoyados)} publicaciones.")
         return
 
-    # Esperar reacción 👍 en su propio mensaje
     def check_reaccion_propia(reaction, user):
         return (
             reaction.message.id == message.id and
@@ -139,9 +206,9 @@ async def on_message(message):
         await advertencia.delete(delay=15)
         return
 
+    ultima_publicacion_dict[message.author.id] = datetime.datetime.utcnow()
     await bot.process_commands(message)
 
-# ✅ NUEVO EVENTO: RESTRICCIÓN DE REACCIONES
 @bot.event
 async def on_reaction_add(reaction, user):
     if user.bot or reaction.message.channel.name != CANAL_OBJETIVO:
@@ -157,7 +224,6 @@ async def on_reaction_add(reaction, user):
         )
         await advertencia.delete(delay=15)
 
-# ====== KEEP ALIVE ======
 app = Flask('')
 
 @app.route('/')
