@@ -122,11 +122,11 @@ async def on_message(message):
     if message.author == bot.user or message.channel.name != CANAL_OBJETIVO:
         return
 
-    # Extract URLs from the message, excluding query parameters
-    urls = re.findall(r"https://x\.com/[^\s?]+", message.content.strip())
+    # Extract URLs from the message
+    urls = re.findall(r"https://x\.com/[^\s]+", message.content.strip())
     
-    # Check if there's exactly one valid URL and no additional text
-    if len(urls) != 1 or message.content.strip() != urls[0]:
+    # Check if there's exactly one URL and no additional text
+    if len(urls) != 1 or (len(urls) == 1 and message.content.strip() != urls[0]):
         await message.delete()
         advertencia = await message.channel.send(
             f"{message.author.mention} solo se permite **un link válido de X** sin texto adicional.\nFormato: https://x.com/usuario/status/1234567890123456789"
@@ -134,9 +134,12 @@ async def on_message(message):
         await advertencia.delete(delay=15)
         return
 
+    # Clean the URL by removing query parameters
+    url = urls[0].split('?')[0]  # Take only the base URL before '?'
+    
     # Validate the URL format (e.g., https://x.com/username/status/1234567890123456789)
     url_pattern = r"https://x\.com/[^/]+/status/\d+"
-    if not re.match(url_pattern, urls[0]):
+    if not re.match(url_pattern, url):
         await message.delete()
         advertencia = await message.channel.send(
             f"{message.author.mention} el enlace no tiene el formato correcto.\nFormato: https://x.com/usuario/status/1234567890123456789"
@@ -145,12 +148,16 @@ async def on_message(message):
         return
 
     # Optional: Log if the URL was cleaned (had query parameters)
-    if "?" in message.content.strip():
-        await registrar_log(f"URL cleaned from {message.content.strip()} to {urls[0]} for user {message.author.name}")
+    if '?' in urls[0]:
+        await registrar_log(f"URL cleaned from {urls[0]} to {url} for user {message.author.name}")
+
+    # Delete the original message and repost with the cleaned URL
+    await message.delete()
+    new_message = await message.channel.send(url)
 
     mensajes = []
     async for msg in message.channel.history(limit=100):
-        if msg.id == message.id or msg.author == bot.user:
+        if msg.id == new_message.id or msg.author == bot.user:
             continue
         mensajes.append(msg)
 
@@ -169,7 +176,7 @@ async def on_message(message):
     diferencia = ahora - ultima_publicacion.created_at.replace(tzinfo=None)
     publicaciones_despues = [m for m in mensajes if m.created_at > ultima_publicacion.created_at and m.author != message.author]
     if len(publicaciones_despues) < 2 and diferencia.total_seconds() < 86400:
-        await message.delete()
+        await new_message.delete()
         advertencia = await message.channel.send(
             f"{message.author.mention} aún no puedes publicar.\nDebes esperar al menos 2 publicaciones de otros miembros o 24 horas desde tu última publicación."
         )
@@ -191,7 +198,7 @@ async def on_message(message):
             no_apoyados.append(msg)
 
     if no_apoyados:
-        await message.delete()
+        await new_message.delete()
         advertencia = await message.channel.send(
             f"{message.author.mention} debes reaccionar con 🔥 a **todas las publicaciones desde tu última publicación** antes de publicar."
         )
@@ -208,7 +215,7 @@ async def on_message(message):
 
     def check_reaccion_propia(reaction, user):
         return (
-            reaction.message.id == message.id and
+            reaction.message.id == new_message.id and
             str(reaction.emoji) == "👍" and
             user == message.author
         )
@@ -216,7 +223,7 @@ async def on_message(message):
     try:
         await bot.wait_for("reaction_add", timeout=60, check=check_reaccion_propia)
     except:
-        await message.delete()
+        await new_message.delete()
         advertencia = await message.channel.send(
             f"{message.author.mention} tu publicación fue eliminada.\nDebes reaccionar con 👍 a tu propio mensaje para validarlo."
         )
