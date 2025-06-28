@@ -151,7 +151,7 @@ async def verificar_inactividad():
 
 @tasks.loop(minutes=1)  # Verifica inactividad cada minuto
 async def clean_inactive_conversations():
-    canal_soporte = discord.utils.get(bot.get_all_channels(), name=CANAL_SOPORTE)
+    canal_soporte = discord.utils.get(bot.get_all_channels(), name=CANAl_SOPORTE)
     if not canal_soporte:
         return
     ahora = datetime.datetime.utcnow()
@@ -343,7 +343,7 @@ async def on_message(message):
             await message.delete()
             return
 
-        # Mostrar menú al escribir cualquier cosa (incluyendo "Hola")
+        # Mostrar menú con mensaje único
         msg = await message.channel.send("👋 Usa el menú 'Selecciona una opción' para obtener ayuda.", view=SupportMenu(message.author, message.content))
         active_conversations[user_id]["message_ids"].append(msg.id)
         active_conversations[user_id]["last_time"] = datetime.datetime.utcnow()
