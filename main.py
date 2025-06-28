@@ -94,9 +94,13 @@ async def on_message(message):
 
         await message.channel.send("¿A quién deseas reportar? Menciona al usuario.")
         nombre_msg = await bot.wait_for("message", check=check, timeout=60)
-        reportado = nombre_msg.mentions[0] if nombre_msg.mentions else None
+        await registrar_log(f"Debug: Received message content: '{nombre_msg.content}'")
+        await registrar_log(f"Debug: Raw mentions: {nombre_msg.raw_mentions}")
+        await registrar_log(f"Debug: Mentions object: {nombre_msg.mentions}")
+        reportado = discord.utils.get(message.guild.members, name=nombre_msg.content.replace("@", "").split("#")[0]) or next((m for m in nombre_msg.mentions), None)
         if not reportado:
             await message.channel.send("❌ Usuario no reconocido. Asegúrate de mencionar a un usuario válido con @nombre.")
+            await registrar_log(f"Debug: Failed to recognize user from content: '{nombre_msg.content}'")
             return
 
         await message.channel.send("¿Qué norma está violando? (RT, LIKE, COMENTARIO, FORMATO)")
