@@ -36,6 +36,7 @@ baneos_temporales = defaultdict(lambda: None)  # Almacena la fecha de inicio del
 @bot.event
 async def on_ready():
     print(f"Bot conectado como {bot.user}")
+    await registrar_log(f"Bot iniciado. ADMIN_ID cargado: {ADMIN_ID}")
     for guild in bot.guilds:
         for channel in guild.text_channels:
             if channel.name == CANAL_OBJETIVO:
@@ -201,24 +202,28 @@ class SupportMenu(View):
         self.add_item(self.select)
 
     async def select_callback(self, interaction: Interaction):
+        await registrar_log(f"Support request from {self.autor.name} (ID: {self.autor.id}) - Selected: {self.select.values[0]}")
         if self.select.values[0] == "Sí, hablar con humano":
             admin = bot.get_user(int(ADMIN_ID))
+            await registrar_log(f"Attempting to notify admin with ID: {ADMIN_ID}")
             if not admin:
+                await registrar_log(f"Error: Admin user with ID {ADMIN_ID} not found")
                 await interaction.response.send_message("❌ No pude encontrar al administrador. Intenta de nuevo más tarde.", ephemeral=True)
-                await registrar_log(f"Error: No se encontró el usuario con ID {ADMIN_ID}")
                 return
             try:
+                await registrar_log(f"Sending DM to user {self.autor.name}")
                 await self.autor.send(
                     f"🔧 Te he conectado con un administrador. Por favor, espera a que {admin.mention} te responda."
                 )
+                await registrar_log(f"Sending notification to admin {admin.name}")
                 await admin.send(
                     f"⚠️ Nuevo soporte solicitado por {self.autor.mention} en #{CANAL_SOPORTE}. Por favor, contáctalo en privado o responde en el canal."
                 )
                 await interaction.response.send_message("✅ He notificado a un administrador. Te contactarán pronto.", ephemeral=True)
-                await registrar_log(f"Soporte transferido a {admin.name} por {self.autor.name}")
+                await registrar_log(f"Support transferred successfully to {admin.name}")
             except Exception as e:
+                await registrar_log(f"Error in support transfer: {str(e)}")
                 await interaction.response.send_message(f"❌ Error al contactar al administrador: {str(e)}. Intenta de nuevo.", ephemeral=True)
-                await registrar_log(f"Error en transferencia de soporte: {str(e)}")
         else:
             await interaction.response.send_message("✅ ¡Gracias por usar el soporte! Si necesitas más ayuda, vuelve cuando quieras.", ephemeral=True)
 
