@@ -38,24 +38,6 @@ ticket_counter = 0  # Contador para tickets
 active_conversations = {}  # Diccionario para rastrear conversaciones activas {user_id: {"message_ids": [], "last_time": datetime}}
 faq_data = {}  # Diccionario para almacenar preguntas y respuestas del canal flujo-de-soporte
 
-def get_response(message_content):
-    content = message_content.lower()
-    if any(s in content for s in ["hola", "buenas", "hey"]):
-        return "👋 ¡Hola! Soy el bot de soporte de la comunidad VX. ¿En qué puedo ayudarte hoy?\nPuedes preguntar:\n✅ ¿Cómo funciona VX?\n✅ ¿Cómo publico mi post?\n✅ ¿Cómo subo de nivel?"
-    if any(q in content for q in ["cómo funciona vx", "qué es vx"]):
-        return "VX es una comunidad donde crecemos apoyándonos. Tú apoyas, y luego te apoyan. Publicas tu post después de apoyar a los demás. 🔥 = apoyaste, 👍 = tu propio post."
-    if any(q in content for q in ["cómo publico", "subo mi post"]):
-        return "Para publicar:\n1️⃣ Apoya todos los posts anteriores (like + RT + comentario)\n2️⃣ Reacciona con 🔥 en Discord\n3️⃣ Luego publica tu post y colócale 👍.\nNo uses 🔥 en tu propio post."
-    if any(q in content for q in ["qué significa 🔥", "qué significa 👍"]):
-        return "🔥 = apoyaste el post (like + RT + comentario).\n👍 = solo para tu propio post, después de apoyar a los demás."
-    if "cómo subo de nivel" in content:
-        return "Subes de nivel participando activamente, apoyando a todos y siendo constante. Los niveles traen beneficios como prioridad, mentoría y más."
-    if "reglas" in content:
-        return "Las reglas están fijadas en el canal 📌 #reglas. Si no las encuentras, pídelas aquí con: `Ver reglas`."
-    if any(q in content for q in ["reportar", "infracción"]):
-        return "Para reportar: entra al canal de reportes, elige el botón adecuado, adjunta evidencia. Un moderador lo revisará."
-    return None
-
 @bot.event
 async def on_ready():
     global ticket_counter, faq_data
@@ -107,8 +89,7 @@ async def on_ready():
                         await msg.unpin()
                 fijado = await channel.send(
                     "🔧 **Soporte Técnico:**\n\n"
-                    "Escribe tu pregunta o problema aquí. El bot intentará ayudarte.\n"
-                    "Usa el menú para más opciones. \u2705"
+                    "Escribe 'Hola' para comenzar o usa el menú para seleccionar una opción. \u2705"
                 )
                 await fijado.pin()
     verificar_inactividad.start()
@@ -350,17 +331,17 @@ async def on_message(message):
             await message.delete()
             return
 
-        # Saludo inicial o respuesta basada en palabras clave
-        response = get_response(message.content)
-        if response:
-            msg = await message.channel.send(response, view=SupportMenu(message.author, message.content))
+        # Saludo inicial o invitación al menú
+        if any(s in message.content.lower() for s in ["hola", "buenas", "hey", "¿alguien ahí?"]):
+            respuesta = "👋 ¡Hola! Soy el bot de soporte de la comunidad VX. Usa el menú para seleccionar una opción."
+            msg = await message.channel.send(respuesta, view=SupportMenu(message.author, message.content))
             active_conversations[user_id]["message_ids"].append(msg.id)
             active_conversations[user_id]["last_time"] = datetime.datetime.utcnow()
             await message.delete()
             return
 
-        # Si no hay coincidencia, invita a usar el menú
-        await message.channel.send(f"🔍 No entendí tu solicitud: '{message.content}'. Usa el menú para seleccionar una opción o escribe una pregunta.", view=SupportMenu(message.author, message.content))
+        # Si no es saludo, invita a usar el menú
+        await message.channel.send(f"🔍 Usa el menú 'Selecciona una opción' para obtener ayuda con: {', '.join(faq_data.keys())}.", view=SupportMenu(message.author, message.content))
         active_conversations[user_id]["last_time"] = datetime.datetime.utcnow()
         await message.delete()
 
