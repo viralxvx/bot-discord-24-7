@@ -76,7 +76,8 @@ MENSAJE_NORMAS = (
     "🔹 Solo se permiten enlaces de X (Twitter) con este formato:\n"
     "https://x.com/usuario/status/1234567890123456789\n"
     "❌ Publicaciones con texto adicional, formato incorrecto o repetidas serán eliminadas.\n"
-    "⏳ **Permisos de inactividad**: Usa !permiso <días> en ⛔reporte-de-incumplimiento para pausar la obligación de publicar hasta 7 días. Extiende antes de que expire."
+    "⏳ **Permisos de inactividad**: Usa !permiso <días> en ⛔reporte-de-incumplimiento para pausar la obligación de publicar hasta 7 días. Extiende antes de que expire.\n"
+    "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs) para mantener el servidor limpio."
 )
 
 MENSAJE_ANUNCIO_PERMISOS = (
@@ -85,6 +86,7 @@ MENSAJE_ANUNCIO_PERMISOS = (
     "✅ Máximo 7 días por permiso.\n"
     "🔄 Puedes extender el permiso con otro reporte antes de que expire, siempre antes de un baneo.\n"
     "📤 Revisa tu estado en #📤faltas y mantente al día.\n"
+    "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs) para mantener el servidor limpio.\n"
     "¡Gracias por mantener la comunidad activa y organizada! 🚀"
 )
 
@@ -144,6 +146,7 @@ async def registrar_log(texto, categoria="general"):
             print(f"No tengo permisos para enviar logs en #{CANAL_LOGS}: {texto}")
 
 async def verificar_historial_repetidos():
+    admin = bot.get_user(int(ADMIN_ID))
     for guild in bot.guilds:
         for channel in guild.text_channels:
             if channel.name == CANAL_LOGS:
@@ -152,8 +155,6 @@ async def verificar_historial_repetidos():
             mensajes_a_eliminar = []
             try:
                 async for message in channel.history(limit=None):
-                    if message.author == bot.user:
-                        continue
                     mensaje_normalizado = message.content.strip().lower()
                     if not mensaje_normalizado:
                         continue
@@ -169,12 +170,20 @@ async def verificar_historial_repetidos():
                     try:
                         await message.delete()
                         await registrar_log(f"🗑️ Mensaje repetido eliminado del historial en #{channel.name} por {message.author.name}: {message.content}", categoria="repetidos")
-                        try:
-                            await message.author.send(
-                                f"⚠️ **Mensaje repetido eliminado**: Un mensaje repetido tuyo en #{channel.name} fue eliminado del historial para mantener el servidor limpio."
-                            )
-                        except:
-                            await registrar_log(f"❌ No se pudo notificar eliminación de mensaje repetido a {message.author.name}", categoria="repetidos")
+                        if message.author == bot.user and admin:
+                            try:
+                                await admin.send(
+                                    f"⚠️ **Mensaje del bot eliminado**: Un mensaje repetido del bot en #{channel.name} fue eliminado: {message.content}"
+                                )
+                            except:
+                                await registrar_log(f"❌ No se pudo notificar eliminación de mensaje del bot al admin", categoria="repetidos")
+                        elif message.author != bot.user:
+                            try:
+                                await message.author.send(
+                                    f"⚠️ **Mensaje repetido eliminado**: Un mensaje repetido tuyo en #{channel.name} fue eliminado del historial para mantener el servidor limpio."
+                                )
+                            except:
+                                await registrar_log(f"❌ No se pudo notificar eliminación de mensaje repetido a {message.author.name}", categoria="repetidos")
                     except discord.Forbidden:
                         await registrar_log(f"❌ No tengo permisos para eliminar mensajes en #{channel.name}", categoria="repetidos")
                 save_state()
@@ -184,7 +193,7 @@ async def verificar_historial_repetidos():
 async def publicar_mensaje_unico(canal, contenido, pinned=False):
     try:
         contenido_normalizado = contenido.strip().lower()
-        async for msg in canal.history(limit=100):
+        async for msg in canal.history(limit=None):
             if msg.content.strip().lower() == contenido_normalizado:
                 await registrar_log(f"ℹ️ Mensaje ya existe en #{canal.name}, no se publicará de nuevo: {contenido[:50]}...", categoria="mensajes")
                 return
@@ -215,7 +224,7 @@ async def on_ready():
                 "⛔️ Si después del baneo vuelve a pasar **otros 3 días sin publicar**, el sistema procederá a **expulsarlo automáticamente** del servidor.\n"
                 "✅ Esta medida busca mantener activa y comprometida a la comunidad, haciendo que el programa de crecimiento sea más eficiente y beneficioso para todos.\n"
                 "📤 Revisa tu estado en este canal (#📤faltas) para mantenerte al día con tu participación.\n"
-                "🚫 No repitas mensajes en ningún canal para mantener el servidor limpio.\n"
+                "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs) para mantener el servidor limpio.\n"
                 "Gracias por su comprensión y compromiso. ¡Sigamos creciendo juntos! 🚀"
             ))
             # Inicializar mensajes para usuarios existentes
@@ -302,7 +311,7 @@ async def on_ready():
     with open("main.py", "r") as f:
         codigo_anterior = f.read()
     await registrar_log(f"💾 Código anterior guardado:\n```python\n{codigo_anterior}\n```", categoria="bot")
-    await registrar_log(f"✅ Nuevas implementaciones:\n- Logs en tiempo real para todo el servidor\n- Persistencia de estado con state.json\n- Copia de seguridad del código\n- Notificaciones en 🔔anuncios para mejoras y normas\n- Sistema de faltas en 📤faltas con contadores y calificaciones\n- Detección y eliminación de mensajes repetidos en todo el historial\n- Sistema de permisos de inactividad en ⛔reporte-de-incumplimiento", categoria="bot")
+    await registrar_log(f"✅ Nuevas implementaciones:\n- Logs en tiempo real para todo el servidor\n- Persistencia de estado con state.json\n- Copia de seguridad del código\n- Notificaciones en 🔔anuncios para mejoras y normas\n- Sistema de faltas en 📤faltas con contadores y calificaciones\n- Detección y eliminación de mensajes repetidos en todo el historial\n- Sistema de permisos de inactividad en ⛔reporte-de-incumplimiento\n- Eliminación de mensajes repetidos del bot en todos los canales (excepto 📝logs)", categoria="bot")
     verificar_inactividad.start()
     clean_inactive_conversations.start()
     limpiar_mensajes_expulsados.start()
@@ -322,7 +331,7 @@ async def on_member_join(member):
                 "♟ Estudia las estrategias\n"
                 "🏋 Luego solicita ayuda para tu primer post.\n\n"
                 "📤 Revisa tu estado en el canal #📤faltas para mantenerte al día con tu participación.\n"
-                "🚫 No repitas mensajes en ningún canal para mantener el servidor limpio.\n"
+                "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs) para mantener el servidor limpio.\n"
                 "⏳ Usa `!permiso <días>` en #⛔reporte-de-incumplimiento para pausar la obligación de publicar (máx. 7 días)."
             )
             await canal_presentate.send(mensaje)
@@ -367,7 +376,7 @@ async def verificar_inactividad():
             continue
         permiso = permisos_inactividad[user_id]
         if permiso and (ahora - permiso["inicio"]).days < permiso["duracion"]:
-            continue  # Saltar usuarios con permiso activo
+            continue
         dias_inactivo = (ahora - ultima).days
         faltas = faltas_dict[user_id]["faltas"]
         estado = faltas_dict[user_id]["estado"]
@@ -627,33 +636,40 @@ class SupportMenu(View):
 @bot.event
 async def on_message(message):
     global active_conversations, mensajes_recientes
-    if message.author == bot.user or message.channel.name == CANAL_LOGS:
-        return
+    admin = bot.get_user(int(ADMIN_ID))
+    if message.channel.name != CANAL_LOGS:  # No verificar repeticiones en logs
+        canal_id = str(message.channel.id)
+        mensaje_normalizado = message.content.strip().lower()
+        if mensaje_normalizado:
+            if any(mensaje_normalizado == msg.strip().lower() for msg in mensajes_recientes[canal_id]):
+                try:
+                    await message.delete()
+                    await registrar_log(f"🗑️ Mensaje repetido eliminado en #{message.channel.name} por {message.author.name}: {message.content}", categoria="repetidos")
+                    if message.author == bot.user and admin:
+                        try:
+                            await admin.send(
+                                f"⚠️ **Mensaje del bot eliminado**: Un mensaje repetido del bot en #{message.channel.name} fue eliminado: {message.content}"
+                            )
+                        except:
+                            await registrar_log(f"❌ No se pudo notificar eliminación de mensaje del bot al admin", categoria="repetidos")
+                    elif message.author != bot.user:
+                        try:
+                            await message.author.send(
+                                f"⚠️ **Mensaje repetido eliminado**: No repitas mensajes en #{message.channel.name}. "
+                                f"Por favor, envía contenido nuevo para mantener el servidor limpio."
+                            )
+                        except:
+                            await registrar_log(f"❌ No se pudo notificar mensaje repetido a {message.author.name}", categoria="repetidos")
+                    return
+                except discord.Forbidden:
+                    await registrar_log(f"❌ No tengo permisos para eliminar mensajes en #{message.channel.name}", categoria="repetidos")
+            mensajes_recientes[canal_id].append(message.content)
+            if len(mensajes_recientes[canal_id]) > MAX_MENSAJES_RECIENTES:
+                mensajes_recientes[canal_id].pop(0)
+            save_state()
+    
     await registrar_log(f"💬 Mensaje en #{message.channel.name} por {message.author.name} (ID: {message.author.id}): {message.content}", categoria="mensajes")
     
-    # Verificar mensajes repetidos
-    canal_id = str(message.channel.id)
-    mensaje_normalizado = message.content.strip().lower()
-    if mensaje_normalizado:
-        if any(mensaje_normalizado == msg.strip().lower() for msg in mensajes_recientes[canal_id]):
-            try:
-                await message.delete()
-                await registrar_log(f"🗑️ Mensaje repetido eliminado en #{message.channel.name} por {message.author.name}: {message.content}", categoria="repetidos")
-                try:
-                    await message.author.send(
-                        f"⚠️ **Mensaje repetido eliminado**: No repitas mensajes en #{message.channel.name}. "
-                        f"Por favor, envía contenido nuevo para mantener el servidor limpio."
-                    )
-                except:
-                    await registrar_log(f"❌ No se pudo notificar mensaje repetido a {message.author.name}", categoria="repetidos")
-                return
-            except discord.Forbidden:
-                await registrar_log(f"❌ No tengo permisos para eliminar mensajes en #{message.channel.name}", categoria="repetidos")
-        mensajes_recientes[canal_id].append(message.content)
-        if len(mensajes_recientes[canal_id]) > MAX_MENSAJES_RECIENTES:
-            mensajes_recientes[canal_id].pop(0)
-        save_state()
-
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     if message.channel.name == CANAL_REPORTES and not message.author.bot:
         if message.mentions:
