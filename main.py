@@ -115,7 +115,6 @@ mensajes_recientes = defaultdict(list)
 def load_state():
     conn = sqlite3.connect(DB_FILE, timeout=20)
     cursor = conn.cursor()
-    
     global ticket_counter, active_conversations, faq_data
     ultima_publicacion_dict.clear()
     amonestaciones.clear()
@@ -581,10 +580,6 @@ async def on_ready():
                 await asyncio.sleep(1)
             except discord.Forbidden:
                 await registrar_log(f"❌ No tengo permisos para enviar/anclar mensajes en #{channel.name}", categoria="bot")
-    
-    # Evitar enviar el código completo en logs
-    await registrar_log(f"💾 Código de main.py cargado correctamente", categoria="bot")
-    procesos_exitosos.append("Carga de código sin errores")
     
     await registrar_log(
         f"✅ **Procesos iniciales completados**:\n" +
@@ -1087,7 +1082,6 @@ async def on_message(message):
             faltas_dict[message.author.id]["ultima_falta_time"] = ahora
             advertencia = await message.channel.send(
                 f"{message.author.mention} **El enlace no tiene el formato correcto**. Formato: `https://x.com/usuario/status/1234567890123456789`. Tu calificación se ha reducido en 1%."
-﻿
             )
             await advertencia.delete(delay=15)
             await registrar_log(f"❌ Mensaje eliminado en #{CANAL_OBJETIVO} por {message.author.name} por URL inválida", categoria="publicaciones")
@@ -1214,11 +1208,4 @@ async def on_message(message):
             except:
                 await registrar_log(f"❌ No se pudo notificar falta a {message.author.name}", categoria="faltas")
             if canal_faltas:
-                await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            await flush_log_queue()
-            return
-        ultima_publicacion_dict[message.author.id] = ahora
-        await registrar_log(f"✅ Publicación validada de {message.author.name} en #{CANAL_OBJETIVO}", categoria="publicaciones")
-        await flush_log_queue()
-    elif message.channel.name in [CANAL_NORMAS_GENERALES, CANAL_X_NORMAS] and not message.author.bot:
-        canal_anuncios = discord
+                await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id
