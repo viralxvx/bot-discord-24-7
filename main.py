@@ -4,12 +4,13 @@ import discord
 import re
 import os
 import datetime
-import json
+import sqlite3
 from discord.ext import commands, tasks
 from collections import defaultdict
 from discord.ui import View, Select
 from discord import SelectOption, Interaction
 
+# Bot configuration
 TOKEN = os.environ["TOKEN"]
 CANAL_OBJETIVO = os.environ["CANAL_OBJETIVO"]
 CANAL_LOGS = "📝logs"
@@ -21,73 +22,199 @@ CANAL_NORMAS_GENERALES = "✅normas-generales"
 CANAL_X_NORMAS = "𝕏-normas"
 CANAL_FALTAS = "📤faltas"
 ADMIN_ID = os.environ.get("ADMIN_ID", "1174775323649392844")
-INACTIVITY_TIMEOUT = 300  # 5 minutos en segundos
-MAX_MENSAJES_RECIENTES = 10  # Número máximo de mensajes recientes a rastrear por canal
+INACTIVITY_TIMEOUT = 300  # 5 minutes in seconds
+MAX_MENSAJES_RECIENTES = 10  # Max recent messages per channel
 
 intents = discord.Intents.all()
 intents.members = True
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Estado persistente
-STATE_FILE = "state.json"
-try:
-    with open(STATE_FILE, "r") as f:
-        state = json.load(f)
-    ultima_publicacion_dict = defaultdict(lambda: datetime.datetime.fromisoformat(state.get("ultima_publicacion_dict", {}).get(str(bot.user.id), datetime.datetime.utcnow().isoformat())))
-    amonestaciones = defaultdict(list, {k: [datetime.datetime.fromisoformat(t) for t in v] for k, v in state.get("amonestaciones", {}).items()})
-    baneos_temporales = defaultdict(lambda: None, {k: datetime.datetime.fromisoformat(v) if v else None for k, v in state.get("baneos_temporales", {}).items()})
-    permisos_inactividad = defaultdict(lambda: None, {k: {"inicio": datetime.datetime.fromisoformat(v["inicio"]), "duracion": v["duracion"]} if v else None for k, v in state.get("permisos_inactividad", {}).items()})
-    ticket_counter = state.get("ticket_counter", 0)
-    active_conversations = state.get("active_conversations", {})
-    faq_data = state.get("faq_data", {})
-    faltas_dict = defaultdict(
-        lambda: {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None},
-        {
-            k: {
-                "faltas": v["faltas"],
-                "aciertos": v["aciertos"],
-                "estado": v["estado"],
-                "mensaje_id": v["mensaje_id"],
-                "ultima_falta_time": datetime.datetime.fromisoformat(v["ultima_falta_time"]) if v["ultima_falta_time"] else None
-            } for k, v in state.get("faltas_dict", {}).items()
+# SQLite database setup
+DB_FILE = "/app/bot.db"  # Railway uses /app as the working directory
+
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.executescript("""
+        CREATE TABLE IF NOT EXISTS ultima_publicacion (
+            user_id TEXT PRIMARY KEY,
+            ultima_publicacion_time TEXT
+        );
+        CREATE TABLE IF NOT EXISTS amonestaciones (
+            user_id TEXT,
+            amonestacion_time TEXT,
+            PRIMARY KEY (user_id, amonestacion_time)
+        );
+        CREATE TABLE IF NOT EXISTS baneos_temporales (
+            user_id TEXT PRIMARY KEY,
+            baneo_time TEXT
+        );
+        CREATE TABLE IF NOT EXISTS permisos_inactividad (
+            user_id TEXT PRIMARY KEY,
+            inicio TEXT,
+            duracion INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS faltas (
+            user_id TEXT PRIMARY KEY,
+            faltas INTEGER,
+            aciertos INTEGER,
+            estado TEXT,
+            mensaje_id TEXT,
+            ultima_falta_time TEXT
+        );
+        CREATE TABLE IF NOT EXISTS ticket_counter (
+            id INTEGER PRIMARY KEY,
+            counter INTEGER
+        );
+        CREATE TABLE IF NOT EXISTS active_conversations (
+            user_id TEXT PRIMARY KEY,
+            last_time TEXT,
+            message_ids TEXT
+        );
+        CREATE TABLE IF NOT EXISTS faq_data (
+            pregunta TEXT PRIMARY KEY,
+            respuesta TEXT
+        );
+        CREATE TABLE IF NOT EXISTS mensajes_recientes (
+            canal_id TEXT,
+            mensaje TEXT,
+            PRIMARY KEY (canal_id, mensaje)
+        );
+    """)
+    conn.commit()
+    conn.close()
+
+# Initialize database
+init_db()
+
+# Data structures
+ultima_publicacion_dict = defaultdict(lambda: datetime.datetime.utcnow())
+amonestaciones = defaultdict(list)
+baneos_temporales = defaultdict(lambda: None)
+permisos_inactividad = defaultdict(lambda: None)
+ticket_counter = 0
+active_conversations = {}
+faq_data = {}
+faltas_dict = defaultdict(lambda: {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None})
+mensajes_recientes = defaultdict(list)
+
+def load_state():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    
+    global ticket_counter, active_conversations, faq_data
+    ultima_publicacion_dict.clear()
+    amonestaciones.clear()
+    baneos_temporales.clear()
+    permisos_inactividad.clear()
+    faltas_dict.clear()
+    mensajes_recientes.clear()
+
+    cursor.execute("SELECT user_id, ultima_publicacion_time FROM ultima_publicacion")
+    for row in cursor.fetchall():
+        ultima_publicacion_dict[row[0]] = datetime.datetime.fromisoformat(row[1]) if row[1] else datetime.datetime.utcnow()
+
+    cursor.execute("SELECT user_id, amonestacion_time FROM amonestaciones")
+    for row in cursor.fetchall():
+        amonestaciones[row[0]].append(datetime.datetime.fromisoformat(row[1]))
+
+    cursor.execute("SELECT user_id, baneo_time FROM baneos_temporales")
+    for row in cursor.fetchall():
+        baneos_temporales[row[0]] = datetime.datetime.fromisoformat(row[1]) if row[1] else None
+
+    cursor.execute("SELECT user_id, inicio, duracion FROM permisos_inactividad")
+    for row in cursor.fetchall():
+        permisos_inactividad[row[0]] = {"inicio": datetime.datetime.fromisoformat(row[1]), "duracion": row[2]}
+
+    cursor.execute("SELECT counter FROM ticket_counter WHERE id = 1")
+    result = cursor.fetchone()
+    ticket_counter = result[0] if result else 0
+
+    cursor.execute("SELECT user_id, last_time, message_ids FROM active_conversations")
+    for row in cursor.fetchall():
+        active_conversations[row[0]] = {
+            "last_time": datetime.datetime.fromisoformat(row[1]) if row[1] else None,
+            "message_ids": json.loads(row[2]) if row[2] else []
         }
-    )
-    mensajes_recientes = defaultdict(list, state.get("mensajes_recientes", {}))
-except FileNotFoundError:
-    ultima_publicacion_dict = defaultdict(lambda: datetime.datetime.utcnow())
-    amonestaciones = defaultdict(list)
-    baneos_temporales = defaultdict(lambda: None)
-    permisos_inactividad = defaultdict(lambda: None)
-    ticket_counter = 0
-    active_conversations = {}
-    faq_data = {}
-    faltas_dict = defaultdict(lambda: {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None})
-    mensajes_recientes = defaultdict(list)
+
+    cursor.execute("SELECT pregunta, respuesta FROM faq_data")
+    for row in cursor.fetchall():
+        faq_data[row[0]] = row[1]
+
+    cursor.execute("SELECT user_id, faltas, aciertos, estado, mensaje_id, ultima_falta_time FROM faltas")
+    for row in cursor.fetchall():
+        faltas_dict[row[0]] = {
+            "faltas": row[1],
+            "aciertos": row[2],
+            "estado": row[3],
+            "mensaje_id": row[4],
+            "ultima_falta_time": datetime.datetime.fromisoformat(row[5]) if row[5] else None
+        }
+
+    cursor.execute("SELECT canal_id, mensaje FROM mensajes_recientes")
+    for row in cursor.fetchall():
+        mensajes_recientes[row[0]].append(row[1])
+
+    conn.close()
 
 def save_state():
-    state = {
-        "ultima_publicacion_dict": {str(k): v.isoformat() for k, v in ultima_publicacion_dict.items()},
-        "amonestaciones": {str(k): [t.isoformat() for t in v] for k, v in amonestaciones.items()},
-        "baneos_temporales": {str(k): v.isoformat() if v else None for k, v in baneos_temporales.items()},
-        "permisos_inactividad": {str(k): {"inicio": v["inicio"].isoformat(), "duracion": v["duracion"]} if v else None for k, v in permisos_inactividad.items()},
-        "ticket_counter": ticket_counter,
-        "active_conversations": active_conversations,
-        "faq_data": faq_data,
-        "faltas_dict": {
-            str(k): {
-                "faltas": v["faltas"],
-                "aciertos": v["aciertos"],
-                "estado": v["estado"],
-                "mensaje_id": v["mensaje_id"],
-                "ultima_falta_time": v["ultima_falta_time"].isoformat() if v["ultima_falta_time"] else None
-            } for k, v in faltas_dict.items()
-        },
-        "mensajes_recientes": {str(k): v for k, v in mensajes_recientes.items()}
-    }
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f)
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
 
+    cursor.execute("DELETE FROM ultima_publicacion")
+    cursor.execute("DELETE FROM amonestaciones")
+    cursor.execute("DELETE FROM baneos_temporales")
+    cursor.execute("DELETE FROM permisos_inactividad")
+    cursor.execute("DELETE FROM ticket_counter")
+    cursor.execute("DELETE FROM active_conversations")
+    cursor.execute("DELETE FROM faq_data")
+    cursor.execute("DELETE FROM faltas")
+    cursor.execute("DELETE FROM mensajes_recientes")
+
+    for user_id, time in ultima_publicacion_dict.items():
+        cursor.execute("INSERT INTO ultima_publicacion (user_id, ultima_publicacion_time) VALUES (?, ?)",
+                      (str(user_id), time.isoformat()))
+
+    for user_id, times in amonestaciones.items():
+        for time in times:
+            cursor.execute("INSERT INTO amonestaciones (user_id, amonestacion_time) VALUES (?, ?)",
+                          (str(user_id), time.isoformat()))
+
+    for user_id, time in baneos_temporales.items():
+        cursor.execute("INSERT INTO baneos_temporales (user_id, baneo_time) VALUES (?, ?)",
+                      (str(user_id), time.isoformat() if time else None))
+
+    for user_id, data in permisos_inactividad.items():
+        if data:
+            cursor.execute("INSERT INTO permisos_inactividad (user_id, inicio, duracion) VALUES (?, ?, ?)",
+                          (str(user_id), data["inicio"].isoformat(), data["duracion"]))
+
+    cursor.execute("INSERT OR REPLACE INTO ticket_counter (id, counter) VALUES (1, ?)", (ticket_counter,))
+
+    for user_id, data in active_conversations.items():
+        cursor.execute("INSERT INTO active_conversations (user_id, last_time, message_ids) VALUES (?, ?, ?)",
+                      (str(user_id), data["last_time"].isoformat() if data["last_time"] else None, json.dumps(data["message_ids"])))
+
+    for pregunta, respuesta in faq_data.items():
+        cursor.execute("INSERT INTO faq_data (pregunta, respuesta) VALUES (?, ?)", (pregunta, respuesta))
+
+    for user_id, data in faltas_dict.items():
+        cursor.execute("INSERT INTO faltas (user_id, faltas, aciertos, estado, mensaje_id, ultima_falta_time) VALUES (?, ?, ?, ?, ?, ?)",
+                      (str(user_id), data["faltas"], data["aciertos"], data["estado"], data["mensaje_id"],
+                       data["ultima_falta_time"].isoformat() if data["ultima_falta_time"] else None))
+
+    for canal_id, mensajes in mensajes_recientes.items():
+        for mensaje in mensajes:
+            cursor.execute("INSERT INTO mensajes_recientes (canal_id, mensaje) VALUES (?, ?)", (str(canal_id), mensaje))
+
+    conn.commit()
+    conn.close()
+
+# Load initial state
+load_state()
+
+# Messages and constants (same as your original code)
 MENSAJE_NORMAS = (
     "📌 **Bienvenid@ al canal 🧵go-viral**\n\n"
     "🔹 **Reacciona con 🔥** a todas las publicaciones de otros miembros desde tu última publicación antes de volver a publicar.\n"
@@ -372,7 +499,6 @@ async def on_ready():
     limpiar_mensajes_expulsados.start()
     resetear_faltas_diarias.start()
 
-    # Mensaje de "al día" al final de on_ready
     await registrar_log(f"✅ Bot al día tras completar el proceso: Inicialización", categoria="bot")
 
 @bot.event
@@ -441,7 +567,7 @@ async def verificar_inactividad():
         if permiso and (ahora - permiso["inicio"]).days < permiso["duracion"]:
             continue
         dias_inactivo = (ahora - ultima).days
-        faltas = amonestaciones[user_id]
+        faltas = len([t for t in amonestaciones[user_id] if (ahora - t).total_seconds() < 7 * 86400])
         estado = faltas_dict[user_id]["estado"]
         aciertos = faltas_dict[user_id]["aciertos"]
 
