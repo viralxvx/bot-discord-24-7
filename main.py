@@ -155,15 +155,6 @@ async def registrar_log(texto, categoria="general"):
         except discord.errors.Forbidden:
             print(f"No tengo permisos para enviar logs en #{CANAL_LOGS}: {texto}")
 
-async def limpiar_canal_faltas(canal_faltas):
-    try:
-        async for message in canal_faltas.history(limit=None):
-            await message.delete()
-            await registrar_log(f"🗑️ Mensaje eliminado en #{CANAL_FALTAS}: {message.content[:50]}...", categoria="faltas")
-        await registrar_log(f"✅ Canal #{CANAL_FALTAS} limpiado completamente", categoria="faltas")
-    except discord.Forbidden:
-        await registrar_log(f"❌ No tengo permisos para eliminar mensajes en #{CANAL_FALTAS}", categoria="faltas")
-
 async def verificar_historial_repetidos():
     admin = bot.get_user(int(ADMIN_ID))
     for guild in bot.guilds:
@@ -178,7 +169,7 @@ async def verificar_historial_repetidos():
                     if not mensaje_normalizado:
                         continue
                     if channel.name == CANAL_FALTAS:
-                        # En #📤faltas, los mensajes de usuarios no se eliminan aquí
+                        # En #📤faltas, solo eliminar mensajes del sistema duplicados
                         if message.author == bot.user and mensaje_normalizado.startswith("🚫 faltas de los usuarios"):
                             if mensaje_normalizado in mensajes_vistos:
                                 mensajes_a_eliminar.append(message)
@@ -186,7 +177,6 @@ async def verificar_historial_repetidos():
                                 mensajes_vistos.add(mensaje_normalizado)
                         continue
                     if message.author == bot.user and channel.name in [CANAL_ANUNCIOS, CANAL_OBJETIVO, CANAL_NORMAS_GENERALES]:
-                        # Eliminar mensajes anteriores del bot en canales específicos
                         if mensaje_normalizado in mensajes_vistos:
                             mensajes_a_eliminar.append(message)
                         else:
@@ -250,8 +240,10 @@ async def publicar_mensaje_unico(canal, contenido, pinned=False):
             await mensaje.pin()
             await registrar_log(f"📌 Mensaje anclado en #{canal.name}: {contenido[:50]}...", categoria="mensajes")
         await registrar_log(f"📢 Mensaje publicado en #{canal.name}: {contenido[:50]}...", categoria="mensajes")
+        return mensaje
     except discord.Forbidden:
         await registrar_log(f"❌ No tengo permisos para enviar/anclar mensajes en #{canal.name}", categoria="mensajes")
+        return None
 
 @bot.event
 async def on_ready():
@@ -267,16 +259,22 @@ async def on_ready():
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     if canal_faltas:
         try:
-            # Limpiar completamente el canal #📤faltas
-            await limpiar_canal_faltas(canal_faltas)
-            procesos_exitosos.append("Limpieza de #📤faltas")
-            # Reiniciar mensaje_id en faltas_dict
-            for user_id in faltas_dict:
-                faltas_dict[user_id]["mensaje_id"] = None
-            # Publicar mensaje de actualización del sistema
-            await publicar_mensaje_unico(canal_faltas, MENSAJE_ACTUALIZACION_SISTEMA)
-            procesos_exitosos.append("Publicación de mensaje del sistema en #📤faltas")
-            # Publicar mensajes de estado para todos los miembros
+            # Buscar y actualizar o crear el mensaje del sistema
+            mensaje_sistema = None
+            async for msg in canal_faltas.history(limit=100):
+                if msg.author == bot.user and msg.content.startswith("🚫 **FALTAS DE LOS USUARIOS**"):
+                    mensaje_sistema = msg
+                    break
+            if mensaje_sistema:
+                if mensaje_sistema.content != MENSAJE_ACTUALIZACION_SISTEMA:
+                    await mensaje_sistema.edit(content=MENSAJE_ACTUALIZACION_SISTEMA)
+                    await registrar_log(f"📤 Mensaje del sistema actualizado en #{CANAL_FALTAS}", categoria="faltas")
+            else:
+                mensaje_sistema = await canal_faltas.send(MENSAJE_ACTUALIZACION_SISTEMA)
+                await registrar_log(f"📤 Mensaje del sistema creado en #{CANAL_FALTAS}", categoria="faltas")
+            procesos_exitosos.append("Publicación/actualización de mensaje del sistema en #📤faltas")
+            
+            # Actualizar o crear mensajes para todos los miembros
             for guild in bot.guilds:
                 for member in guild.members:
                     if member.bot:
@@ -284,9 +282,9 @@ async def on_ready():
                     if member.id not in faltas_dict:
                         faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
                     await actualizar_mensaje_faltas(canal_faltas, member, faltas_dict[member.id]["faltas"], faltas_dict[member.id]["aciertos"], faltas_dict[member.id]["estado"])
-            procesos_exitosos.append("Inicialización de estados de usuarios en #📤faltas")
+            procesos_exitosos.append("Actualización de estados de usuarios en #📤faltas")
         except discord.Forbidden:
-            await registrar_log(f"❌ No tengo permisos para enviar mensajes en #{CANAL_FALTAS}", categoria="faltas")
+            await registrar_log(f"❌ No tengo permisos para enviar/editar mensajes en #{CANAL_FALTAS}", categoria="faltas")
     
     canal_flujo = discord.utils.get(bot.get_all_channels(), name=CANAL_FLUJO_SOPORTE)
     if canal_flujo:
@@ -387,8 +385,12 @@ async def on_member_join(member):
         except discord.Forbidden:
             await registrar_log(f"❌ No tengo permisos para enviar mensajes en #👉preséntate", categoria="miembros")
     if canal_faltas:
-        faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
-        await actualizar_mensaje_faltas(canal_faltas, member, 0, 0, "OK")
+        try:
+            if member.id not in faltas_dict:
+                faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
+            await actualizar_mensaje_faltas(canal_faltas, member, 0, 0, "OK")
+        except discord.Forbidden:
+            await registrar_log(f"❌ No tengo permisos para enviar/editar mensajes en #{CANAL_FALTAS} para {member.name}", categoria="faltas")
     await registrar_log(f"👤 Nuevo miembro unido: {member.name} (ID: {member.id})", categoria="miembros")
 
 @bot.command()
