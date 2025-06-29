@@ -6,12 +6,27 @@ import os
 import datetime
 import sqlite3
 import asyncio
+import json
 from discord.ext import commands, tasks
 from collections import defaultdict
 from discord.ui import View, Select
 from discord import SelectOption, Interaction
 
-# Bot configuration
+# Flask para mantener el contenedor activo en Railway
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+# Configuración del bot
 TOKEN = os.environ["TOKEN"]
 CANAL_OBJETIVO = os.environ["CANAL_OBJETIVO"]
 CANAL_LOGS = "📝logs"
@@ -23,19 +38,19 @@ CANAL_NORMAS_GENERALES = "✅normas-generales"
 CANAL_X_NORMAS = "𝕏-normas"
 CANAL_FALTAS = "📤faltas"
 ADMIN_ID = os.environ.get("ADMIN_ID", "1174775323649392844")
-INACTIVITY_TIMEOUT = 300  # 5 minutes in seconds
-MAX_MENSAJES_RECIENTES = 10  # Max recent messages per channel
+INACTIVITY_TIMEOUT = 300  # 5 minutos en segundos
+MAX_MENSAJES_RECIENTES = 10  # Máximo de mensajes recientes por canal
 
 intents = discord.Intents.all()
 intents.members = True
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# SQLite database setup
+# Configuración de SQLite
 DB_FILE = "/app/bot.db"
 
 def init_db():
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn = sqlite3.connect(DB_FILE, timeout=20)
     cursor = conn.cursor()
     cursor.executescript("""
         CREATE TABLE IF NOT EXISTS ultima_publicacion (
@@ -86,10 +101,7 @@ def init_db():
     conn.commit()
     conn.close()
 
-# Initialize database
-init_db()
-
-# Data structures
+# Estructuras de datos
 ultima_publicacion_dict = defaultdict(lambda: datetime.datetime.utcnow())
 amonestaciones = defaultdict(list)
 baneos_temporales = defaultdict(lambda: None)
@@ -101,7 +113,7 @@ faltas_dict = defaultdict(lambda: {"faltas": 0, "aciertos": 0, "estado": "OK", "
 mensajes_recientes = defaultdict(list)
 
 def load_state():
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn = sqlite3.connect(DB_FILE, timeout=20)
     cursor = conn.cursor()
     
     global ticket_counter, active_conversations, faq_data
@@ -160,7 +172,7 @@ def load_state():
     conn.close()
 
 def save_state():
-    conn = sqlite3.connect(DB_FILE, timeout=10)
+    conn = sqlite3.connect(DB_FILE, timeout=20)
     cursor = conn.cursor()
 
     cursor.execute("DELETE FROM ultima_publicacion")
@@ -212,10 +224,11 @@ def save_state():
     conn.commit()
     conn.close()
 
-# Load initial state
+# Inicializar base de datos y cargar estado
+init_db()
 load_state()
 
-# Messages and constants
+# Mensajes y constantes
 MENSAJE_NORMAS = (
     "📌 **Bienvenid@ al canal 🧵go-viral**\n\n"
     "🔹 **Reacciona con 🔥** a todas las publicaciones de otros miembros desde tu última publicación antes de volver a publicar.\n"
@@ -256,14 +269,98 @@ FAQ_FALLBACK = {
     "✅ ¿Cómo subo de nivel?": "Subes de nivel participando activamente, apoyando a todos y siendo constante. Los niveles traen beneficios como prioridad, mentoría y más."
 }
 
+# Cola de logs para evitar rate limits
+log_queue = []
+
+async def registrar_log(texto, categoria="general"):
+    global log_queue
+    timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    log_message = f"[{timestamp}] [{categoria.upper()}] {texto}"
+    
+    # Truncar mensaje si excede 1900 caracteres
+    if len(log_message) > 1900:
+        log_message = log_message[:1897] + "..."
+    
+    log_queue.append(log_message)
+    
+    # Enviar logs en lotes
+    if len(log_queue) >= 10 or sum(len(msg) for msg in log_queue) >= 1500:
+        canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
+        if canal_log:
+            try:
+                mensaje = ""
+                messages_to_send = []
+                for msg in log_queue:
+                    if len(mensaje) + len(msg) + 1 <= 1900:
+                        mensaje += msg + "\n"
+                    else:
+                        messages_to_send.append(mensaje.strip())
+                        mensaje = msg + "\n"
+                if mensaje:
+                    messages_to_send.append(mensaje.strip())
+                
+                for msg in messages_to_send:
+                    if msg:
+                        await canal_log.send(msg)
+                        await asyncio.sleep(1)
+                log_queue.clear()
+            except discord.errors.Forbidden:
+                print(f"No tengo permisos para enviar logs en #{CANAL_LOGS}: {msg}")
+            except discord.errors.HTTPException as e:
+                print(f"Error enviando logs: {str(e)}")
+
+async def flush_log_queue():
+    global log_queue
+    if log_queue:
+        canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
+        if canal_log:
+            try:
+                mensaje = ""
+                messages_to_send = []
+                for msg in log_queue:
+                    if len(mensaje) + len(msg) + 1 <= 1900:
+                        mensaje += msg + "\n"
+                    else:
+                        messages_to_send.append(mensaje.strip())
+                        mensaje = msg + "\n"
+                if mensaje:
+                    messages_to_send.append(mensaje.strip())
+                
+                for msg in messages_to_send:
+                    if msg:
+                        await canal_log.send(msg)
+                        await asyncio.sleep(1)
+                log_queue.clear()
+            except discord.errors.Forbidden:
+                print(f"No tengo permisos para enviar logs en #{CANAL_LOGS}: {msg}")
+            except discord.errors.HTTPException as e:
+                print(f"Error enviando logs: {str(e)}")
+
 def calcular_calificacion(faltas):
     porcentaje = max(0, 100 - faltas)
     barras = int(porcentaje // 10)
     barra_visual = "[" + "█" * barras + " " * (10 - barras) + "]"
     return porcentaje, f"{barra_visual} {porcentaje:.2f}%"
 
+async def limpiar_mensajes_antiguos(canal_faltas):
+    try:
+        mensajes_a_eliminar = []
+        async for msg in canal_faltas.history(limit=200):
+            if msg.author == bot.user and not msg.content.startswith("🚫 **FALTAS DE LOS USUARIOS**"):
+                mensajes_a_eliminar.append(msg)
+        for msg in mensajes_a_eliminar:
+            try:
+                await msg.delete()
+                await registrar_log(f"🗑️ Mensaje antiguo eliminado en #{CANAL_FALTAS}: {msg.content[:50]}...", categoria="faltas")
+                await asyncio.sleep(0.5)
+            except discord.errors.Forbidden:
+                await registrar_log(f"❌ No tengo permisos para eliminar mensajes en #{CANAL_FALTAS}", categoria="faltas")
+        await flush_log_queue()
+    except discord.errors.Forbidden:
+        await registrar_log(f"❌ No tengo permisos para leer/eliminar mensajes en #{CANAL_FALTAS}", categoria="faltas")
+
 async def actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, estado):
-    await asyncio.sleep(1)  # Retraso para evitar rate limits
+    await asyncio.sleep(1)
     try:
         calificacion, barra_visual = calcular_calificacion(faltas)
         contenido = (
@@ -280,59 +377,18 @@ async def actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, est
                 if mensaje.content != contenido:
                     await mensaje.edit(content=contenido)
                     await registrar_log(f"📤 Mensaje actualizado para {miembro.name} en #{CANAL_FALTAS}: Faltas={faltas}, Aciertos={aciertos}, Estado={estado}", categoria="faltas")
+                return
             except discord.errors.NotFound:
                 await registrar_log(f"❌ Mensaje {mensaje_id} no encontrado para {miembro.name} en #{CANAL_FALTAS}, creando uno nuevo", categoria="faltas")
-                mensaje = await canal_faltas.send(contenido)
-                faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
+                faltas_dict[miembro.id]["mensaje_id"] = None
             except discord.errors.Forbidden:
                 await registrar_log(f"❌ No tengo permisos para editar mensajes en #{CANAL_FALTAS} para {miembro.name}", categoria="faltas")
-        else:
-            mensaje = await canal_faltas.send(contenido)
-            faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
-            await registrar_log(f"📤 Mensaje creado para {miembro.name} en #{CANAL_FALTAS}: Faltas={faltas}, Aciertos={aciertos}, Estado={estado}", categoria="faltas")
+        mensaje = await canal_faltas.send(contenido)
+        faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
+        await registrar_log(f"📤 Mensaje creado para {miembro.name} en #{CANAL_FALTAS}: Faltas={faltas}, Aciertos={aciertos}, Estado={estado}", categoria="faltas")
         save_state()
     except Exception as e:
         await registrar_log(f"❌ Error al actualizar mensaje en #{CANAL_FALTAS} para {miembro.name}: {str(e)}", categoria="faltas")
-
-# Cola de logs para agrupar mensajes
-log_queue = []
-
-async def registrar_log(texto, categoria="general"):
-    global log_queue
-    timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-    log_message = f"[{timestamp}] [{categoria.upper()}] {texto}"
-    log_queue.append(log_message)
-    
-    # Enviar logs en lotes de hasta 2000 caracteres
-    if len("\n".join(log_queue)) >= 1500 or len(log_queue) >= 10:
-        canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
-        if canal_log:
-            try:
-                mensaje = "\n".join(log_queue)
-                if mensaje:
-                    await canal_log.send(mensaje)
-                    await asyncio.sleep(1)  # Retraso para evitar rate limits
-                log_queue.clear()
-            except discord.errors.Forbidden:
-                print(f"No tengo permisos para enviar logs en #{CANAL_LOGS}: {mensaje}")
-            except Exception as e:
-                print(f"Error enviando logs: {str(e)}")
-
-async def flush_log_queue():
-    global log_queue
-    if log_queue:
-        canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
-        if canal_log:
-            try:
-                mensaje = "\n".join(log_queue)
-                if mensaje:
-                    await canal_log.send(mensaje)
-                    await asyncio.sleep(1)
-                log_queue.clear()
-            except discord.errors.Forbidden:
-                print(f"No tengo permisos para enviar logs en #{CANAL_LOGS}: {mensaje}")
-            except Exception as e:
-                print(f"Error enviando logs: {str(e)}")
 
 async def verificar_historial_repetidos():
     admin = bot.get_user(int(ADMIN_ID))
@@ -343,7 +399,7 @@ async def verificar_historial_repetidos():
             mensajes_vistos = set()
             mensajes_a_eliminar = []
             try:
-                async for message in channel.history(limit=100):  # Reducir el límite para evitar rate limits
+                async for message in channel.history(limit=100):
                     mensaje_normalizado = message.content.strip().lower()
                     if not mensaje_normalizado:
                         continue
@@ -371,7 +427,7 @@ async def verificar_historial_repetidos():
                     try:
                         await message.delete()
                         await registrar_log(f"🗑️ Mensaje repetido eliminado del historial en #{channel.name} por {message.author.name}: {message.content[:50]}...", categoria="repetidos")
-                        await asyncio.sleep(0.5)  # Retraso para evitar rate limits
+                        await asyncio.sleep(0.5)
                         if message.author == bot.user and admin:
                             try:
                                 await admin.send(
@@ -394,12 +450,12 @@ async def verificar_historial_repetidos():
     await flush_log_queue()
 
 async def publicar_mensaje_unico(canal, contenido, pinned=False):
-    await asyncio.sleep(1)  # Retraso para evitar rate limits
+    await asyncio.sleep(1)
     try:
         contenido_normalizado = contenido.strip().lower()
         mensajes_vistos = set()
         mensajes_a_eliminar = []
-        async for msg in canal.history(limit=100):  # Reducir el límite
+        async for msg in canal.history(limit=100):
             msg_normalizado = msg.content.strip().lower()
             if msg.author == bot.user:
                 if msg_normalizado == contenido_normalizado or msg_normalizado in mensajes_vistos:
@@ -438,6 +494,11 @@ async def on_ready():
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     if canal_faltas:
         try:
+            # Eliminar mensajes antiguos del bot en #📤faltas
+            await limpiar_mensajes_antiguos(canal_faltas)
+            procesos_exitosos.append("Limpieza de mensajes antiguos en #📤faltas")
+            
+            # Publicar o actualizar mensaje del sistema
             mensaje_sistema = None
             async for msg in canal_faltas.history(limit=100):
                 if msg.author == bot.user and msg.content.startswith("🚫 **FALTAS DE LOS USUARIOS**"):
@@ -455,13 +516,13 @@ async def on_ready():
             # Procesar usuarios en lotes
             for guild in bot.guilds:
                 members = [member for member in guild.members if not member.bot]
-                for i in range(0, len(members), 10):  # Procesar en lotes de 10
+                for i in range(0, len(members), 10):
                     batch = members[i:i+10]
                     for member in batch:
                         if member.id not in faltas_dict:
                             faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
                         await actualizar_mensaje_faltas(canal_faltas, member, faltas_dict[member.id]["faltas"], faltas_dict[member.id]["aciertos"], faltas_dict[member.id]["estado"])
-                    await asyncio.sleep(2)  # Retraso entre lotes
+                    await asyncio.sleep(2)
             procesos_exitosos.append("Actualización de estados de usuarios en #📤faltas")
         except discord.Forbidden:
             await registrar_log(f"❌ No tengo permisos para enviar/editar mensajes en #{CANAL_FALTAS}", categoria="faltas")
@@ -521,10 +582,9 @@ async def on_ready():
             except discord.Forbidden:
                 await registrar_log(f"❌ No tengo permisos para enviar/anclar mensajes en #{channel.name}", categoria="bot")
     
-    with open("main.py", "r") as f:
-        codigo_anterior = f.read()
-    await registrar_log(f"💾 Código anterior guardado:\n```python\n{codigo_anterior}\n```", categoria="bot")
-    procesos_exitosos.append("Guardado de código anterior")
+    # Evitar enviar el código completo en logs
+    await registrar_log(f"💾 Código de main.py cargado correctamente", categoria="bot")
+    procesos_exitosos.append("Carga de código sin errores")
     
     await registrar_log(
         f"✅ **Procesos iniciales completados**:\n" +
@@ -681,7 +741,7 @@ async def verificar_inactividad():
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, miembro, faltas_dict[user_id]["faltas"], aciertos, "OK")
         save_state()
-        await asyncio.sleep(0.5)  # Retraso entre usuarios
+        await asyncio.sleep(0.5)
     await flush_log_queue()
     await registrar_log(f"✅ Bot al día tras completar el proceso: Verificación de inactividad", categoria="bot")
     await flush_log_queue()
@@ -1027,6 +1087,7 @@ async def on_message(message):
             faltas_dict[message.author.id]["ultima_falta_time"] = ahora
             advertencia = await message.channel.send(
                 f"{message.author.mention} **El enlace no tiene el formato correcto**. Formato: `https://x.com/usuario/status/1234567890123456789`. Tu calificación se ha reducido en 1%."
+﻿
             )
             await advertencia.delete(delay=15)
             await registrar_log(f"❌ Mensaje eliminado en #{CANAL_OBJETIVO} por {message.author.name} por URL inválida", categoria="publicaciones")
@@ -1160,15 +1221,4 @@ async def on_message(message):
         await registrar_log(f"✅ Publicación validada de {message.author.name} en #{CANAL_OBJETIVO}", categoria="publicaciones")
         await flush_log_queue()
     elif message.channel.name in [CANAL_NORMAS_GENERALES, CANAL_X_NORMAS] and not message.author.bot:
-        canal_anuncios = discord.utils.get(message.guild.text_channels, name=CANAL_ANUNCIOS)
-        if canal_anuncios:
-            await publicar_mensaje_unico(canal_anuncios, (
-                f"📢 **Actualización de Normas**: Se ha modificado una norma en #{message.channel.name}. Revisa los detalles en {message.jump_url}"
-            ))
-        await registrar_log(f"📝 Norma actualizada en #{message.channel.name} por {message.author.name}: {message.content}", categoria="normas")
-        await flush_log_queue()
-    await bot.process_commands(message)
-
-@bot.event
-async def on_reaction_add(reaction, user):
-    await registrar_log(f"👍 Reacción añadida por {user.name} (ID: {user.id}) en #{reaction.message.channel.name}: {reaction.emoji}",
+        canal_anuncios = discord
