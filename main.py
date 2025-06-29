@@ -87,52 +87,75 @@ def calcular_calificacion(aciertos, faltas):
     return round(porcentaje, 2), f"{barra_visual} {porcentaje:.2f}%"
 
 async def actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, estado):
-    calificacion, barra_visual = calcular_calificacion(aciertos, faltas)
-    oportunidades_restantes = 3 - faltas if estado == "👻" else (0 if estado in ["❌", "☠️"] else "Ilimitadas")
-    contenido = (
-        f"👤 **Usuario**: {miembro.mention}\n"
-        f"📊 **Faltas**: {faltas} {'👻' if faltas > 0 else ''}\n"
-        f"✅ **Aciertos**: {aciertos}\n"
-        f"📈 **Calificación**: {barra_visual}\n"
-        f"🚨 **Estado**: {estado}\n"
-        f"⏳ **Oportunidades restantes**: {oportunidades_restantes}"
-    )
-    mensaje_id = faltas_dict[miembro.id]["mensaje_id"]
-    if mensaje_id:
-        try:
-            mensaje = await canal_faltas.fetch_message(mensaje_id)
-            await mensaje.edit(content=contenido)
-        except:
+    try:
+        calificacion, barra_visual = calcular_calificacion(aciertos, faltas)
+        oportunidades_restantes = 3 - faltas if estado == "👻" else (0 if estado in ["❌", "☠️"] else "Ilimitadas")
+        contenido = (
+            f"👤 **Usuario**: {miembro.mention}\n"
+            f"📊 **Faltas**: {faltas} {'👻' if faltas > 0 else ''}\n"
+            f"✅ **Aciertos**: {aciertos}\n"
+            f"📈 **Calificación**: {barra_visual}\n"
+            f"🚨 **Estado**: {estado}\n"
+            f"⏳ **Oportunidades restantes**: {oportunidades_restantes}"
+        )
+        mensaje_id = faltas_dict[miembro.id]["mensaje_id"]
+        if mensaje_id:
+            try:
+                mensaje = await canal_faltas.fetch_message(mensaje_id)
+                await mensaje.edit(content=contenido)
+                await registrar_log(f"📤 Mensaje actualizado para {miembro.name} en #{CANAL_FALTAS}: Faltas={faltas}, Aciertos={aciertos}, Estado={estado}", categoria="faltas")
+            except discord.errors.NotFound:
+                await registrar_log(f"❌ Mensaje {mensaje_id} no encontrado para {miembro.name} en #{CANAL_FALTAS}, creando uno nuevo", categoria="faltas")
+                mensaje = await canal_faltas.send(contenido)
+                faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
+            except discord.errors.Forbidden:
+                await registrar_log(f"❌ No tengo permisos para editar mensajes en #{CANAL_FALTAS} para {miembro.name}", categoria="faltas")
+        else:
             mensaje = await canal_faltas.send(contenido)
             faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
-    else:
-        mensaje = await canal_faltas.send(contenido)
-        faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
-    await registrar_log(f"📤 Mensaje actualizado para {miembro.name} en #{CANAL_FALTAS}: Faltas={faltas}, Aciertos={aciertos}, Estado={estado}", categoria="faltas")
-    save_state()
+            await registrar_log(f"📤 Mensaje creado para {miembro.name} en #{CANAL_FALTAS}: Faltas={faltas}, Aciertos={aciertos}, Estado={estado}", categoria="faltas")
+        save_state()
+    except Exception as e:
+        await registrar_log(f"❌ Error al actualizar mensaje en #{CANAL_FALTAS} para {miembro.name}: {str(e)}", categoria="faltas")
 
 async def registrar_log(texto, categoria="general"):
     canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
     if canal_log and texto:
-        await canal_log.send(f"[{datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] [{categoria.upper()}] {texto}")
+        try:
+            await canal_log.send(f"[{datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}] [{categoria.upper()}] {texto}")
+        except discord.errors.Forbidden:
+            print(f"No tengo permisos para enviar logs en #{CANAL_LOGS}: {texto}")
 
 @bot.event
 async def on_ready():
     global ticket_counter, faq_data
     print(f"Bot conectado como {bot.user}")
-    await registrar_log(f"Bot iniciado. ADMIN_ID cargado: {ADMIN_ID}")
+    await registrar_log(f"Bot iniciado. ADMIN_ID cargado: {ADMIN_ID}", categoria="bot")
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     if canal_faltas:
-        await canal_faltas.send(
-            "📢 **NUEVA ACTUALIZACIÓN DEL SISTEMA DE PARTICIPACIÓN**\n\n"
-            "A partir de ahora, el sistema ha sido configurado con una nueva regla automática:\n"
-            "⚠️ Si un usuario pasa **3 días sin publicar**, será **baneado por 7 días** de forma automática.\n"
-            "⛔️ Si después del baneo vuelve a pasar **otros 3 días sin publicar**, el sistema procederá a **expulsarlo automáticamente** del subito del servidor.\n"
-            "✅ Esta medida busca mantener activa comprometida a la comunidad, haciendo que el programa de crecimiento sea más eficiente y beneficioso para todos.\n"
-            "📤 Revisa tu estado en este canal (#📤faltas) para mantenerte al día con tu participación.\n"
-            "Gracias por su comprensión y compromiso. ¡Sigamos creciendo juntos! 🚀"
-        )
-        await registrar_log(f"📢 Anuncio de reglas enviado en #{CANAL_FALTAS}", categoria="faltas")
+        try:
+            await canal_faltas.send(
+                "📢 **NUEVA ACTUALIZACIÓN DEL SISTEMA DE PARTICIPACIÓN**\n\n"
+                "A partir de ahora, el sistema ha sido configurado con una nueva regla automática:\n"
+                "⚠️ Si un usuario pasa **3 días sin publicar**, será **baneado por 7 días** de forma automática.\n"
+                "⛔️ Si después del baneo vuelve a pasar **otros 3 días sin publicar**, el sistema procederá a **expulsarlo automáticamente** del servidor.\n"
+                "✅ Esta medida busca mantener activa y comprometida a la comunidad, haciendo que el programa de crecimiento sea más eficiente y beneficioso para todos.\n"
+                "📤 Revisa tu estado en este canal (#📤faltas) para mantenerte al día con tu participación.\n"
+                "Gracias por su comprensión y compromiso. ¡Sigamos creciendo juntos! 🚀"
+            )
+            await registrar_log(f"📢 Anuncio de reglas enviado en #{CANAL_FALTAS}", categoria="faltas")
+            # Inicializar mensajes para usuarios existentes
+            for guild in bot.guilds:
+                for member in guild.members:
+                    if member.bot:
+                        continue
+                    if member.id not in faltas_dict:
+                        faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "✅", "mensaje_id": None}
+                    await actualizar_mensaje_faltas(canal_faltas, member, faltas_dict[member.id]["faltas"], faltas_dict[member.id]["aciertos"], faltas_dict[member.id]["estado"])
+        except discord.errors.Forbidden:
+            await registrar_log(f"❌ No tengo permisos para enviar mensajes en #{CANAL_FALTAS}", categoria="faltas")
+    else:
+        await registrar_log(f"❌ Canal #{CANAL_FALTAS} no encontrado", categoria="faltas")
     canal_flujo = discord.utils.get(bot.get_all_channels(), name=CANAL_FLUJO_SOPORTE)
     if canal_flujo:
         async for msg in canal_flujo.history(limit=100):
@@ -142,7 +165,7 @@ async def on_ready():
                 response = []
                 for line in lines:
                     if line.startswith("**Pregunta:**"):
-                        question = line.replace("**Pregunta:****", "").strip()
+                        question = line.replace("**Pregunta:**", "").strip()
                     elif line.startswith("**Respuesta:**"):
                         response = [line.replace("**Respuesta:**", "").strip()]
                     elif question and not line.startswith("**"):
@@ -161,43 +184,55 @@ async def on_ready():
                     msg = await channel.send(MENSAJE_NORMAS)
                     await msg.pin()
                 except discord.Forbidden:
-                    print("No tengo permisos para anclar el mensaje.")
+                    await registrar_log(f"❌ No tengo permisos para anclar el mensaje en #{CANAL_OBJETIVO}", categoria="bot")
                 break
             elif channel.name == CANAL_REPORTES:
                 async for msg in channel.history(limit=20):
                     if msg.author == bot.user and msg.pinned:
                         await msg.unpin()
-                fijado = await channel.send(
-                    "🔖 **Cómo Reportar Correctamente:**\n\n"
-                    "1. Menciona a un usuario (ej. @Sharon) en un mensaje.\n"
-                    "2. Selecciona la infracción del menú que aparecerá. ✅\n\n"
-                    "El bot registrará el reporte en 📜logs."
-                )
-                await fijado.pin()
+                try:
+                    fijado = await channel.send(
+                        "🔖 **Cómo Reportar Correctamente:**\n\n"
+                        "1. Menciona a un usuario (ej. @Sharon) en un mensaje.\n"
+                        "2. Selecciona la infracción del menú que aparecerá. ✅\n\n"
+                        "El bot registrará el reporte en 📜logs."
+                    )
+                    await fijado.pin()
+                except discord.Forbidden:
+                    await registrar_log(f"❌ No tengo permisos para anclar el mensaje en #{CANAL_REPORTES}", categoria="bot")
             elif channel.name == CANAL_SOPORTE:
                 async for msg in channel.history(limit=20):
                     if msg.author == bot.user and msg.pinned:
                         await msg.unpin()
-                fijado = await channel.send(
-                    "🔧 **Soporte Técnico:**\n\n"
-                    "Escribe 'Hola' para abrir el menú de opciones. ✅"
-                )
-                await fijado.pin()
+                try:
+                    fijado = await channel.send(
+                        "🔧 **Soporte Técnico:**\n\n"
+                        "Escribe 'Hola' para abrir el menú de opciones. ✅"
+                    )
+                    await fijado.pin()
+                except discord.Forbidden:
+                    await registrar_log(f"❌ No tengo permisos para anclar el mensaje en #{CANAL_SOPORTE}", categoria="bot")
             elif channel.name == CANAL_NORMAS_GENERALES:
                 async for msg in channel.history(limit=20):
                     if msg.author == bot.user and msg.pinned:
                         await msg.unpin()
-                fijado = await channel.send(MENSAJE_NORMAS)
-                await fijado.pin()
+                try:
+                    fijado = await channel.send(MENSAJE_NORMAS)
+                    await fijado.pin()
+                except discord.Forbidden:
+                    await registrar_log(f"❌ No tengo permisos para anclar el mensaje en #{CANAL_NORMAS_GENERALES}", categoria="bot")
     with open("main.py", "r") as f:
         codigo_anterior = f.read()
-    await registrar_log(f"💾 Código anterior guardado:\n```python\n{codigo_anterior}\n```")
-    await registrar_log(f"✅ Nuevas implementaciones:\n- Logs en tiempo real para todo el servidor\n- Persistencia de estado con state.json\n- Copia de seguridad del código\n- Notificaciones en 🔔anuncios para mejoras y normas\n- Sistema de faltas en 📤faltas con contadores y calificaciones")
+    await registrar_log(f"💾 Código anterior guardado:\n```python\n{codigo_anterior}\n```", categoria="bot")
+    await registrar_log(f"✅ Nuevas implementaciones:\n- Logs en tiempo real para todo el servidor\n- Persistencia de estado con state.json\n- Copia de seguridad del código\n- Notificaciones en 🔔anuncios para mejoras y normas\n- Sistema de faltas en 📤faltas con contadores y calificaciones", categoria="bot")
     canal_anuncios = discord.utils.get(bot.get_all_channels(), name=CANAL_ANUNCIOS)
     if canal_anuncios:
-        await canal_anuncios.send(
-            "🚀 **Actualización del Bot**: Se han añadido logs en tiempo real, persistencia de datos, copias de seguridad del código, notificaciones para normas y sistema de faltas en #📤faltas. Revisa 📝logs para detalles."
-        )
+        try:
+            await canal_anuncios.send(
+                "🚀 **Actualización del Bot**: Se han añadido logs en tiempo real, persistencia de datos, copias de seguridad del código, notificaciones para normas y sistema de faltas en #📤faltas. Revisa 📝logs para detalles."
+            )
+        except discord.Forbidden:
+            await registrar_log(f"❌ No tengo permisos para enviar mensajes en #{CANAL_ANUNCIOS}", categoria="bot")
     verificar_inactividad.start()
     clean_inactive_conversations.start()
     limpiar_mensajes_expulsados.start()
@@ -207,17 +242,20 @@ async def on_member_join(member):
     canal_presentate = discord.utils.get(member.guild.text_channels, name="👉preséntate")
     canal_faltas = discord.utils.get(member.guild.text_channels, name=CANAL_FALTAS)
     if canal_presentate:
-        mensaje = (
-            f"👋 ¡Bienvenid@ a **VX** {member.mention}!\n\n"
-            "Sigue estos pasos:\n"
-            "📖 Lee las 3 guías\n"
-            "✅ Revisa las normas\n"
-            "🏆 Mira las victorias\n"
-            "♟ Estudia las estrategias\n"
-            "🏋 Luego solicita ayuda para tu primer post.\n\n"
-            "📤 Revisa tu estado en el canal #📤faltas para mantenerte al día con tu participación."
-        )
-        await canal_presentate.send(mensaje)
+        try:
+            mensaje = (
+                f"👋 ¡Bienvenid@ a **VX** {member.mention}!\n\n"
+                "Sigue estos pasos:\n"
+                "📖 Lee las 3 guías\n"
+                "✅ Revisa las normas\n"
+                "🏆 Mira las victorias\n"
+                "♟ Estudia las estrategias\n"
+                "🏋 Luego solicita ayuda para tu primer post.\n\n"
+                "📤 Revisa tu estado en el canal #📤faltas para mantenerte al día con tu participación."
+            )
+            await canal_presentate.send(mensaje)
+        except discord.Forbidden:
+            await registrar_log(f"❌ No tengo permisos para enviar mensajes en #👉preséntate", categoria="miembros")
     if canal_faltas:
         faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "✅", "mensaje_id": None}
         await actualizar_mensaje_faltas(canal_faltas, member, 0, 0, "✅")
@@ -254,17 +292,19 @@ async def verificar_inactividad():
             if faltas >= 3:
                 role = discord.utils.get(canal.guild.roles, name="baneado")
                 if role:
-                    await miembro.add_roles(role, reason="In Patio de recreo por inactividad > 3 días")
-                    baneos_temporales[user_id] = ahora
-                    faltas_dict[user_id]["estado"] = "❌"
                     try:
+                        await miembro.add_roles(role, reason="Inactividad > 3 días")
+                        baneos_temporales[user_id] = ahora
+                        faltas_dict[user_id]["estado"] = "❌"
                         await miembro.send(
                             f"🚫 **Baneado por 7 días**: Has acumulado 3 faltas por inactividad.\n"
                             f"📤 Revisa tu estado en #{CANAL_FALTAS}. Debes publicar dentro de los próximos 3 días para evitar expulsión."
                         )
-                    except:
-                        await registrar_log(f"❌ No se pudo notificar baneo a {miembro.name}", categoria="faltas")
-                    await registrar_log(f"🚫 {miembro.name} baneado por 7 días por inactividad", categoria="faltas")
+                        await registrar_log(f"🚫 {miembro.name} baneado por 7 días por inactividad", categoria="faltas")
+                    except discord.Forbidden:
+                        await registrar_log(f"❌ No tengo permisos para asignar el rol baneado a {miembro.name}", categoria="faltas")
+                if canal_faltas:
+                    await actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, "❌")
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, "👻" if faltas < 3 else "❌")
         elif dias_inactivo >= 3 and estado == "❌" and (ahora - baneos_temporales[user_id]).days >= 3:
@@ -276,8 +316,11 @@ async def verificar_inactividad():
                 )
             except:
                 await registrar_log(f"❌ No se pudo notificar expulsión a {miembro.name}", categoria="faltas")
-            await canal.guild.kick(miembro, reason="Expulsado por reincidencia en inactividad")
-            await registrar_log(f"☠️ {miembro.name} expulsado por reincidencia", categoria="faltas")
+            try:
+                await canal.guild.kick(miembro, reason="Expulsado por reincidencia en inactividad")
+                await registrar_log(f"☠️ {miembro.name} expulsado por reincidencia", categoria="faltas")
+            except discord.Forbidden:
+                await registrar_log(f"❌ No tengo permisos para expulsar a {miembro.name}", categoria="faltas")
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, "☠️")
         elif dias_inactivo < 3 and faltas > 0:
@@ -384,23 +427,26 @@ class ReportMenu(View):
                 await self.reportado.send("⛔ Has sido **expulsado permanentemente** del servidor por reincidir.")
             except:
                 await registrar_log(f"❌ No se pudo notificar expulsión a {self.reportado.name}", categoria="reportes")
-            await self.autor.guild.kick(self.reportado, reason="Expulsado por reincidencia")
-            await logs_channel.send(f"❌ {self.reportado.name} fue **expulsado permanentemente** por reincidir.")
-            if canal_faltas:
-                faltas_dict[self.reportado.id]["estado"] = "☠️"
-                await actualizar_mensaje_faltas(canal_faltas, self.reportado, faltas_dict[self.reportado.id]["faltas"], faltas_dict[self.reportado.id]["aciertos"], "☠️")
+            try:
+                await self.autor.guild.kick(self.reportado, reason="Expulsado por reincidencia")
+                await logs_channel.send(f"❌ {self.reportado.name} fue **expulsado permanentemente** por reincidir.")
+                if canal_faltas:
+                    faltas_dict[self.reportado.id]["estado"] = "☠️"
+                    await actualizar_mensaje_faltas(canal_faltas, self.reportado, faltas_dict[self.reportado.id]["faltas"], faltas_dict[self.reportado.id]["aciertos"], "☠️")
+            except discord.Forbidden:
+                await registrar_log(f"❌ No tengo permisos para expulsar a {self.reportado.name}", categoria="reportes")
         elif cantidad >= 3 and not baneos_temporales[self.reportado.id]:
             if role_baneado:
                 try:
                     await self.reportado.send("🚫 Has sido **baneado por 7 días** tras recibir 3 amonestaciones.")
-                except:
-                    await registrar_log(f"❌ No se pudo notificar baneo a {self.reportado.name}", categoria="reportes")
-                await self.reportado.add_roles(role_baneado, reason="3 amonestaciones en 7 días")
-                baneos_temporales[self.reportado.id] = ahora
-                await logs_channel.send(f"🚫 {self.reportado.name} ha sido **baneado por 7 días**.")
-                if canal_faltas:
-                    faltas_dict[self.reportado.id]["estado"] = "❌"
-                    await actualizar_mensaje_faltas(canal_faltas, self.reportado, faltas_dict[self.reportado.id]["faltas"], faltas_dict[self.reportado.id]["aciertos"], "❌")
+                    await self.reportado.add_roles(role_baneado, reason="3 amonestaciones en 7 días")
+                    baneos_temporales[self.reportado.id] = ahora
+                    await logs_channel.send(f"🚫 {self.reportado.name} ha sido **baneado por 7 días**.")
+                    if canal_faltas:
+                        faltas_dict[self.reportado.id]["estado"] = "❌"
+                        await actualizar_mensaje_faltas(canal_faltas, self.reportado, faltas_dict[self.reportado.id]["faltas"], faltas_dict[self.reportado.id]["aciertos"], "❌")
+                except discord.Forbidden:
+                    await registrar_log(f"❌ No tengo permisos para asignar el rol baneado a {self.reportado.name}", categoria="reportes")
         elif cantidad < 3:
             await logs_channel.send(f"ℹ️ {self.reportado.name} ha recibido una amonestación, total: {cantidad}.")
         await interaction.response.send_message("✅ Reporte registrado con éxito.", ephemeral=True)
