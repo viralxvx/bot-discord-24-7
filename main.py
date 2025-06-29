@@ -22,6 +22,7 @@ CANAL_X_NORMAS = "𝕏-normas"
 CANAL_FALTAS = "📤faltas"
 ADMIN_ID = os.environ.get("ADMIN_ID", "1174775323649392844")
 INACTIVITY_TIMEOUT = 300  # 5 minutos en segundos
+MAX_MENSAJES_RECIENTES = 10  # Número máximo de mensajes recientes a rastrear por canal
 
 intents = discord.Intents.all()
 intents.members = True
@@ -36,28 +37,34 @@ try:
     ultima_publicacion_dict = defaultdict(lambda: datetime.datetime.fromisoformat(state.get("ultima_publicacion_dict", {}).get(str(bot.user.id), datetime.datetime.utcnow().isoformat())))
     amonestaciones = defaultdict(list, {k: [datetime.datetime.fromisoformat(t) for t in v] for k, v in state.get("amonestaciones", {}).items()})
     baneos_temporales = defaultdict(lambda: None, {k: datetime.datetime.fromisoformat(v) if v else None for k, v in state.get("baneos_temporales", {}).items()})
+    permisos_inactividad = defaultdict(lambda: None, {k: {"inicio": datetime.datetime.fromisoformat(v["inicio"]), "duracion": v["duracion"]} if v else None for k, v in state.get("permisos_inactividad", {}).items()})
     ticket_counter = state.get("ticket_counter", 0)
     active_conversations = state.get("active_conversations", {})
     faq_data = state.get("faq_data", {})
     faltas_dict = defaultdict(lambda: {"faltas": 0, "aciertos": 0, "estado": "✅", "mensaje_id": None}, state.get("faltas_dict", {}))
+    mensajes_recientes = defaultdict(list, state.get("mensajes_recientes", {}))
 except FileNotFoundError:
     ultima_publicacion_dict = defaultdict(lambda: datetime.datetime.utcnow())
     amonestaciones = defaultdict(list)
     baneos_temporales = defaultdict(lambda: None)
+    permisos_inactividad = defaultdict(lambda: None)
     ticket_counter = 0
     active_conversations = {}
     faq_data = {}
     faltas_dict = defaultdict(lambda: {"faltas": 0, "aciertos": 0, "estado": "✅", "mensaje_id": None})
+    mensajes_recientes = defaultdict(list)
 
 def save_state():
     state = {
         "ultima_publicacion_dict": {str(k): v.isoformat() for k, v in ultima_publicacion_dict.items()},
         "amonestaciones": {str(k): [t.isoformat() for t in v] for k, v in amonestaciones.items()},
         "baneos_temporales": {str(k): v.isoformat() if v else None for k, v in baneos_temporales.items()},
+        "permisos_inactividad": {str(k): {"inicio": v["inicio"].isoformat(), "duracion": v["duracion"]} if v else None for k, v in permisos_inactividad.items()},
         "ticket_counter": ticket_counter,
         "active_conversations": active_conversations,
         "faq_data": faq_data,
-        "faltas_dict": {str(k): v for k, v in faltas_dict.items()}
+        "faltas_dict": {str(k): v for k, v in faltas_dict.items()},
+        "mensajes_recientes": {str(k): v for k, v in mensajes_recientes.items()}
     }
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
@@ -68,12 +75,22 @@ MENSAJE_NORMAS = (
     "🔹 Debes reaccionar a tu propia publicación con 👍.\n"
     "🔹 Solo se permiten enlaces de X (Twitter) con este formato:\n"
     "https://x.com/usuario/status/1234567890123456789\n"
-    "❌ Publicaciones con texto adicional o formato incorrecto serán eliminadas."
+    "❌ Publicaciones con texto adicional, formato incorrecto o repetidas serán eliminadas.\n"
+    "⏳ **Permisos de inactividad**: Usa !permiso <días> en ⛔reporte-de-incumplimiento para pausar la obligación de publicar hasta 7 días. Extiende antes de que expire."
+)
+
+MENSAJE_ANUNCIO_PERMISOS = (
+    "🚨 **NUEVA REGLA: Permisos de Inactividad**\n\n"
+    "Ahora puedes solicitar un permiso de inactividad en #⛔reporte-de-incumplimiento usando el comando `!permiso <días>`:\n"
+    "✅ Máximo 7 días por permiso.\n"
+    "🔄 Puedes extender el permiso con otro reporte antes de que expire, siempre antes de un baneo.\n"
+    "📤 Revisa tu estado en #📤faltas y mantente al día.\n"
+    "¡Gracias por mantener la comunidad activa y organizada! 🚀"
 )
 
 FAQ_FALLBACK = {
     "✅ ¿Cómo funciona VX?": "VX es una comunidad donde crecemos apoyándonos. Tú apoyas, y luego te apoyan. Publicas tu post después de apoyar a los demás. 🔥 = apoyaste, 👍 = tu propio post.",
-    "✅ ¿Cómo publico mi post?": "Para publicar: 1️⃣ Apoya todos los posts anteriores (like + RT + comentario) 2️⃣ Reacciona con 🔥 en Discord 3️⃣ Luego publica tu post y colócale 👍. No uses 🔥 en tu propio post.",
+    "✅ ¿Cómo publico mi post?": "Para publicar: 1️⃣ Apoya todos los posts anteriores (like + RT + comentario) 2️⃣ Reacciona con 🔥 en Discord 3️⃣ Luego publica tu post y colócale 👍. No uses 🔥 en tu propio post ni repitas mensajes.",
     "✅ ¿Cómo subo de nivel?": "Subes de nivel participando activamente, apoyando a todos y siendo constante. Los niveles traen beneficios como prioridad, mentoría y más."
 }
 
@@ -126,24 +143,81 @@ async def registrar_log(texto, categoria="general"):
         except discord.errors.Forbidden:
             print(f"No tengo permisos para enviar logs en #{CANAL_LOGS}: {texto}")
 
+async def verificar_historial_repetidos():
+    for guild in bot.guilds:
+        for channel in guild.text_channels:
+            if channel.name == CANAL_LOGS:
+                continue
+            mensajes_vistos = set()
+            mensajes_a_eliminar = []
+            try:
+                async for message in channel.history(limit=None):
+                    if message.author == bot.user:
+                        continue
+                    mensaje_normalizado = message.content.strip().lower()
+                    if not mensaje_normalizado:
+                        continue
+                    if mensaje_normalizado in mensajes_vistos:
+                        mensajes_a_eliminar.append(message)
+                    else:
+                        mensajes_vistos.add(mensaje_normalizado)
+                        canal_id = str(channel.id)
+                        mensajes_recientes[canal_id].append(message.content)
+                        if len(mensajes_recientes[canal_id]) > MAX_MENSAJES_RECIENTES:
+                            mensajes_recientes[canal_id].pop(0)
+                for message in mensajes_a_eliminar:
+                    try:
+                        await message.delete()
+                        await registrar_log(f"🗑️ Mensaje repetido eliminado del historial en #{channel.name} por {message.author.name}: {message.content}", categoria="repetidos")
+                        try:
+                            await message.author.send(
+                                f"⚠️ **Mensaje repetido eliminado**: Un mensaje repetido tuyo en #{channel.name} fue eliminado del historial para mantener el servidor limpio."
+                            )
+                        except:
+                            await registrar_log(f"❌ No se pudo notificar eliminación de mensaje repetido a {message.author.name}", categoria="repetidos")
+                    except discord.Forbidden:
+                        await registrar_log(f"❌ No tengo permisos para eliminar mensajes en #{channel.name}", categoria="repetidos")
+                save_state()
+            except discord.Forbidden:
+                await registrar_log(f"❌ No tengo permisos para leer el historial en #{channel.name}", categoria="repetidos")
+
+async def publicar_mensaje_unico(canal, contenido, pinned=False):
+    try:
+        contenido_normalizado = contenido.strip().lower()
+        async for msg in canal.history(limit=100):
+            if msg.content.strip().lower() == contenido_normalizado:
+                await registrar_log(f"ℹ️ Mensaje ya existe en #{canal.name}, no se publicará de nuevo: {contenido[:50]}...", categoria="mensajes")
+                return
+        mensaje = await canal.send(contenido)
+        if pinned:
+            await mensaje.pin()
+        await registrar_log(f"📢 Mensaje publicado en #{canal.name}: {contenido[:50]}...", categoria="mensajes")
+    except discord.Forbidden:
+        await registrar_log(f"❌ No tengo permisos para enviar/anclar mensajes en #{canal.name}", categoria="mensajes")
+
 @bot.event
 async def on_ready():
     global ticket_counter, faq_data
     print(f"Bot conectado como {bot.user}")
     await registrar_log(f"Bot iniciado. ADMIN_ID cargado: {ADMIN_ID}", categoria="bot")
+    
+    # Limpiar historial de mensajes repetidos
+    await verificar_historial_repetidos()
+    
+    # Publicar mensajes en canales
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     if canal_faltas:
         try:
-            await canal_faltas.send(
+            await publicar_mensaje_unico(canal_faltas, (
                 "📢 **NUEVA ACTUALIZACIÓN DEL SISTEMA DE PARTICIPACIÓN**\n\n"
                 "A partir de ahora, el sistema ha sido configurado con una nueva regla automática:\n"
                 "⚠️ Si un usuario pasa **3 días sin publicar**, será **baneado por 7 días** de forma automática.\n"
                 "⛔️ Si después del baneo vuelve a pasar **otros 3 días sin publicar**, el sistema procederá a **expulsarlo automáticamente** del servidor.\n"
                 "✅ Esta medida busca mantener activa y comprometida a la comunidad, haciendo que el programa de crecimiento sea más eficiente y beneficioso para todos.\n"
                 "📤 Revisa tu estado en este canal (#📤faltas) para mantenerte al día con tu participación.\n"
+                "🚫 No repitas mensajes en ningún canal para mantener el servidor limpio.\n"
                 "Gracias por su comprensión y compromiso. ¡Sigamos creciendo juntos! 🚀"
-            )
-            await registrar_log(f"📢 Anuncio de reglas enviado en #{CANAL_FALTAS}", categoria="faltas")
+            ))
             # Inicializar mensajes para usuarios existentes
             for guild in bot.guilds:
                 for member in guild.members:
@@ -152,10 +226,11 @@ async def on_ready():
                     if member.id not in faltas_dict:
                         faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "✅", "mensaje_id": None}
                     await actualizar_mensaje_faltas(canal_faltas, member, faltas_dict[member.id]["faltas"], faltas_dict[member.id]["aciertos"], faltas_dict[member.id]["estado"])
-        except discord.errors.Forbidden:
+        except discord.Forbidden:
             await registrar_log(f"❌ No tengo permisos para enviar mensajes en #{CANAL_FALTAS}", categoria="faltas")
     else:
         await registrar_log(f"❌ Canal #{CANAL_FALTAS} no encontrado", categoria="faltas")
+    
     canal_flujo = discord.utils.get(bot.get_all_channels(), name=CANAL_FLUJO_SOPORTE)
     if canal_flujo:
         async for msg in canal_flujo.history(limit=100):
@@ -174,6 +249,7 @@ async def on_ready():
                     faq_data[question] = "\n".join(response)
     if not faq_data:
         faq_data.update(FAQ_FALLBACK)
+    
     for guild in bot.guilds:
         for channel in guild.text_channels:
             if channel.name == CANAL_OBJETIVO:
@@ -181,23 +257,21 @@ async def on_ready():
                     if msg.author == bot.user:
                         await msg.delete()
                 try:
-                    msg = await channel.send(MENSAJE_NORMAS)
-                    await msg.pin()
+                    await publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True)
                 except discord.Forbidden:
                     await registrar_log(f"❌ No tengo permisos para anclar el mensaje en #{CANAL_OBJETIVO}", categoria="bot")
-                break
             elif channel.name == CANAL_REPORTES:
                 async for msg in channel.history(limit=20):
                     if msg.author == bot.user and msg.pinned:
                         await msg.unpin()
                 try:
-                    fijado = await channel.send(
+                    await publicar_mensaje_unico(channel, (
                         "🔖 **Cómo Reportar Correctamente:**\n\n"
-                        "1. Menciona a un usuario (ej. @Sharon) en un mensaje.\n"
-                        "2. Selecciona la infracción del menú que aparecerá. ✅\n\n"
+                        "1. Menciona a un usuario (ej. @Sharon) para reportar una infracción.\n"
+                        "2. Selecciona la infracción del menú que aparecerá. ✅\n"
+                        "3. Usa `!permiso <días>` para solicitar un permiso de inactividad (máx. 7 días).\n\n"
                         "El bot registrará el reporte en 📜logs."
-                    )
-                    await fijado.pin()
+                    ), pinned=True)
                 except discord.Forbidden:
                     await registrar_log(f"❌ No tengo permisos para anclar el mensaje en #{CANAL_REPORTES}", categoria="bot")
             elif channel.name == CANAL_SOPORTE:
@@ -205,11 +279,10 @@ async def on_ready():
                     if msg.author == bot.user and msg.pinned:
                         await msg.unpin()
                 try:
-                    fijado = await channel.send(
+                    await publicar_mensaje_unico(channel, (
                         "🔧 **Soporte Técnico:**\n\n"
                         "Escribe 'Hola' para abrir el menú de opciones. ✅"
-                    )
-                    await fijado.pin()
+                    ), pinned=True)
                 except discord.Forbidden:
                     await registrar_log(f"❌ No tengo permisos para anclar el mensaje en #{CANAL_SOPORTE}", categoria="bot")
             elif channel.name == CANAL_NORMAS_GENERALES:
@@ -217,22 +290,19 @@ async def on_ready():
                     if msg.author == bot.user and msg.pinned:
                         await msg.unpin()
                 try:
-                    fijado = await channel.send(MENSAJE_NORMAS)
-                    await fijado.pin()
+                    await publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True)
                 except discord.Forbidden:
                     await registrar_log(f"❌ No tengo permisos para anclar el mensaje en #{CANAL_NORMAS_GENERALES}", categoria="bot")
+            elif channel.name == CANAL_ANUNCIOS:
+                try:
+                    await publicar_mensaje_unico(channel, MENSAJE_ANUNCIO_PERMISOS)
+                except discord.Forbidden:
+                    await registrar_log(f"❌ No tengo permisos para enviar mensajes en #{CANAL_ANUNCIOS}", categoria="bot")
+    
     with open("main.py", "r") as f:
         codigo_anterior = f.read()
     await registrar_log(f"💾 Código anterior guardado:\n```python\n{codigo_anterior}\n```", categoria="bot")
-    await registrar_log(f"✅ Nuevas implementaciones:\n- Logs en tiempo real para todo el servidor\n- Persistencia de estado con state.json\n- Copia de seguridad del código\n- Notificaciones en 🔔anuncios para mejoras y normas\n- Sistema de faltas en 📤faltas con contadores y calificaciones", categoria="bot")
-    canal_anuncios = discord.utils.get(bot.get_all_channels(), name=CANAL_ANUNCIOS)
-    if canal_anuncios:
-        try:
-            await canal_anuncios.send(
-                "🚀 **Actualización del Bot**: Se han añadido logs en tiempo real, persistencia de datos, copias de seguridad del código, notificaciones para normas y sistema de faltas en #📤faltas. Revisa 📝logs para detalles."
-            )
-        except discord.Forbidden:
-            await registrar_log(f"❌ No tengo permisos para enviar mensajes en #{CANAL_ANUNCIOS}", categoria="bot")
+    await registrar_log(f"✅ Nuevas implementaciones:\n- Logs en tiempo real para todo el servidor\n- Persistencia de estado con state.json\n- Copia de seguridad del código\n- Notificaciones en 🔔anuncios para mejoras y normas\n- Sistema de faltas en 📤faltas con contadores y calificaciones\n- Detección y eliminación de mensajes repetidos en todo el historial\n- Sistema de permisos de inactividad en ⛔reporte-de-incumplimiento", categoria="bot")
     verificar_inactividad.start()
     clean_inactive_conversations.start()
     limpiar_mensajes_expulsados.start()
@@ -251,7 +321,9 @@ async def on_member_join(member):
                 "🏆 Mira las victorias\n"
                 "♟ Estudia las estrategias\n"
                 "🏋 Luego solicita ayuda para tu primer post.\n\n"
-                "📤 Revisa tu estado en el canal #📤faltas para mantenerte al día con tu participación."
+                "📤 Revisa tu estado en el canal #📤faltas para mantenerte al día con tu participación.\n"
+                "🚫 No repitas mensajes en ningún canal para mantener el servidor limpio.\n"
+                "⏳ Usa `!permiso <días>` en #⛔reporte-de-incumplimiento para pausar la obligación de publicar (máx. 7 días)."
             )
             await canal_presentate.send(mensaje)
         except discord.Forbidden:
@@ -260,6 +332,29 @@ async def on_member_join(member):
         faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "✅", "mensaje_id": None}
         await actualizar_mensaje_faltas(canal_faltas, member, 0, 0, "✅")
     await registrar_log(f"👤 Nuevo miembro unido: {member.name} (ID: {member.id})", categoria="miembros")
+
+@bot.command()
+async def permiso(ctx, dias: int):
+    if ctx.channel.name != CANAL_REPORTES:
+        await ctx.send("⚠️ Usa este comando en #⛔reporte-de-incumplimiento.")
+        return
+    if dias > 7:
+        await ctx.send(f"{ctx.author.mention} El máximo permitido es 7 días. Usa `!permiso <días>` con un valor entre 1 y 7.")
+        await registrar_log(f"❌ Intento de permiso inválido por {ctx.author.name}: {dias} días", categoria="permisos")
+        return
+    if faltas_dict[ctx.author.id]["estado"] == "❌":
+        await ctx.send(f"{ctx.author.mention} No puedes solicitar un permiso mientras estás baneado. Publica en #🧵go-viral para levantar el baneo.")
+        await registrar_log(f"❌ Permiso denegado a {ctx.author.name}: usuario baneado", categoria="permisos")
+        return
+    ahora = datetime.datetime.utcnow()
+    if permisos_inactividad[ctx.author.id] and (ahora - permisos_inactividad[ctx.author.id]["inicio"]).days < permisos_inactividad[ctx.author.id]["duracion"]:
+        await ctx.send(f"{ctx.author.mention} Ya tienes un permiso activo hasta {permisos_inactividad[ctx.author.id]['inicio'] + datetime.timedelta(days=permisos_inactividad[ctx.author.id]['duracion'])}. Extiende antes de que expire.")
+        await registrar_log(f"❌ Permiso denegado a {ctx.author.name}: permiso activo existente", categoria="permisos")
+        return
+    permisos_inactividad[ctx.author.id] = {"inicio": ahora, "duracion": dias}
+    await ctx.send(f"✅ Permiso de inactividad otorgado a {ctx.author.mention} por {dias} días. No recibirás faltas por inactividad hasta {ahora + datetime.timedelta(days=dias)}. Extiende antes de que expire si necesitas más tiempo.")
+    await registrar_log(f"✅ Permiso de inactividad otorgado a {ctx.author.name} por {dias} días", categoria="permisos")
+    save_state()
 
 @tasks.loop(hours=24)
 async def verificar_inactividad():
@@ -270,6 +365,9 @@ async def verificar_inactividad():
         miembro = canal.guild.get_member(int(user_id))
         if not miembro or miembro.bot:
             continue
+        permiso = permisos_inactividad[user_id]
+        if permiso and (ahora - permiso["inicio"]).days < permiso["duracion"]:
+            continue  # Saltar usuarios con permiso activo
         dias_inactivo = (ahora - ultima).days
         faltas = faltas_dict[user_id]["faltas"]
         estado = faltas_dict[user_id]["estado"]
@@ -284,7 +382,8 @@ async def verificar_inactividad():
                 await miembro.send(
                     f"⚠️ **Falta por inactividad**: No has publicado en 🧵go-viral por {dias_inactivo} días.\n"
                     f"📊 Tienes {faltas} falta(s). Te quedan {oportunidades} oportunidades antes de un baneo de 7 días.\n"
-                    f"📤 Revisa tu estado en #{CANAL_FALTAS}."
+                    f"📤 Revisa tu estado en #{CANAL_FALTAS}.\n"
+                    f"⏳ Usa `!permiso <días>` en #⛔reporte-de-incumplimiento para pausar la obligación de publicar."
                 )
             except:
                 await registrar_log(f"❌ No se pudo notificar falta a {miembro.name}", categoria="faltas")
@@ -520,17 +619,41 @@ class SupportMenu(View):
             await interaction.response.send_message("✅ ¡Consulta cerrada! Si necesitas más ayuda, vuelve cuando quieras. ¡Éxito con tu post y gracias por ser parte de VX! 🚀", ephemeral=True)
         elif self.select.values[0] in ["✅ ¿Cómo funciona VX?", "✅ ¿Cómo publico mi post?", "✅ ¿Cómo subo de nivel?"]:
             response = faq_data.get(self.select.values[0], FAQ_FALLBACK.get(self.select.values[0], "No se encontró la respuesta."))
-            msg = await interaction.response.send_message(response, ephemeral=True)
+            await interaction.response.send_message(response, ephemeral=True)
             if user_id in active_conversations:
-                active_conversations[user_id]["message_ids"].append(msg.id)
+                active_conversations[user_id]["message_ids"].append(interaction.message.id)
                 active_conversations[user_id]["last_time"] = datetime.datetime.utcnow()
 
 @bot.event
 async def on_message(message):
-    global active_conversations
-    if message.author == bot.user and message.channel.name == CANAL_LOGS:
+    global active_conversations, mensajes_recientes
+    if message.author == bot.user or message.channel.name == CANAL_LOGS:
         return
     await registrar_log(f"💬 Mensaje en #{message.channel.name} por {message.author.name} (ID: {message.author.id}): {message.content}", categoria="mensajes")
+    
+    # Verificar mensajes repetidos
+    canal_id = str(message.channel.id)
+    mensaje_normalizado = message.content.strip().lower()
+    if mensaje_normalizado:
+        if any(mensaje_normalizado == msg.strip().lower() for msg in mensajes_recientes[canal_id]):
+            try:
+                await message.delete()
+                await registrar_log(f"🗑️ Mensaje repetido eliminado en #{message.channel.name} por {message.author.name}: {message.content}", categoria="repetidos")
+                try:
+                    await message.author.send(
+                        f"⚠️ **Mensaje repetido eliminado**: No repitas mensajes en #{message.channel.name}. "
+                        f"Por favor, envía contenido nuevo para mantener el servidor limpio."
+                    )
+                except:
+                    await registrar_log(f"❌ No se pudo notificar mensaje repetido a {message.author.name}", categoria="repetidos")
+                return
+            except discord.Forbidden:
+                await registrar_log(f"❌ No tengo permisos para eliminar mensajes en #{message.channel.name}", categoria="repetidos")
+        mensajes_recientes[canal_id].append(message.content)
+        if len(mensajes_recientes[canal_id]) > MAX_MENSAJES_RECIENTES:
+            mensajes_recientes[canal_id].pop(0)
+        save_state()
+
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     if message.channel.name == CANAL_REPORTES and not message.author.bot:
         if message.mentions:
@@ -541,7 +664,7 @@ async def on_message(message):
             )
             await message.delete()
         else:
-            await message.channel.send("⚠️ Por favor, menciona a un usuario para reportar (ej. @Sharon).")
+            await message.channel.send("⚠️ Por favor, menciona a un usuario para reportar (ej. @Sharon) o usa `!permiso <días>` para solicitar inactividad.")
     elif message.channel.name == CANAL_SOPORTE and not message.author.bot:
         user_id = message.author.id
         if user_id not in active_conversations:
@@ -715,16 +838,14 @@ async def on_message(message):
             return
         ultima_publicacion_dict[message.author.id] = datetime.datetime.utcnow()
         await registrar_log(f"✅ Publicación validada de {message.author.name} en #{CANAL_OBJETIVO}", categoria="publicaciones")
-    elif message.author == bot.user:
-        await registrar_log(f"🤖 Acción del bot: {message.content} en #{message.channel.name}", categoria="bot")
-        return
     elif message.channel.name in [CANAL_NORMAS_GENERALES, CANAL_X_NORMAS] and not message.author.bot:
         canal_anuncios = discord.utils.get(message.guild.text_channels, name=CANAL_ANUNCIOS)
         if canal_anuncios:
-            await canal_anuncios.send(
+            await publicar_mensaje_unico(canal_anuncios, (
                 f"📢 **Actualización de Normas**: Se ha modificado una norma en #{message.channel.name}. Revisa los detalles en {message.jump_url}"
-            )
+            ))
         await registrar_log(f"📝 Norma actualizada en #{message.channel.name} por {message.author.name}: {message.content}", categoria="normas")
+    await bot.process_commands(message)
 
 @bot.event
 async def on_reaction_add(reaction, user):
