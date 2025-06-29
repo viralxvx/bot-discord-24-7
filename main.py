@@ -77,7 +77,7 @@ MENSAJE_NORMAS = (
     "https://x.com/usuario/status/1234567890123456789\n"
     "❌ Publicaciones con texto adicional, formato incorrecto o repetidas serán eliminadas.\n"
     "⏳ **Permisos de inactividad**: Usa !permiso <días> en ⛔reporte-de-incumplimiento para pausar la obligación de publicar hasta 7 días. Extiende antes de que expire.\n"
-    "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs) para mantener el servidor limpio."
+    "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs y #📤faltas) para mantener el servidor limpio."
 )
 
 MENSAJE_ANUNCIO_PERMISOS = (
@@ -86,8 +86,19 @@ MENSAJE_ANUNCIO_PERMISOS = (
     "✅ Máximo 7 días por permiso.\n"
     "🔄 Puedes extender el permiso con otro reporte antes de que expire, siempre antes de un baneo.\n"
     "📤 Revisa tu estado en #📤faltas y mantente al día.\n"
-    "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs) para mantener el servidor limpio.\n"
+    "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs y #📤faltas) para mantener el servidor limpio.\n"
     "¡Gracias por mantener la comunidad activa y organizada! 🚀"
+)
+
+MENSAJE_ACTUALIZACION_SISTEMA = (
+    "📢 **NUEVA ACTUALIZACIÓN DEL SISTEMA DE PARTICIPACIÓN**\n\n"
+    "A partir de ahora, el sistema ha sido configurado con una nueva regla automática:\n"
+    "⚠️ Si un usuario pasa **3 días sin publicar**, será **baneado por 7 días** de forma automática.\n"
+    "⛔️ Si después del baneo vuelve a pasar **otros 3 días sin publicar**, el sistema procederá a **expulsarlo automáticamente** del servidor.\n"
+    "✅ Esta medida busca mantener activa y comprometida a la comunidad, haciendo que el programa de crecimiento sea más eficiente y beneficioso para todos.\n"
+    "📤 Revisa tu estado en este canal (#📤faltas) para mantenerte al día con tu participación.\n"
+    "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs y #📤faltas) para mantener el servidor limpio.\n"
+    "Gracias por su comprensión y compromiso. ¡Sigamos creciendo juntos! 🚀"
 )
 
 FAQ_FALLBACK = {
@@ -121,8 +132,9 @@ async def actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, est
         if mensaje_id:
             try:
                 mensaje = await canal_faltas.fetch_message(mensaje_id)
-                await mensaje.edit(content=contenido)
-                await registrar_log(f"📤 Mensaje actualizado para {miembro.name} en #{CANAL_FALTAS}: Faltas={faltas}, Aciertos={aciertos}, Estado={estado}", categoria="faltas")
+                if mensaje.content != contenido:  # Solo actualizar si hay cambios
+                    await mensaje.edit(content=contenido)
+                    await registrar_log(f"📤 Mensaje actualizado para {miembro.name} en #{CANAL_FALTAS}: Faltas={faltas}, Aciertos={aciertos}, Estado={estado}", categoria="faltas")
             except discord.errors.NotFound:
                 await registrar_log(f"❌ Mensaje {mensaje_id} no encontrado para {miembro.name} en #{CANAL_FALTAS}, creando uno nuevo", categoria="faltas")
                 mensaje = await canal_faltas.send(contenido)
@@ -149,14 +161,22 @@ async def verificar_historial_repetidos():
     admin = bot.get_user(int(ADMIN_ID))
     for guild in bot.guilds:
         for channel in guild.text_channels:
-            if channel.name == CANAL_LOGS:
-                continue
             mensajes_vistos = set()
             mensajes_a_eliminar = []
             try:
                 async for message in channel.history(limit=None):
                     mensaje_normalizado = message.content.strip().lower()
                     if not mensaje_normalizado:
+                        continue
+                    if channel.name == CANAL_FALTAS:
+                        # Solo eliminar mensajes del sistema repetidos en #📤faltas
+                        if message.author == bot.user and mensaje_normalizado.startswith("📢 nueva actualización del sistema de participación"):
+                            if mensaje_normalizado in mensajes_vistos:
+                                mensajes_a_eliminar.append(message)
+                            else:
+                                mensajes_vistos.add(mensaje_normalizado)
+                        continue
+                    if channel.name == CANAL_LOGS:
                         continue
                     if mensaje_normalizado in mensajes_vistos:
                         mensajes_a_eliminar.append(message)
@@ -169,11 +189,11 @@ async def verificar_historial_repetidos():
                 for message in mensajes_a_eliminar:
                     try:
                         await message.delete()
-                        await registrar_log(f"🗑️ Mensaje repetido eliminado del historial en #{channel.name} por {message.author.name}: {message.content}", categoria="repetidos")
+                        await registrar_log(f"🗑️ Mensaje repetido eliminado del historial en #{channel.name} por {message.author.name}: {message.content[:50]}...", categoria="repetidos")
                         if message.author == bot.user and admin:
                             try:
                                 await admin.send(
-                                    f"⚠️ **Mensaje del bot eliminado**: Un mensaje repetido del bot en #{channel.name} fue eliminado: {message.content}"
+                                    f"⚠️ **Mensaje del bot eliminado**: Un mensaje repetido del bot en #{channel.name} fue eliminado: {message.content[:50]}..."
                                 )
                             except:
                                 await registrar_log(f"❌ No se pudo notificar eliminación de mensaje del bot al admin", categoria="repetidos")
@@ -196,7 +216,16 @@ async def publicar_mensaje_unico(canal, contenido, pinned=False):
         async for msg in canal.history(limit=None):
             if msg.content.strip().lower() == contenido_normalizado:
                 await registrar_log(f"ℹ️ Mensaje ya existe en #{canal.name}, no se publicará de nuevo: {contenido[:50]}...", categoria="mensajes")
+                if pinned and not msg.pinned:
+                    await msg.pin()
+                    await registrar_log(f"📌 Mensaje existente anclado en #{canal.name}: {contenido[:50]}...", categoria="mensajes")
                 return
+        # Desanclar mensajes anteriores del bot si es necesario
+        if pinned:
+            async for msg in canal.history(limit=20):
+                if msg.author == bot.user and msg.pinned:
+                    await msg.unpin()
+                    await registrar_log(f"📌 Mensaje anterior del bot desanclado en #{canal.name}: {msg.content[:50]}...", categoria="mensajes")
         mensaje = await canal.send(contenido)
         if pinned:
             await mensaje.pin()
@@ -217,24 +246,41 @@ async def on_ready():
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     if canal_faltas:
         try:
-            await publicar_mensaje_unico(canal_faltas, (
-                "📢 **NUEVA ACTUALIZACIÓN DEL SISTEMA DE PARTICIPACIÓN**\n\n"
-                "A partir de ahora, el sistema ha sido configurado con una nueva regla automática:\n"
-                "⚠️ Si un usuario pasa **3 días sin publicar**, será **baneado por 7 días** de forma automática.\n"
-                "⛔️ Si después del baneo vuelve a pasar **otros 3 días sin publicar**, el sistema procederá a **expulsarlo automáticamente** del servidor.\n"
-                "✅ Esta medida busca mantener activa y comprometida a la comunidad, haciendo que el programa de crecimiento sea más eficiente y beneficioso para todos.\n"
-                "📤 Revisa tu estado en este canal (#📤faltas) para mantenerte al día con tu participación.\n"
-                "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs) para mantener el servidor limpio.\n"
-                "Gracias por su comprensión y compromiso. ¡Sigamos creciendo juntos! 🚀"
-            ))
-            # Inicializar mensajes para usuarios existentes
+            # Verificar mensajes existentes en #📤faltas y sincronizar faltas_dict
+            mensajes_faltas_existentes = {}
+            async for msg in canal_faltas.history(limit=None):
+                if msg.author == bot.user and not msg.content.startswith("📢"):
+                    for member in bot.get_all_members():
+                        if member.mention in msg.content:
+                            mensajes_faltas_existentes[member.id] = msg.id
+                            if member.id in faltas_dict:
+                                # Extraer datos del mensaje para sincronizar faltas_dict
+                                lines = msg.content.split("\n")
+                                try:
+                                    faltas = int(lines[1].split(": ")[1].split()[0])
+                                    aciertos = int(lines[2].split(": ")[1])
+                                    estado = lines[4].split(": ")[1]
+                                    faltas_dict[member.id]["mensaje_id"] = msg.id
+                                    faltas_dict[member.id]["faltas"] = faltas
+                                    faltas_dict[member.id]["aciertos"] = aciertos
+                                    faltas_dict[member.id]["estado"] = estado
+                                    await registrar_log(f"📤 Sincronizado mensaje existente para {member.name} en #{CANAL_FALTAS}: Faltas={faltas}, Aciertos={aciertos}, Estado={estado}", categoria="faltas")
+                                except (IndexError, ValueError):
+                                    await registrar_log(f"❌ Error al parsear mensaje existente para {member.name} en #{CANAL_FALTAS}: {msg.content[:50]}...", categoria="faltas")
+            # Publicar mensaje de actualización del sistema
+            await publicar_mensaje_unico(canal_faltas, MENSAJE_ACTUALIZACION_SISTEMA)
+            # Inicializar mensajes solo para nuevos miembros
             for guild in bot.guilds:
                 for member in guild.members:
                     if member.bot:
                         continue
                     if member.id not in faltas_dict:
                         faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "✅", "mensaje_id": None}
-                    await actualizar_mensaje_faltas(canal_faltas, member, faltas_dict[member.id]["faltas"], faltas_dict[member.id]["aciertos"], faltas_dict[member.id]["estado"])
+                    if member.id not in mensajes_faltas_existentes:
+                        await actualizar_mensaje_faltas(canal_faltas, member, faltas_dict[member.id]["faltas"], faltas_dict[member.id]["aciertos"], faltas_dict[member.id]["estado"])
+                    else:
+                        # Verificar si el mensaje existente necesita actualización
+                        await actualizar_mensaje_faltas(canal_faltas, member, faltas_dict[member.id]["faltas"], faltas_dict[member.id]["aciertos"], faltas_dict[member.id]["estado"])
         except discord.Forbidden:
             await registrar_log(f"❌ No tengo permisos para enviar mensajes en #{CANAL_FALTAS}", categoria="faltas")
     else:
@@ -262,17 +308,11 @@ async def on_ready():
     for guild in bot.guilds:
         for channel in guild.text_channels:
             if channel.name == CANAL_OBJETIVO:
-                async for msg in channel.history(limit=50):
-                    if msg.author == bot.user:
-                        await msg.delete()
                 try:
                     await publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True)
                 except discord.Forbidden:
                     await registrar_log(f"❌ No tengo permisos para anclar el mensaje en #{CANAL_OBJETIVO}", categoria="bot")
             elif channel.name == CANAL_REPORTES:
-                async for msg in channel.history(limit=20):
-                    if msg.author == bot.user and msg.pinned:
-                        await msg.unpin()
                 try:
                     await publicar_mensaje_unico(channel, (
                         "🔖 **Cómo Reportar Correctamente:**\n\n"
@@ -284,9 +324,6 @@ async def on_ready():
                 except discord.Forbidden:
                     await registrar_log(f"❌ No tengo permisos para anclar el mensaje en #{CANAL_REPORTES}", categoria="bot")
             elif channel.name == CANAL_SOPORTE:
-                async for msg in channel.history(limit=20):
-                    if msg.author == bot.user and msg.pinned:
-                        await msg.unpin()
                 try:
                     await publicar_mensaje_unico(channel, (
                         "🔧 **Soporte Técnico:**\n\n"
@@ -295,9 +332,6 @@ async def on_ready():
                 except discord.Forbidden:
                     await registrar_log(f"❌ No tengo permisos para anclar el mensaje en #{CANAL_SOPORTE}", categoria="bot")
             elif channel.name == CANAL_NORMAS_GENERALES:
-                async for msg in channel.history(limit=20):
-                    if msg.author == bot.user and msg.pinned:
-                        await msg.unpin()
                 try:
                     await publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True)
                 except discord.Forbidden:
@@ -311,7 +345,7 @@ async def on_ready():
     with open("main.py", "r") as f:
         codigo_anterior = f.read()
     await registrar_log(f"💾 Código anterior guardado:\n```python\n{codigo_anterior}\n```", categoria="bot")
-    await registrar_log(f"✅ Nuevas implementaciones:\n- Logs en tiempo real para todo el servidor\n- Persistencia de estado con state.json\n- Copia de seguridad del código\n- Notificaciones en 🔔anuncios para mejoras y normas\n- Sistema de faltas en 📤faltas con contadores y calificaciones\n- Detección y eliminación de mensajes repetidos en todo el historial\n- Sistema de permisos de inactividad en ⛔reporte-de-incumplimiento\n- Eliminación de mensajes repetidos del bot en todos los canales (excepto 📝logs)", categoria="bot")
+    await registrar_log(f"✅ Nuevas implementaciones:\n- Logs en tiempo real para todo el servidor\n- Persistencia de estado con state.json\n- Copia de seguridad del código\n- Notificaciones en 🔔anuncios para mejoras y normas\n- Sistema de faltas en 📤faltas con contadores y calificaciones\n- Detección y eliminación de mensajes repetidos del sistema en 📤faltas\n- Sistema de permisos de inactividad en ⛔reporte-de-incumplimiento\n- Evitar republicación de mensajes existentes al reiniciar\n- Gestión optimizada de 📤faltas con sincronización de mensajes existentes", categoria="bot")
     verificar_inactividad.start()
     clean_inactive_conversations.start()
     limpiar_mensajes_expulsados.start()
@@ -331,7 +365,7 @@ async def on_member_join(member):
                 "♟ Estudia las estrategias\n"
                 "🏋 Luego solicita ayuda para tu primer post.\n\n"
                 "📤 Revisa tu estado en el canal #📤faltas para mantenerte al día con tu participación.\n"
-                "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs) para mantener el servidor limpio.\n"
+                "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs y #📤faltas) para mantener el servidor limpio.\n"
                 "⏳ Usa `!permiso <días>` en #⛔reporte-de-incumplimiento para pausar la obligación de publicar (máx. 7 días)."
             )
             await canal_presentate.send(mensaje)
@@ -520,7 +554,7 @@ class ReportMenu(View):
             )
         except:
             await registrar_log(f"❌ No se pudo notificar amonestación a {self.reportado.name}", categoria="reportes")
-        logs_channel = discord.utils.get(self.autor.guild.text_channels, name=CANAL_LOGS)
+        logs_channel = discord.utils.get(self.autor.guild.text_channels, name=CANal_LOGS)
         if logs_channel:
             await logs_channel.send(
                 f"📜 **Reporte registrado**\n"
@@ -637,18 +671,18 @@ class SupportMenu(View):
 async def on_message(message):
     global active_conversations, mensajes_recientes
     admin = bot.get_user(int(ADMIN_ID))
-    if message.channel.name != CANAL_LOGS:  # No verificar repeticiones en logs
+    if message.channel.name not in [CANAL_LOGS, CANAL_FALTAS]:  # Excluir logs y faltas
         canal_id = str(message.channel.id)
         mensaje_normalizado = message.content.strip().lower()
         if mensaje_normalizado:
             if any(mensaje_normalizado == msg.strip().lower() for msg in mensajes_recientes[canal_id]):
                 try:
                     await message.delete()
-                    await registrar_log(f"🗑️ Mensaje repetido eliminado en #{message.channel.name} por {message.author.name}: {message.content}", categoria="repetidos")
+                    await registrar_log(f"🗑️ Mensaje repetido eliminado en #{message.channel.name} por {message.author.name}: {message.content[:50]}...", categoria="repetidos")
                     if message.author == bot.user and admin:
                         try:
                             await admin.send(
-                                f"⚠️ **Mensaje del bot eliminado**: Un mensaje repetido del bot en #{message.channel.name} fue eliminado: {message.content}"
+                                f"⚠️ **Mensaje del bot eliminado**: Un mensaje repetido del bot en #{message.channel.name} fue eliminado: {message.content[:50]}..."
                             )
                         except:
                             await registrar_log(f"❌ No se pudo notificar eliminación de mensaje del bot al admin", categoria="repetidos")
