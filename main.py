@@ -41,7 +41,18 @@ try:
     ticket_counter = state.get("ticket_counter", 0)
     active_conversations = state.get("active_conversations", {})
     faq_data = state.get("faq_data", {})
-    faltas_dict = defaultdict(lambda: {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}, state.get("faltas_dict", {}))
+    faltas_dict = defaultdict(
+        lambda: {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None},
+        {
+            k: {
+                "faltas": v["faltas"],
+                "aciertos": v["aciertos"],
+                "estado": v["estado"],
+                "mensaje_id": v["mensaje_id"],
+                "ultima_falta_time": datetime.datetime.fromisoformat(v["ultima_falta_time"]) if v["ultima_falta_time"] else None
+            } for k, v in state.get("faltas_dict", {}).items()
+        }
+    )
     mensajes_recientes = defaultdict(list, state.get("mensajes_recientes", {}))
 except FileNotFoundError:
     ultima_publicacion_dict = defaultdict(lambda: datetime.datetime.utcnow())
@@ -63,7 +74,15 @@ def save_state():
         "ticket_counter": ticket_counter,
         "active_conversations": active_conversations,
         "faq_data": faq_data,
-        "faltas_dict": {str(k): v for k, v in faltas_dict.items()},
+        "faltas_dict": {
+            str(k): {
+                "faltas": v["faltas"],
+                "aciertos": v["aciertos"],
+                "estado": v["estado"],
+                "mensaje_id": v["mensaje_id"],
+                "ultima_falta_time": v["ultima_falta_time"].isoformat() if v["ultima_falta_time"] else None
+            } for k, v in faltas_dict.items()
+        },
         "mensajes_recientes": {str(k): v for k, v in mensajes_recientes.items()}
     }
     with open(STATE_FILE, "w") as f:
@@ -110,7 +129,6 @@ FAQ_FALLBACK = {
 }
 
 def calcular_calificacion(faltas):
-    # Calificación comienza en 100% y disminuye 1% por cada falta
     porcentaje = max(0, 100 - faltas)
     barras = int(porcentaje // 10)
     barra_visual = "[" + "█" * barras + " " * (10 - barras) + "]"
@@ -130,7 +148,7 @@ async def actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, est
         if mensaje_id:
             try:
                 mensaje = await canal_faltas.fetch_message(mensaje_id)
-                if mensaje.content != contenido:  # Solo actualizar si hay cambios
+                if mensaje.content != contenido:
                     await mensaje.edit(content=contenido)
                     await registrar_log(f"📤 Mensaje actualizado para {miembro.name} en #{CANAL_FALTAS}: Faltas={faltas}, Aciertos={aciertos}, Estado={estado}", categoria="faltas")
             except discord.errors.NotFound:
@@ -169,7 +187,6 @@ async def verificar_historial_repetidos():
                     if not mensaje_normalizado:
                         continue
                     if channel.name == CANAL_FALTAS:
-                        # En #📤faltas, solo eliminar mensajes del sistema duplicados
                         if message.author == bot.user and mensaje_normalizado.startswith("🚫 faltas de los usuarios"):
                             if mensaje_normalizado in mensajes_vistos:
                                 mensajes_a_eliminar.append(message)
@@ -218,7 +235,6 @@ async def publicar_mensaje_unico(canal, contenido, pinned=False):
         contenido_normalizado = contenido.strip().lower()
         mensajes_vistos = set()
         mensajes_a_eliminar = []
-        # Verificar y eliminar mensajes repetidos del bot
         async for msg in canal.history(limit=None):
             msg_normalizado = msg.content.strip().lower()
             if msg.author == bot.user:
@@ -227,14 +243,13 @@ async def publicar_mensaje_unico(canal, contenido, pinned=False):
                 else:
                     mensajes_vistos.add(msg_normalizado)
             if pinned and msg.pinned and msg.author == bot.user:
-                mensajes_a_eliminar.append(msg)  # Eliminar fijados anteriores del bot
+                mensajes_a_eliminar.append(msg)
         for msg in mensajes_a_eliminar:
             try:
                 await msg.delete()
                 await registrar_log(f"🗑️ Mensaje del bot eliminado en #{canal.name}: {msg.content[:50]}...", categoria="mensajes")
             except discord.Forbidden:
                 await registrar_log(f"❌ No tengo permisos para eliminar mensajes en #{canal.name}", categoria="mensajes")
-        # Publicar nuevo mensaje
         mensaje = await canal.send(contenido)
         if pinned:
             await mensaje.pin()
@@ -251,15 +266,12 @@ async def on_ready():
     print(f"Bot conectado como {bot.user}")
     await registrar_log(f"Bot iniciado. ADMIN_ID cargado: {ADMIN_ID}", categoria="bot")
     
-    # Limpiar historial de mensajes repetidos en todos los canales
     await verificar_historial_repetidos()
     
-    # Publicar mensajes en canales
     procesos_exitosos = []
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     if canal_faltas:
         try:
-            # Buscar y actualizar o crear el mensaje del sistema
             mensaje_sistema = None
             async for msg in canal_faltas.history(limit=100):
                 if msg.author == bot.user and msg.content.startswith("🚫 **FALTAS DE LOS USUARIOS**"):
@@ -274,7 +286,6 @@ async def on_ready():
                 await registrar_log(f"📤 Mensaje del sistema creado en #{CANAL_FALTAS}", categoria="faltas")
             procesos_exitosos.append("Publicación/actualización de mensaje del sistema en #📤faltas")
             
-            # Actualizar o crear mensajes para todos los miembros
             for guild in bot.guilds:
                 for member in guild.members:
                     if member.bot:
@@ -345,14 +356,12 @@ async def on_ready():
     await registrar_log(f"💾 Código anterior guardado:\n```python\n{codigo_anterior}\n```", categoria="bot")
     procesos_exitosos.append("Guardado de código anterior")
     
-    # Registrar procesos exitosos
     await registrar_log(
         f"✅ **Procesos iniciales completados**:\n" +
         "\n".join([f"- {proceso}" for proceso in procesos_exitosos]),
         categoria="bot"
     )
     
-    # Confirmar que el bot está al día con la nueva actualización
     await registrar_log(
         f"✅ **Bot actualizado y todos los procesos iniciales completados correctamente**. Nueva actualización ({datetime.datetime.utcnow().strftime('%Y-%m-%d')}) en ejecución.",
         categoria="actualizacion"
@@ -362,6 +371,9 @@ async def on_ready():
     clean_inactive_conversations.start()
     limpiar_mensajes_expulsados.start()
     resetear_faltas_diarias.start()
+
+    # Mensaje de "al día" al final de on_ready
+    await registrar_log(f"✅ Bot al día tras completar el proceso: Inicialización", categoria="bot")
 
 @bot.event
 async def on_member_join(member):
@@ -493,6 +505,7 @@ async def verificar_inactividad():
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, miembro, faltas_dict[user_id]["faltas"], aciertos, "OK")
         save_state()
+    await registrar_log(f"✅ Bot al día tras completar el proceso: Verificación de inactividad", categoria="bot")
 
 @tasks.loop(hours=24)
 async def resetear_faltas_diarias():
@@ -514,6 +527,7 @@ async def resetear_faltas_diarias():
                 except:
                     await registrar_log(f"❌ No se pudo notificar reinicio de faltas a {miembro.name}", categoria="faltas")
     save_state()
+    await registrar_log(f"✅ Bot al día tras completar el proceso: Reseteo de faltas diarias", categoria="bot")
 
 @tasks.loop(minutes=1)
 async def clean_inactive_conversations():
@@ -534,6 +548,7 @@ async def clean_inactive_conversations():
                     pass
             del active_conversations[user_id]
     save_state()
+    await registrar_log(f"✅ Bot al día tras completar el proceso: Limpieza de conversaciones inactivas", categoria="bot")
 
 @tasks.loop(hours=24)
 async def limpiar_mensajes_expulsados():
@@ -553,6 +568,7 @@ async def limpiar_mensajes_expulsados():
                     pass
                 del faltas_dict[user_id]
     save_state()
+    await registrar_log(f"✅ Bot al día tras completar el proceso: Limpieza de mensajes de usuarios expulsados", categoria="bot")
 
 class ReportMenu(View):
     def __init__(self, reportado, autor):
