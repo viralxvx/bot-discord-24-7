@@ -77,7 +77,7 @@ MENSAJE_NORMAS = (
     "https://x.com/usuario/status/1234567890123456789\n"
     "❌ Publicaciones con texto adicional, formato incorrecto o repetidas serán eliminadas.\n"
     "⏳ **Permisos de inactividad**: Usa !permiso <días> en ⛔reporte-de-incumplimiento para pausar la obligación de publicar hasta 7 días. Extiende antes de que expire.\n"
-    "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs y #📤faltas) para mantener el servidor limpio."
+    "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs) para mantener el servidor limpio."
 )
 
 MENSAJE_ANUNCIO_PERMISOS = (
@@ -86,7 +86,7 @@ MENSAJE_ANUNCIO_PERMISOS = (
     "✅ Máximo 7 días por permiso.\n"
     "🔄 Puedes extender el permiso con otro reporte antes de que expire, siempre antes de un baneo.\n"
     "📤 Revisa tu estado en #📤faltas y mantente al día.\n"
-    "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs y #📤faltas) para mantener el servidor limpio.\n"
+    "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs) para mantener el servidor limpio.\n"
     "¡Gracias por mantener la comunidad activa y organizada! 🚀"
 )
 
@@ -97,7 +97,7 @@ MENSAJE_ACTUALIZACION_SISTEMA = (
     "⛔️ Si después del baneo vuelve a pasar **otros 3 días sin publicar**, el sistema procederá a **expulsarlo automáticamente** del servidor.\n"
     "✅ Esta medida busca mantener activa y comprometida a la comunidad, haciendo que el programa de crecimiento sea más eficiente y beneficioso para todos.\n"
     "📤 Revisa tu estado en este canal (#📤faltas) para mantenerte al día con tu participación.\n"
-    "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs y #📤faltas) para mantener el servidor limpio.\n"
+    "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs) para mantener el servidor limpio.\n"
     "Gracias por su comprensión y compromiso. ¡Sigamos creciendo juntos! 🚀"
 )
 
@@ -157,10 +157,21 @@ async def registrar_log(texto, categoria="general"):
         except discord.errors.Forbidden:
             print(f"No tengo permisos para enviar logs en #{CANAL_LOGS}: {texto}")
 
+async def limpiar_canal_faltas(canal_faltas):
+    try:
+        async for message in canal_faltas.history(limit=None):
+            await message.delete()
+            await registrar_log(f"🗑️ Mensaje eliminado en #{CANAL_FALTAS}: {message.content[:50]}...", categoria="faltas")
+        await registrar_log(f"✅ Canal #{CANAL_FALTAS} limpiado completamente", categoria="faltas")
+    except discord.Forbidden:
+        await registrar_log(f"❌ No tengo permisos para eliminar mensajes en #{CANAL_FALTAS}", categoria="faltas")
+
 async def verificar_historial_repetidos():
     admin = bot.get_user(int(ADMIN_ID))
     for guild in bot.guilds:
         for channel in guild.text_channels:
+            if channel.name == CANAL_LOGS:
+                continue
             mensajes_vistos = set()
             mensajes_a_eliminar = []
             try:
@@ -169,14 +180,12 @@ async def verificar_historial_repetidos():
                     if not mensaje_normalizado:
                         continue
                     if channel.name == CANAL_FALTAS:
-                        # Solo eliminar mensajes del sistema repetidos en #📤faltas
+                        # En #📤faltas, los mensajes de usuarios no se eliminan aquí, solo se gestionan en on_ready
                         if message.author == bot.user and mensaje_normalizado.startswith("📢 nueva actualización del sistema de participación"):
                             if mensaje_normalizado in mensajes_vistos:
                                 mensajes_a_eliminar.append(message)
                             else:
                                 mensajes_vistos.add(mensaje_normalizado)
-                        continue
-                    if channel.name == CANAL_LOGS:
                         continue
                     if mensaje_normalizado in mensajes_vistos:
                         mensajes_a_eliminar.append(message)
@@ -220,7 +229,6 @@ async def publicar_mensaje_unico(canal, contenido, pinned=False):
                     await msg.pin()
                     await registrar_log(f"📌 Mensaje existente anclado en #{canal.name}: {contenido[:50]}...", categoria="mensajes")
                 return
-        # Desanclar mensajes anteriores del bot si es necesario
         if pinned:
             async for msg in canal.history(limit=20):
                 if msg.author == bot.user and msg.pinned:
@@ -239,48 +247,28 @@ async def on_ready():
     print(f"Bot conectado como {bot.user}")
     await registrar_log(f"Bot iniciado. ADMIN_ID cargado: {ADMIN_ID}", categoria="bot")
     
-    # Limpiar historial de mensajes repetidos
+    # Limpiar historial de mensajes repetidos en todos los canales (excepto #📝logs)
     await verificar_historial_repetidos()
     
     # Publicar mensajes en canales
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     if canal_faltas:
         try:
-            # Verificar mensajes existentes en #📤faltas y sincronizar faltas_dict
-            mensajes_faltas_existentes = {}
-            async for msg in canal_faltas.history(limit=None):
-                if msg.author == bot.user and not msg.content.startswith("📢"):
-                    for member in bot.get_all_members():
-                        if member.mention in msg.content:
-                            mensajes_faltas_existentes[member.id] = msg.id
-                            if member.id in faltas_dict:
-                                # Extraer datos del mensaje para sincronizar faltas_dict
-                                lines = msg.content.split("\n")
-                                try:
-                                    faltas = int(lines[1].split(": ")[1].split()[0])
-                                    aciertos = int(lines[2].split(": ")[1])
-                                    estado = lines[4].split(": ")[1]
-                                    faltas_dict[member.id]["mensaje_id"] = msg.id
-                                    faltas_dict[member.id]["faltas"] = faltas
-                                    faltas_dict[member.id]["aciertos"] = aciertos
-                                    faltas_dict[member.id]["estado"] = estado
-                                    await registrar_log(f"📤 Sincronizado mensaje existente para {member.name} en #{CANAL_FALTAS}: Faltas={faltas}, Aciertos={aciertos}, Estado={estado}", categoria="faltas")
-                                except (IndexError, ValueError):
-                                    await registrar_log(f"❌ Error al parsear mensaje existente para {member.name} en #{CANAL_FALTAS}: {msg.content[:50]}...", categoria="faltas")
+            # Limpiar completamente el canal #📤faltas
+            await limpiar_canal_faltas(canal_faltas)
+            # Reiniciar mensaje_id en faltas_dict para todos los usuarios
+            for user_id in faltas_dict:
+                faltas_dict[user_id]["mensaje_id"] = None
             # Publicar mensaje de actualización del sistema
             await publicar_mensaje_unico(canal_faltas, MENSAJE_ACTUALIZACION_SISTEMA)
-            # Inicializar mensajes solo para nuevos miembros
+            # Publicar mensajes de estado para todos los miembros
             for guild in bot.guilds:
                 for member in guild.members:
                     if member.bot:
                         continue
                     if member.id not in faltas_dict:
                         faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "✅", "mensaje_id": None}
-                    if member.id not in mensajes_faltas_existentes:
-                        await actualizar_mensaje_faltas(canal_faltas, member, faltas_dict[member.id]["faltas"], faltas_dict[member.id]["aciertos"], faltas_dict[member.id]["estado"])
-                    else:
-                        # Verificar si el mensaje existente necesita actualización
-                        await actualizar_mensaje_faltas(canal_faltas, member, faltas_dict[member.id]["faltas"], faltas_dict[member.id]["aciertos"], faltas_dict[member.id]["estado"])
+                    await actualizar_mensaje_faltas(canal_faltas, member, faltas_dict[member.id]["faltas"], faltas_dict[member.id]["aciertos"], faltas_dict[member.id]["estado"])
         except discord.Forbidden:
             await registrar_log(f"❌ No tengo permisos para enviar mensajes en #{CANAL_FALTAS}", categoria="faltas")
     else:
@@ -345,7 +333,7 @@ async def on_ready():
     with open("main.py", "r") as f:
         codigo_anterior = f.read()
     await registrar_log(f"💾 Código anterior guardado:\n```python\n{codigo_anterior}\n```", categoria="bot")
-    await registrar_log(f"✅ Nuevas implementaciones:\n- Logs en tiempo real para todo el servidor\n- Persistencia de estado con state.json\n- Copia de seguridad del código\n- Notificaciones en 🔔anuncios para mejoras y normas\n- Sistema de faltas en 📤faltas con contadores y calificaciones\n- Detección y eliminación de mensajes repetidos del sistema en 📤faltas\n- Sistema de permisos de inactividad en ⛔reporte-de-incumplimiento\n- Evitar republicación de mensajes existentes al reiniciar\n- Gestión optimizada de 📤faltas con sincronización de mensajes existentes", categoria="bot")
+    await registrar_log(f"✅ Nuevas implementaciones:\n- Logs en tiempo real para todo el servidor\n- Persistencia de estado con state.json\n- Copia de seguridad del código\n- Notificaciones en 🔔anuncios para mejoras y normas\n- Sistema de faltas en 📤faltas con limpieza completa al iniciar\n- Detección y eliminación de mensajes repetidos del sistema en 📤faltas\n- Sistema de permisos de inactividad en ⛔reporte-de-incumplimiento\n- Gestión optimizada de 📤faltas con creación de mensajes nuevos tras limpieza", categoria="bot")
     verificar_inactividad.start()
     clean_inactive_conversations.start()
     limpiar_mensajes_expulsados.start()
@@ -365,7 +353,7 @@ async def on_member_join(member):
                 "♟ Estudia las estrategias\n"
                 "🏋 Luego solicita ayuda para tu primer post.\n\n"
                 "📤 Revisa tu estado en el canal #📤faltas para mantenerte al día con tu participación.\n"
-                "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs y #📤faltas) para mantener el servidor limpio.\n"
+                "🚫 Todos los mensajes repetidos, incluidos los del bot, serán eliminados en todos los canales (excepto #📝logs) para mantener el servidor limpio.\n"
                 "⏳ Usa `!permiso <días>` en #⛔reporte-de-incumplimiento para pausar la obligación de publicar (máx. 7 días)."
             )
             await canal_presentate.send(mensaje)
@@ -554,7 +542,7 @@ class ReportMenu(View):
             )
         except:
             await registrar_log(f"❌ No se pudo notificar amonestación a {self.reportado.name}", categoria="reportes")
-        logs_channel = discord.utils.get(self.autor.guild.text_channels, name=CANal_LOGS)
+        logs_channel = discord.utils.get(self.autor.guild.text_channels, name=CANAL_LOGS)
         if logs_channel:
             await logs_channel.send(
                 f"📜 **Reporte registrado**\n"
