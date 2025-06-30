@@ -1,24 +1,22 @@
 import datetime
-import re
 import discord
+import asyncio
 
-def is_valid_x_url(url: str) -> bool:
-    """Valida si la URL cumple el patrón esperado de https://x.com/usuario/status/id"""
-    pattern = r"https://x\.com/[^/]+/status/\d+"
-    return bool(re.match(pattern, url))
+async def registrar_log(bot: discord.Client, mensaje: str, categoria: str = "general"):
+    ahora = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_msg = f"[{ahora}][{categoria.upper()}] {mensaje}"
 
-def normalize_message(content: str) -> str:
-    """Normaliza un mensaje para comparaciones (quita espacios y pasa a minúsculas)"""
-    return content.strip().lower()
+    # Buscar el canal llamado "📝logs" en todos los servidores donde está el bot
+    for guild in bot.guilds:
+        canal_logs = discord.utils.get(guild.text_channels, name="📝logs")
+        if canal_logs:
+            try:
+                await canal_logs.send(log_msg)
+            except Exception as e:
+                print(f"Error enviando log al canal 📝logs: {e}")
+            break
+    else:
+        print(f"No se encontró canal 📝logs en ningún servidor.")
 
-def get_current_utc_time():
-    """Devuelve la fecha y hora actual en UTC"""
-    return datetime.datetime.now(datetime.timezone.utc)
-
-def mention_user(user: discord.User) -> str:
-    """Devuelve la mención de un usuario"""
-    return user.mention
-
-def format_ticket_id(counter: int) -> str:
-    """Formatea el ID del ticket con ceros a la izquierda"""
-    return f"ticket-{counter:03d}"
+    # También imprime en consola
+    print(log_msg)
