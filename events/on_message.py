@@ -132,4 +132,78 @@ async def on_message(message):
         publicaciones_despues = [m for m in mensajes if m.created_at > ultima_publicacion.created_at and m.author != message.author]
         no_apoyados = []
 
-        for msg
+        for msg in mensajes:
+            if msg.created_at > ultima_publicacion.created_at and msg.author != message.author:
+                apoyo = False
+                for reaction in msg.reactions:
+                    if str(reaction.emoji) == "🔥":
+                        async for user in reaction.users():
+                            if user == message.author:
+                                apoyo = True
+                                if user.id in faltas_dict:
+                                    faltas_dict[user.id]["aciertos"] += 1
+                                if canal_faltas:
+                                    await actualizar_mensaje_faltas(canal_faltas, user, faltas_dict[user.id]["faltas"], faltas_dict[user.id]["aciertos"], faltas_dict[user.id]["estado"])
+                                break
+                if not apoyo:
+                    no_apoyados.append(msg)
+
+        if no_apoyados:
+            await new_message.delete()
+            faltas_dict[message.author.id]["faltas"] += 1
+            faltas_dict[message.author.id]["ultima_falta_time"] = ahora
+            advertencia = await message.channel.send(f"{message.author.mention} **Falta de reacciones**")
+            await advertencia.delete(delay=15)
+            try:
+                await message.author.send(f"⚠️ **Falta**: Reacciones pendientes en #🧵go-viral")
+            except:
+                pass
+            if canal_faltas:
+                await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
+            return
+
+        if len(publicaciones_despues) < 1 and diferencia.total_seconds() < 86400:
+            await new_message.delete()
+            faltas_dict[message.author.id]["faltas"] += 1
+            faltas_dict[message.author.id]["ultima_falta_time"] = ahora
+            advertencia = await message.channel.send(f"{message.author.mention} **Espera 24h**")
+            await advertencia.delete(delay=15)
+            try:
+                await message.author.send(f"⚠️ **Falta**: Publicación antes de 24h")
+            except:
+                pass
+            if canal_faltas:
+                await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
+            return
+
+        def check_reaccion_propia(reaction, user):
+            return reaction.message.id == new_message.id and str(reaction.emoji) == "👍" and user == message.author
+
+        try:
+            await message.guild.bot.wait_for("reaction_add", timeout=60, check=check_reaccion_propia)
+            if message.author.id in faltas_dict:
+                faltas_dict[message.author.id]["aciertos"] += 1
+            if canal_faltas:
+                await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
+        except:
+            await new_message.delete()
+            faltas_dict[message.author.id]["faltas"] += 1
+            faltas_dict[message.author.id]["ultima_falta_time"] = ahora
+            advertencia = await message.channel.send(f"{message.author.mention} **Falta reacción propia**")
+            await advertencia.delete(delay=15)
+            try:
+                await message.author.send(f"⚠️ **Falta**: Sin reacción 👍 propia")
+            except:
+                pass
+            if canal_faltas:
+                await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
+            return
+
+        ultima_publicacion_dict[message.author.id] = ahora
+
+    elif message.channel.name in [CANAL_NORMAS_GENERALES, CANAL_X_NORMAS] and not message.author.bot:
+        canal_anuncios = discord.utils.get(message.guild.text_channels, name=CANAL_ANUNCIOS)
+        if canal_anuncios:
+            await canal_anuncios.send(f"📢 **Norma actualizada**: {message.channel.mention}")
+
+    await message.guild.bot.process_commands(message)
