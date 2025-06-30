@@ -1,10 +1,9 @@
 import discord
 import datetime
-from discord_bot import bot
+from views.support_menu import SupportMenu  # Importación corregida
 from config import CANAL_SOPORTE, MENSAJE_NORMAS
 from state_management import active_conversations, faltas_dict, save_state
 from utils import actualizar_mensaje_faltas
-from views import SupportMenu
 
 async def handle_soporte_message(message):
     if message.author.bot:
