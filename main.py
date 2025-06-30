@@ -16,16 +16,25 @@ logging.basicConfig(level=logging.INFO)
 async def main():
     try:
         logging.info("Iniciando bot...")
+
+        # Cargar extensiones (comandos cog)
+        await bot.load_extension("commands.permisos")
+
+        # Iniciar el bot
         await bot.start(TOKEN)
+
     except KeyboardInterrupt:
         logging.info("Bot detenido manualmente")
+
     finally:
         await bot.close()
+
         # Cerrar conexión Redis si existe y tiene método close
         if redis_client and hasattr(redis_client, "close"):
             close_coro = redis_client.close()
             if asyncio.iscoroutine(close_coro):
                 await close_coro
+
         logging.info("Conexiones cerradas")
 
 if __name__ == "__main__":
