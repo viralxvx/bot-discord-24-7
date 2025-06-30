@@ -1,8 +1,12 @@
-import datetime
 import discord
-from utils import registrar_log
+from discord.ext import commands
+import datetime
+from utils import registrar_log  # Asumo que tienes esta función para logs
 
-async def on_ready(bot):
-    print(f"{bot.user} está listo y conectado.")
-    await registrar_log(f"🤖 Bot iniciado: {bot.user}", categoria="sistema")
-    # Aquí puedes agregar otras tareas que quieras hacer al iniciar el bot, por ejemplo, limpiar estados antiguos, inicializar cachés, etc.
+async def on_ready(bot: commands.Bot):
+    print(f"✅ Bot conectado como {bot.user} (ID: {bot.user.id})")
+    print(f"Hora UTC: {datetime.datetime.utcnow().isoformat()}")
+    await registrar_log("🤖 Bot listo y conectado", categoria="sistema")
+
+def setup(bot: commands.Bot):
+    bot.event(bot.loop.create_task(on_ready(bot)))
