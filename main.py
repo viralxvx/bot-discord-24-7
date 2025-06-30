@@ -18,7 +18,7 @@ logging.basicConfig(
 
 from discord_bot import bot
 from config import TOKEN, CANAL_OBJETIVO, CANAL_FALTAS, CANAL_REPORTES, CANAL_SOPORTE, CANAL_NORMAS_GENERALES, CANAL_ANUNCIOS, CANAL_LOGS, MENSAJE_NORMAS, MENSAJE_ANUNCIO_PERMISOS, MENSAJE_ACTUALIZACION_SISTEMA, FAQ_FALLBACK, CANAL_FLUJO_SOPORTE
-from state_management import save_state, ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, faltas_dict, mensajes_recientes, faq_data, active_conversations, init_db
+from state_management import save_state, load_state, ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, faltas_dict, mensajes_recientes, faq_data, active_conversations, init_db
 from utils import registrar_log, publicar_mensaje_unico, actualizar_mensaje_faltas, batch_log
 import tasks
 import commands
@@ -40,8 +40,21 @@ atexit.register(save_state)
 
 @bot.event
 async def on_ready():
+    log_batches = []
+    current_batch = []
+    
+    def add_log(texto, categoria="bot"):
+        nonlocal current_batch
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%H:%M:%S')
+        log_entry = f"[{timestamp}] [{categoria.upper()}] {texto}"
+        if len("\n".join(current_batch) + log_entry) > 1900:
+            log_batches.append(current_batch)
+            current_batch = []
+        current_batch.append(log_entry)
+    
     try:
         logging.info(f"Bot conectado como {bot.user} (ID: {bot.user.id})")
+        add_log(f"Bot iniciado en servidor siempre activo")
         
         # Inicializar la conexión a Redis
         logging.info("Iniciando conexión a Redis...")
@@ -61,22 +74,7 @@ async def on_ready():
         tasks.limpiar_mensajes_expulsados.start()
         logging.info("Tareas programadas iniciadas")
         
-        log_batches = []
-        current_batch = []
-        
-        def add_log(texto, categoria="bot"):
-            nonlocal current_batch
-            timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%H:%M:%S')
-            log_entry = f"[{timestamp}] [{categoria.upper()}] {texto}"
-            if len("\n".join(current_batch) + log_entry) > 1900:
-                log_batches.append(current_batch)
-                current_batch = []
-            current_batch.append(log_entry)
-        
-        add_log(f"Bot iniciado en servidor siempre activo")
-        
         procesos_exitosos = []
-        
         INITIAL_SETUP = True
         
         if INITIAL_SETUP:
@@ -122,8 +120,9 @@ async def on_ready():
                             logging.info(f"FAQ cargado desde {CANAL_FLUJO_SOPORTE}")
                         
                         elif channel.name == CANAL_OBJETIVO:
-                            tasks_to_run = [publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True)]
+                            await publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True)
                             procesos_exitosos.append(f"Publicado #{CANAL_OBJETIVO}")
+                            logging.info(f"Mensaje publicado en {CANAL_OBJETIVO}")
                         elif channel.name == CANAL_REPORTES:
                             content = (
                                 "🔖 **Cómo Reportar Correctamente**:\n\n"
@@ -132,18 +131,22 @@ async def on_ready():
                                 "3. Usa `!permiso <días>` para solicitar un **permiso de inactividad** (máx. 7 días).\n\n"
                                 "El bot registrará el reporte en #📝logs."
                             )
-                            tasks_to_run.append(publicar_mensaje_unico(channel, content, pinned=True))
+                            await publicar_mensaje_unico(channel, content, pinned=True)
                             procesos_exitosos.append(f"Publicado #{CANAL_REPORTES}")
+                            logging.info(f"Mensaje publicado en {CANAL_REPORTES}")
                         elif channel.name == CANAL_SOPORTE:
                             content = "🔧 **Soporte Técnico**:\n\nEscribe **'Hola'** para abrir el menú de opciones. ✅"
-                            tasks_to_run.append(publicar_mensaje_unico(channel, content, pinned=True))
+                            await publicar_mensaje_unico(channel, content, pinned=True)
                             procesos_exitosos.append(f"Publicado #{CANAL_SOPORTE}")
+                            logging.info(f"Mensaje publicado en {CANAL_SOPORTE}")
                         elif channel.name == CANAL_NORMAS_GENERALES:
-                            tasks_to_run.append(publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True))
+                            await publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True)
                             procesos_exitosos.append(f"Publicado #{CANAL_NORMAS_GENERALES}")
+                            logging.info(f"Mensaje publicado en {CANAL_NORMAS_GENERALES}")
                         elif channel.name == CANAL_ANUNCIOS:
-                            tasks_to_run.append(publicar_mensaje_unico(channel, MENSAJE_ANUNCIO_PERMISOS))
+                            await publicar_mensaje_unico(channel, MENSAJE_ANUNCIO_PERMISOS)
                             procesos_exitosos.append(f"Publicado #{CANAL_ANUNCIOS}")
+                            logging.info(f"Mensaje publicado en {CANAL_ANUNCIOS}")
                     
                     except discord.Forbidden as e:
                         logging.error(f"Permisos insuficientes en {channel.name}: {str(e)}")
@@ -157,15 +160,6 @@ async def on_ready():
                 faq_data.update(FAQ_FALLBACK)
                 procesos_exitosos.append("FAQ por defecto")
                 logging.info("FAQ por defecto cargado")
-            
-            if tasks_to_run:
-                logging.info("Ejecutando tareas de publicación...")
-                results = await asyncio.gather(*tasks_to_run, return_exceptions=True)
-                for i, result in enumerate(results):
-                    if isinstance(result, Exception):
-                        logging.error(f"Error en tarea de publicación {i}: {str(result)}")
-                        add_log(f"Error en tarea de publicación {i}: {str(result)}", "error")
-                logging.info("Tareas de publicación completadas")
         
         if procesos_exitosos:
             add_log("Procesos completados: " + ", ".join(procesos_exitosos))
