@@ -1,7 +1,7 @@
 from discord.ext import commands
-from .config import bot, CANAL_REPORTES
-from .state_management import save_state, permisos_inactividad, faltas_dict
-from .utils import registrar_log
+from config import bot, CANAL_REPORTES
+from state_management import permisos_inactividad, faltas_dict, save_state
+from utils import registrar_log
 
 @bot.command()
 async def permiso(ctx, dias: int):
@@ -15,10 +15,10 @@ async def permiso(ctx, dias: int):
         await ctx.send(f"{ctx.author.mention} **No puedes solicitar permiso baneado**")
         return
     ahora = datetime.datetime.now(datetime.timezone.utc)
-    if permisos_inactividad.get(ctx.author.id) and (ahora - permisos_inactividad[ctx.author.id]["inicio"]).days < permisos_inactividad[ctx.author.id]["duracion"]:
+    if permisos_inactividad[ctx.author.id] and (ahora - permisos_inactividad[ctx.author.id]["inicio"]).days < permisos_inactividad[ctx.author.id]["duracion"]:
         await ctx.send(f"{ctx.author.mention} **Ya tienes permiso activo**")
         return
     permisos_inactividad[ctx.author.id] = {"inicio": ahora, "duracion": dias}
     await ctx.send(f"✅ **Permiso otorgado** a {ctx.author.mention} por {dias} días")
     await registrar_log(f"Permiso: {ctx.author.name} por {dias}d", categoria="permisos")
-    save_state(log=True)
+    save_state()
