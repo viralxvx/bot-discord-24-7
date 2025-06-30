@@ -70,8 +70,6 @@ async def on_ready():
                 current_batch = []
             current_batch.append(log_entry)
         
- Almanac
-
         add_log(f"Bot iniciado en servidor siempre activo")
         
         procesos_exitosos = []
