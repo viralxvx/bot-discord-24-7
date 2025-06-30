@@ -1,1 +1,1 @@
-web: python -m your_project.main
+web: python -m bot_discord_24_7.main
