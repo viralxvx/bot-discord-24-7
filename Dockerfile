@@ -1,4 +1,3 @@
-# Dockerfile
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -7,9 +6,6 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
-
-# Crear carpeta persistente y dar permisos
-RUN mkdir -p /data && chmod a+rwx /data
 
 # Copiar archivos
 COPY requirements.txt .
