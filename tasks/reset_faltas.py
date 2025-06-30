@@ -1,28 +1,31 @@
-import discord
-from discord.ext import tasks
+# tasks/reset_faltas.py
+
 import datetime
+from discord.ext import tasks
 from discord_bot import bot
 from config import CANAL_FALTAS
-from state_management import faltas_dict, save_state
-from utils import actualizar_mensaje_faltas
+from handlers.faltas import faltas_dict, actualizar_mensaje_faltas
 
 @tasks.loop(hours=24)
 async def resetear_faltas_diarias():
-    canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
+    await bot.wait_until_ready()
+    ahora = datetime.datetime.now(datetime.timezone.utc)
+    canal_faltas = None
+
+    for guild in bot.guilds:
+        canal_faltas = discord.utils.get(guild.text_channels, name=CANAL_FALTAS)
+        if canal_faltas:
+            break
+
     if not canal_faltas:
         return
-        
-    ahora = datetime.datetime.now(datetime.timezone.utc)
-    
-    for user_id, data in list(faltas_dict.items()):
-        if data.get("ultima_falta_time") and (ahora - data["ultima_falta_time"]).total_seconds() >= 86400:
-            miembro = discord.utils.get(bot.get_all_members(), id=int(user_id))
-            if miembro:
-                faltas_dict[user_id]["faltas"] = 0
-                faltas_dict[user_id]["ultima_falta_time"] = None
-                await actualizar_mensaje_faltas(canal_faltas, miembro, 0, data["aciertos"], data["estado"])
-                try:
-                    await miembro.send(f"✅ **Faltas reiniciadas** en #🧵go-viral")
-                except:
-                    pass
-    save_state()
+
+    # Resetear faltas y actualizar mensajes
+    for user_id in list(faltas_dict.keys()):
+        faltas_dict[user_id]["faltas"] = 0
+        faltas_dict[user_id]["aciertos"] = 0
+        faltas_dict[user_id]["ultima_falta_time"] = None
+        faltas_dict[user_id]["estado"] = "OK"
+        user = bot.get_user(user_id)
+        if user:
+            await actualizar_mensaje_faltas(canal_faltas, user, 0, 0, "OK")
