@@ -1,7 +1,26 @@
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+
+# Environment variables
 .env
-state.json
-.DS_Store
+
+# Redis dump file (if used locally)
+dump.rdb
+
+# Virtual environment
 venv/
 env/
+
+# Logs
+*.log
+
+# MacOS files
+.DS_Store
+
+# PyCharm project files
+.idea/
+
+# VSCode settings
+.vscode/
