@@ -1,4 +1,15 @@
+import discord
+import asyncio
+import datetime
+import atexit
 import os
+from discord_bot import bot
+from config import TOKEN, CANAL_OBJETIVO, CANAL_FALTAS, CANAL_REPORTES, CANAL_SOPORTE, CANAL_NORMAS_GENERALES, CANAL_ANUNCIOS, CANAL_LOGS, MENSAJE_NORMAS, MENSAJE_ANUNCIO_PERMISOS, MENSAJE_ACTUALIZACION_SISTEMA, FAQ_FALLBACK, CANAL_FLUJO_SOPORTE
+from state_management import save_state, ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, faltas_dict, mensajes_recientes, faq_data, active_conversations
+from utils import registrar_log, publicar_mensaje_unico, actualizar_mensaje_faltas, batch_log
+import tasks
+import commands
+import message_handlers
 
 # Verificar permisos de /data
 try:
@@ -10,18 +21,6 @@ try:
 except Exception as e:
     print("Error al acceder a /data:", str(e))
     print("="*50)
-    
-import discord
-import asyncio
-import datetime
-import atexit
-from discord_bot import bot
-from config import TOKEN, CANAL_OBJETIVO, CANAL_FALTAS, CANAL_REPORTES, CANAL_SOPORTE, CANAL_NORMAS_GENERALES, CANAL_ANUNCIOS, CANAL_LOGS, MENSAJE_NORMAS, MENSAJE_ANUNCIO_PERMISOS, MENSAJE_ACTUALIZACION_SISTEMA, FAQ_FALLBACK
-from state_management import save_state, ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, faltas_dict, mensajes_recientes, faq_data, active_conversations
-from utils import registrar_log, publicar_mensaje_unico, actualizar_mensaje_faltas, batch_log
-import tasks
-import commands
-import message_handlers
 
 # Registrar guardado de estado al salir
 atexit.register(save_state)
@@ -87,7 +86,7 @@ async def on_ready():
                     for line in lines:
                         if line.startswith("**Pregunta:"):
                             question = line.replace("**Pregunta:**", "").strip()
-                        elif line.startswith("**Respuesta:**"):
+                        elif line.startswith("**Respuesta:"):
                             response = [line.replace("**Respuesta:**", "").strip()]
                         elif question and not line.startswith("**"):
                             response.append(line.strip())
