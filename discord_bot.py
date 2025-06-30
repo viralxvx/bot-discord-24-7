@@ -1,7 +1,13 @@
 from discord.ext import commands, tasks
-from .config import intents, bot
-from .state_management import load_state, save_state
-from .utils import registrar_log
+import discord
+from config import TOKEN, intents
+from state_management import load_state, save_state
+from utils import registrar_log
+
+intents = discord.Intents.all()
+intents.members = True
+intents.message_content = True
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
