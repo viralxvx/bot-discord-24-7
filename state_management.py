@@ -27,21 +27,18 @@ async def init_db():
     retry_delay = 5  # segundos
     for attempt in range(max_retries):
         try:
-            # Usar REDIS_URL desde las variables de entorno
             redis_url = os.environ.get("REDIS_URL")
             if not redis_url:
                 raise ValueError("REDIS_URL no está configurado en las variables de entorno")
             
-            # Configurar cliente Redis
             redis_client = redis.Redis.from_url(
                 redis_url,
-                decode_responses=True,  # Decodificar respuestas como strings
+                decode_responses=True,
                 retry_on_timeout=True,
                 socket_timeout=5,
                 socket_connect_timeout=5
             )
             
-            # Probar la conexión con un ping
             redis_client.ping()
             logging.info(f"Conexión a Redis establecida correctamente (intento {attempt + 1})")
             return
@@ -57,56 +54,47 @@ async def init_db():
 async def load_state():
     global ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, ticket_counter, active_conversations, faq_data, faltas_dict, mensajes_recientes
     try:
-        # Cargar ultima_publicacion_dict
         ultima_publicacion = redis_client.hgetall("ultima_publicacion")
         ultima_publicacion_dict = defaultdict(lambda: datetime.datetime.now(datetime.timezone.utc))
         for user_id, timestamp in ultima_publicacion.items():
             ultima_publicacion_dict[user_id] = datetime.datetime.fromisoformat(timestamp)
 
-        # Cargar amonestaciones
         amonestaciones.clear()
         for user_id in redis_client.smembers("amonestaciones_users"):
             timestamps = redis_client.lrange(f"amonestaciones:{user_id}", 0, -1)
             amonestaciones[user_id] = [datetime.datetime.fromisoformat(ts) for ts in timestamps]
 
-        # Cargar baneos_temporales
         baneos_temporales.clear()
         baneos = redis_client.hgetall("baneos_temporales")
         for user_id, timestamp in baneos.items():
             if timestamp:
                 baneos_temporales[user_id] = datetime.datetime.fromisoformat(timestamp)
 
-        # Cargar permisos_inactividad
         permisos_inactividad.clear()
         permisos = redis_client.hgetall("permisos_inactividad")
         for user_id, data in permisos.items():
             if data:
                 permisos_inactividad[user_id] = json.loads(data)
 
-        # Cargar ticket_counter
         ticket_counter_value = redis_client.get("ticket_counter")
         global ticket_counter
         ticket_counter = int(ticket_counter_value) if ticket_counter_value else 0
 
-        # Cargar active_conversations
         active_conversations.clear()
         conversations = redis_client.hgetall("active_conversations")
         for user_id, data in conversations.items():
             active_conversations[user_id] = json.loads(data)
 
-        # Cargar faq_data
         faq_data.clear()
         faq = redis_client.hgetall("faq_data")
         for question, response in faq.items():
             faq_data[question] = response
 
-        # Cargar faltas_dict
         faltas_dict.clear()
         faltas = redis_client.hgetall("faltas_dict")
         for user_id, data in faltas.items():
             faltas_dict[user_id] = json.loads(data)
 
-        # Cargar mensajes_recientes
         mensajes_recientes.clear()
         mensajes = redis_client.hgetall("mensajes_recientes")
         for channel_id, messages in mensajes.items():
@@ -119,12 +107,10 @@ async def load_state():
 
 async def save_state():
     try:
-        # Guardar ultima_publicacion_dict
         redis_client.delete("ultima_publicacion")
         for user_id, timestamp in ultima_publicacion_dict.items():
             redis_client.hset("ultima_publicacion", user_id, timestamp.isoformat())
 
-        # Guardar amonestaciones
         redis_client.delete("amonestaciones_users")
         for user_id, timestamps in amonestaciones.items():
             redis_client.sadd("amonestaciones_users", user_id)
@@ -132,37 +118,30 @@ async def save_state():
             for timestamp in timestamps:
                 redis_client.rpush(f"amonestaciones:{user_id}", timestamp.isoformat())
 
-        # Guardar baneos_temporales
         redis_client.delete("baneos_temporales")
         for user_id, timestamp in baneos_temporales.items():
             if timestamp:
                 redis_client.hset("baneos_temporales", user_id, timestamp.isoformat())
 
-        # Guardar permisos_inactividad
         redis_client.delete("permisos_inactividad")
         for user_id, data in permisos_inactividad.items():
             if data:
                 redis_client.hset("permisos_inactividad", user_id, json.dumps(data))
 
-        # Guardar ticket_counter
         redis_client.set("ticket_counter", ticket_counter)
 
-        # Guardar active_conversations
         redis_client.delete("active_conversations")
         for user_id, data in active_conversations.items():
             redis_client.hset("active_conversations", user_id, json.dumps(data))
 
-        # Guardar faq_data
         redis_client.delete("faq_data")
         for question, response in faq_data.items():
             redis_client.hset("faq_data", question, response)
 
-        # Guardar faltas_dict
         redis_client.delete("faltas_dict")
         for user_id, data in faltas_dict.items():
             redis_client.hset("faltas_dict", user_id, json.dumps(data))
 
-        # Guardar mensajes_recientes
         redis_client.delete("mensajes_recientes")
         for channel_id, messages in mensajes_recientes.items():
             redis_client.hset("mensajes_recientes", channel_id, json.dumps(messages))
