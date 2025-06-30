@@ -85,7 +85,7 @@ class ReportMenu(View):
                     
         await interaction.response.send_message("✅ **Reporte registrado**", ephemeral=True)
         await registrar_log(f"Reporte: {self.autor.name} → {self.reportado.name} ({razon})", categoria="reportes")
-        save_state()
+        await save_state()
 
 class SupportMenu(View):
     def __init__(self, autor, query):
@@ -145,7 +145,6 @@ class SupportMenu(View):
                         await msg.delete()
                     except:
                         pass
-            if user_id in active_conversations:
                 del active_conversations[user_id]
             await interaction.response.send_message("✅ **Consulta cerrada**", ephemeral=True)
             
@@ -156,4 +155,4 @@ class SupportMenu(View):
                 active_conversations[user_id]["message_ids"].append(interaction.message.id)
                 active_conversations[user_id]["last_time"] = datetime.datetime.now(datetime.timezone.utc)
                 
-        save_state()
+        await save_state()
