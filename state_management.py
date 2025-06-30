@@ -83,6 +83,9 @@ def load_state():
     except FileNotFoundError:
         # Mantener valores por defecto si no existe el archivo
         pass
+    except json.JSONDecodeError:
+        # Archivo corrupto, se reiniciará el estado
+        pass
 
 def save_state():
     # Guardar siempre en la ruta persistente
