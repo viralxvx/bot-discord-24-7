@@ -26,10 +26,6 @@ except Exception as e:
 # Registrar guardado de estado al salir
 atexit.register(save_state)
 
-# Iniciar servidor web
-from app import keep_alive
-keep_alive()
-
 @bot.event
 async def on_ready():
     try:
