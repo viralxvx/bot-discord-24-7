@@ -30,7 +30,7 @@ async def on_message(message):
             mensajes_recientes[canal_id].append(message.content)
             if len(mensajes_recientes[canal_id]) > MAX_MENSAJES_RECIENTES:
                 mensajes_recientes[canal_id].pop(0)
-            save_state()
+            await save_state()
     
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     
@@ -190,7 +190,7 @@ async def on_message(message):
             return
             
         ultima_publicacion_dict[message.author.id] = ahora
-        save_state()
+        await save_state()
         
     elif message.channel.name in [CANAL_NORMAS_GENERALES, CANAL_X_NORMAS] and not message.author.bot:
         canal_anuncios = discord.utils.get(message.guild.text_channels, name=CANAL_ANUNCIOS)
@@ -235,4 +235,4 @@ async def on_reaction_add(reaction, user):
         if canal_faltas:
             await actualizar_mensaje_faltas(canal_faltas, user, faltas_dict[user.id]["faltas"], faltas_dict[user.id]["aciertos"], faltas_dict[user.id]["estado"])
             
-    save_state()
+    await save_state()
