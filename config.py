@@ -1,32 +1,47 @@
 import os
+from dotenv import load_dotenv
 
-TOKEN = os.getenv("DISCORD_TOKEN", "tu_token_aqui")
+load_dotenv()
 
-PREFIX = "!"
+# Token del bot Discord (se usa en main.py)
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 
-ADMIN_ID = os.getenv("ADMIN_ID", "123456789012345678")  # Cambia por el ID real del admin
+# IDs y nombres de canales (ajusta según tu servidor)
+CANAL_LOGS = "logs"                  # Nombre canal logs
+CANAL_FALTAS = "faltas"              # Nombre canal faltas
+CANAL_REPORTES = "reportes"          # Nombre canal reportes
+CANAL_SOPORTE = "soporte"            # Nombre canal soporte
+CANAL_OBJETIVO = "go-viral"          # Nombre canal objetivo (viral)
+CANAL_NORMAS_GENERALES = "normas-generales"  # Nombre canal normas generales
+CANAL_X_NORMAS = "x-normas"          # Nombre canal X normas
+CANAL_ANUNCIOS = "anuncios"          # Nombre canal anuncios
 
-CANAL_OBJETIVO = "🧵go-viral"
-CANAL_REPORTES = "⛔reporte-de-incumplimiento"
-CANAL_SOPORTE = "🔧soporte-técnico"
-CANAL_FALTAS = "📤faltas"
-CANAL_LOGS = "📝logs"
-CANAL_NORMAS_GENERALES = "📜normas-generales"
-CANAL_ANUNCIOS = "📢anuncios"
-CANAL_X_NORMAS = "❌x-normas"
+# ID del administrador para enviar mensajes directos
+ADMIN_ID = os.getenv("ADMIN_ID")
 
-MAX_MENSAJES_RECIENTES = 10
-INACTIVITY_TIMEOUT = 3600  # segundos para limpiar conversaciones activas (1 hora)
+# Prefijo para comandos
+COMMAND_PREFIX = "!"
 
-# Mensajes fijos que se usan en varios módulos
+# Parámetros generales
+MAX_MENSAJES_RECIENTES = 5  # Número máximo de mensajes recientes para filtrado
+
+# Mensajes predefinidos
 MENSAJE_NORMAS = (
-    "📜 **Normas de la comunidad:**\n"
-    "- No spam\n"
-    "- Respeto entre usuarios\n"
-    "- Formato correcto en publicaciones\n"
-    "- Sigue las instrucciones de los moderadores\n"
+    "📜 Por favor, lee las normas del servidor y cumple con ellas para evitar sanciones."
 )
 
-MENSAJE_ANUNCIO_PERMISOS = (
-    "📢 Recuerda usar `!permiso <días>` para solicitar permisos de inactividad (máx. 7 días)."
-)
+# Respuestas FAQ (puedes agregar más)
+FAQ_DATA = {
+    "✅ ¿Cómo funciona VX?": "VX funciona así...",
+    "✅ ¿Cómo publico mi post?": "Para publicar un post...",
+    "✅ ¿Cómo subo de nivel?": "Para subir de nivel debes...",
+}
+
+FAQ_FALLBACK = {
+    "✅ ¿Cómo funciona VX?": "No se encontró respuesta para esta pregunta.",
+    "✅ ¿Cómo publico mi post?": "No se encontró respuesta para esta pregunta.",
+    "✅ ¿Cómo subo de nivel?": "No se encontró respuesta para esta pregunta.",
+}
+
+# Aquí más configuraciones que necesites
+
