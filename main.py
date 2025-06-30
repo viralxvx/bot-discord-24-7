@@ -6,9 +6,7 @@ import atexit
 import os
 import traceback
 
-# ==================================================
 # CONFIGURACIÓN DE LOGGING
-# ==================================================
 logger = logging.getLogger('discord')
 logger.setLevel(logging.WARNING)  # Solo muestra WARNINGS y ERRORES
 
@@ -28,14 +26,14 @@ import message_handlers
 
 # Verificar permisos de /data
 try:
-    print("="*50)
-    print("Verificando permisos de /data")
-    print("Contenido de /data:", os.listdir('/data'))
-    print("Permisos de /data:", oct(os.stat('/data').st_mode)[-3:])
-    print("="*50)
+    logging.info("="*50)
+    logging.info("Verificando permisos de /data")
+    logging.info(f"Contenido de /data: {os.listdir('/data')}")
+    logging.info(f"Permisos de /data: {oct(os.stat('/data').st_mode)[-3:]}")
+    logging.info("="*50)
 except Exception as e:
-    print("Error al acceder a /data:", str(e))
-    print("="*50)
+    logging.error(f"Error al acceder a /data: {str(e)}")
+    logging.info("="*50)
 
 # Registrar guardado de estado al salir
 atexit.register(save_state)
@@ -43,19 +41,25 @@ atexit.register(save_state)
 @bot.event
 async def on_ready():
     try:
-        print(f"Bot conectado como {bot.user} (Servidor siempre activo)")
+        logging.info(f"Bot conectado como {bot.user} (Servidor siempre activo)")
         
         # Inicializar la conexión a Redis
+        logging.info("Iniciando conexión a Redis...")
         await init_db()
+        logging.info("Conexión a Redis completada")
         
         # Cargar el estado desde Redis
+        logging.info("Cargando estado desde Redis...")
         await load_state()
+        logging.info("Estado cargado correctamente")
         
-        # Iniciar tareas programadas inmediatamente
+        # Iniciar tareas programadas
+        logging.info("Iniciando tareas programadas...")
         tasks.verificar_inactividad.start()
         tasks.resetear_faltas_diarias.start()
         tasks.clean_inactive_conversations.start()
         tasks.limpiar_mensajes_expulsados.start()
+        logging.info("Tareas programadas iniciadas")
         
         log_batches = []
         current_batch = []
@@ -76,9 +80,11 @@ async def on_ready():
         INITIAL_SETUP = True
         
         if INITIAL_SETUP:
+            logging.info("Iniciando configuración inicial de canales...")
             canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
             if canal_faltas:
                 try:
+                    logging.info(f"Configurando canal {CANAL_FALTAS}...")
                     mensaje_sistema = None
                     async for msg in canal_faltas.history(limit=100):
                         if msg.author == bot.user and msg.content.startswith("🚫 **FALTAS DE LOS USUARIOS**"):
@@ -90,15 +96,17 @@ async def on_ready():
                     else:
                         mensaje_sistema = await canal_faltas.send(MENSAJE_ACTUALIZACION_SISTEMA)
                     procesos_exitosos.append("Mensaje sistema faltas")
+                    logging.info(f"Configuración de {CANAL_FALTAS} completada")
                 except Exception as e:
-                    error_msg = f"Error en canal faltas: {str(e)}"
+                    error_msg = f"Error en canal {CANAL_FALTAS}: {str(e)}"
                     add_log(error_msg, "error")
-                    print(error_msg)
-                    print(traceback.format_exc())
+                    logging.error(error_msg)
+                    logging.error(traceback.format_exc())
             
             canal_flujo = discord.utils.get(bot.get_all_channels(), name=CANAL_FLUJO_SOPORTE)
             if canal_flujo:
                 try:
+                    logging.info(f"Configurando canal {CANAL_FLUJO_SOPORTE}...")
                     async for msg in canal_flujo.history(limit=100):
                         if msg.author == bot.user and msg.pinned:
                             lines = msg.content.split("\n")
@@ -114,20 +122,23 @@ async def on_ready():
                             if question and response:
                                 faq_data[question] = "\n".join(response)
                     procesos_exitosos.append("Carga FAQ")
+                    logging.info(f"Configuración de {CANAL_FLUJO_SOPORTE} completada")
                 except Exception as e:
-                    error_msg = f"Error cargando FAQ: {str(e)}"
+                    error_msg = f"Error cargando FAQ en {CANAL_FLUJO_SOPORTE}: {str(e)}"
                     add_log(error_msg, "error")
-                    print(error_msg)
-                    print(traceback.format_exc())
+                    logging.error(error_msg)
+                    logging.error(traceback.format_exc())
                     
             if not faq_data:
                 faq_data.update(FAQ_FALLBACK)
                 procesos_exitosos.append("FAQ por defecto")
+                logging.info("FAQ por defecto cargado")
             
             tasks_to_run = []
             for guild in bot.guilds:
                 for channel in guild.text_channels:
                     try:
+                        logging.info(f"Verificando canal {channel.name}...")
                         if channel.name == CANAL_OBJETIVO:
                             tasks_to_run.append(publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True))
                             procesos_exitosos.append(f"Publicado #{CANAL_OBJETIVO}")
@@ -154,30 +165,40 @@ async def on_ready():
                     except Exception as e:
                         error_msg = f"Error publicando en {channel.name}: {str(e)}"
                         add_log(error_msg, "error")
-                        print(error_msg)
-                        print(traceback.format_exc())
+                        logging.error(error_msg)
+                        logging.error(traceback.format_exc())
             
+            logging.info("Ejecutando tareas de publicación...")
             results = await asyncio.gather(*tasks_to_run, return_exceptions=True)
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    print(f"Error en tarea {i}: {str(result)}")
+                    logging.error(f"Error en tarea {i}: {str(result)}")
+                    add_log(f"Error en tarea {i}: {str(result)}", "error")
+            
+            logging.info("Tareas de publicación completadas")
         
         if procesos_exitosos:
             add_log("Procesos completados: " + ", ".join(procesos_exitosos))
+            logging.info(f"Procesos completados: {', '.join(procesos_exitosos)}")
         
         if current_batch:
             log_batches.append(current_batch)
         
         if log_batches:
             await batch_log(log_batches)
+            logging.info("Logs enviados al canal de logs")
+        
+        logging.info("Inicialización completada")
     
     except Exception as e:
-        print(f"Error crítico en on_ready: {str(e)}")
-        print(traceback.format_exc())
+        logging.error(f"Error crítico en on_ready: {str(e)}")
+        logging.error(traceback.format_exc())
+        add_log(f"Error crítico en on_ready: {str(e)}", "error")
 
 @bot.event
 async def on_member_join(member):
     try:
+        logging.info(f"Nuevo miembro: {member.name}")
         canal_presentate = discord.utils.get(member.guild.text_channels, name="👉preséntate")
         canal_faltas = discord.utils.get(member.guild.text_channels, name=CANAL_FALTAS)
         
@@ -196,29 +217,33 @@ async def on_member_join(member):
                     "⏳ Usa `!permiso <días>` en #⛔reporte-de-incumplimiento para pausar la obligación de publicar (máx. 7 días)."
                 )
                 await canal_presentate.send(mensaje)
+                logging.info(f"Mensaje de bienvenida enviado en {canal_presentate.name}")
             except discord.Forbidden:
-                pass
-                
+                logging.error(f"Permisos insuficientes en {canal_presentate.name}")
+        
         if canal_faltas:
             try:
                 if member.id not in faltas_dict:
                     faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
                 await actualizar_mensaje_faltas(canal_faltas, member, 0, 0, "OK")
+                logging.info(f"Estado de faltas actualizado para {member.name} en {canal_faltas.name}")
             except discord.Forbidden:
-                pass
+                logging.error(f"Permisos insuficientes en {canal_faltas.name}")
                 
         await registrar_log(f"👤 Nuevo miembro: {member.name}", categoria="miembros")
+        logging.info(f"Log de nuevo miembro registrado: {member.name}")
     except Exception as e:
-        print(f"Error en on_member_join: {str(e)}")
-        print(traceback.format_exc())
+        logging.error(f"Error en on_member_join: {str(e)}")
+        logging.error(traceback.format_exc())
 
 @bot.event
 async def on_member_remove(member):
     try:
         await registrar_log(f"👋 Miembro salió: {member.name}", categoria="miembros")
+        logging.info(f"Log de miembro saliente registrado: {member.name}")
     except Exception as e:
-        print(f"Error en on_member_remove: {str(e)}")
-        print(traceback.format_exc())
+        logging.error(f"Error en on_member_remove: {str(e)}")
+        logging.error(traceback.format_exc())
 
 if __name__ == "__main__":
     bot.run(TOKEN)
