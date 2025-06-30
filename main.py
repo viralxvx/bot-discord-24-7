@@ -1,9 +1,26 @@
+import logging
 import discord
 import asyncio
 import datetime
 import atexit
 import os
 import traceback
+
+# ==================================================
+# CONFIGURACIÓN DE LOGGING
+# ==================================================
+# Desactivar logs detallados de discord.py
+logger = logging.getLogger('discord')
+logger.setLevel(logging.WARNING)  # Solo muestra WARNINGS y ERRORES
+
+# Configurar logging para nuestra aplicación
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+
+# Resto de imports
 from discord_bot import bot
 from config import TOKEN, CANAL_OBJETIVO, CANAL_FALTAS, CANAL_REPORTES, CANAL_SOPORTE, CANAL_NORMAS_GENERALES, CANAL_ANUNCIOS, CANAL_LOGS, MENSAJE_NORMAS, MENSAJE_ANUNCIO_PERMISOS, MENSAJE_ACTUALIZACION_SISTEMA, FAQ_FALLBACK, CANAL_FLUJO_SOPORTE
 from state_management import save_state, ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, faltas_dict, mensajes_recientes, faq_data, active_conversations
