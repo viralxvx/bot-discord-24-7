@@ -11,6 +11,7 @@ from discord.ext import commands, tasks
 from collections import defaultdict
 from discord.ui import View, Select
 from discord import SelectOption, Interaction
+import sys
 
 TOKEN = os.environ["TOKEN"]
 CANAL_OBJETIVO = os.environ["CANAL_OBJETIVO"]
@@ -310,7 +311,7 @@ async def on_ready():
                     question = None
                     response = []
                     for line in lines:
-                        if line.startswith("**Pregunta:**"):
+                        if line.startswith("**Pregunta:"):
                             question = line.replace("**Pregunta:**", "").strip()
                         elif line.startswith("**Respuesta:**"):
                             response = [line.replace("**Respuesta:**", "").strip()]
@@ -946,12 +947,16 @@ def health():
 import atexit
 atexit.register(save_state)
 
-if __name__ == '__main__':
-    from waitress import serve
-    
-    # Iniciar el bot en un hilo separado
-    bot_thread = threading.Thread(target=bot.run, args=(TOKEN,), daemon=True)
-    bot_thread.start()
-    
-    # Iniciar el servidor web con Waitress
-    serve(app, host="0.0.0.0", port=8080)
+def run_webserver():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run_webserver)
+    t.daemon = True
+    t.start()
+
+# Iniciar el servidor web en un hilo separado
+keep_alive()
+
+# Iniciar el bot
+bot.run(TOKEN)
