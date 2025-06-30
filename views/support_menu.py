@@ -31,6 +31,7 @@ class SupportMenu(View):
         selected_value = self.select.values[0]
         
         if selected_value == "Generar ticket":
+            from state_management import ticket_counter
             ticket_counter += 1
             ticket_id = f"ticket-{ticket_counter:03d}"
             admin = bot.get_user(int(ADMIN_ID))
@@ -42,7 +43,8 @@ class SupportMenu(View):
                 await admin.send(f"🎫 **Ticket #{ticket_id}** por {self.autor.mention}: '{self.query}'")
                 await interaction.response.send_message(f"✅ **Ticket #{ticket_id} generado**", ephemeral=True)
                 await registrar_log(f"Ticket #{ticket_id}: {self.autor.name}", categoria="soporte")
-            except Exception:
+            except Exception as e:
+                print(f"Error al generar ticket: {str(e)}")
                 await interaction.response.send_message("❌ **Error al generar ticket**", ephemeral=True)
                 
         elif selected_value == "Hablar con humano":
@@ -54,7 +56,8 @@ class SupportMenu(View):
                 await self.autor.send(f"🔧 **Conectado con administrador**")
                 await admin.send(f"⚠️ **Soporte solicitado** por {self.autor.mention}: '{self.query}'")
                 await interaction.response.send_message("✅ **Admin notificado**", ephemeral=True)
-            except Exception:
+            except Exception as e:
+                print(f"Error al contactar admin: {str(e)}")
                 await interaction.response.send_message("❌ **Error al contactar admin**", ephemeral=True)
                 
         elif selected_value == "Cerrar consulta":
