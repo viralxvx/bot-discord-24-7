@@ -1,54 +1,49 @@
-import discord
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-
-# TOKEN y ADMIN
-TOKEN = os.getenv("DISCORD_TOKEN")
-ADMIN_ID = os.getenv("ADMIN_ID", "123456789012345678")  # reemplaza por tu ID real si deseas
-
-# INTENTS
-INTENTS = discord.Intents.default()
-INTENTS.message_content = True
-INTENTS.members = True
-INTENTS.guilds = True
-INTENTS.messages = True
-INTENTS.reactions = True
-
-# Nombres de canales
-CANAL_OBJETIVO = "🧵go-viral"
+# Nombre de canales utilizados
 CANAL_REPORTES = "⛔reporte-de-incumplimiento"
-CANAL_SOPORTE = "📩soporte"
-CANAL_NORMAS_GENERALES = "📘normas-generales"
-CANAL_ANUNCIOS = "📣anuncios"
+CANAL_SOPORTE = "🆘soporte"
 CANAL_FALTAS = "📤faltas"
+CANAL_OBJETIVO = "🧵go-viral"
 CANAL_LOGS = "📝logs"
-CANAL_X_NORMAS = "📘x-normas"
 CANAL_PRESENTATE = "👉preséntate"
+CANAL_ANUNCIOS = "📢anuncios"
+CANAL_NORMAS_GENERALES = "📚normas-generales"
+CANAL_X_NORMAS = "📜x-normas"
 
-# Mensajes fijos
+# Token y IDs sensibles (asegúrate de usar variables de entorno en producción)
+import os
+TOKEN = os.getenv("DISCORD_TOKEN")
+ADMIN_ID = os.getenv("DISCORD_ADMIN_ID", "123456789012345678")  # ID por defecto si no se define
+
+# Mensajes predeterminados
 MENSAJE_NORMAS = (
-    "📘 **NORMAS GENERALES VX**\n\n"
-    "✅ Publicar un solo tweet al día (formato correcto)\n"
-    "🔥 Reaccionar a los post de otros\n"
-    "👍 Dale like a tu publicación\n"
-    "⚠️ No repetir mensajes\n"
-    "⏳ Usa `!permiso <días>` si no puedes publicar"
+    "📜 **Normas Generales del Canal**:\n\n"
+    "1. Publica un solo enlace por día y en el formato correcto (solo un link de X).\n"
+    "2. Reacciona con 🔥 a los posts publicados después del tuyo (mínimo 1).\n"
+    "3. Dale 👍 a tu propio post tras publicarlo.\n"
+    "4. No repitas mensajes ni spammees.\n\n"
+    "❗El incumplimiento resultará en advertencias o baneo temporal."
 )
 
 MENSAJE_ANUNCIO_PERMISOS = (
-    "🚨 **Recuerda usar `!permiso <días>` en caso de inactividad.**\n"
-    "Puedes pedir hasta 7 días en #⛔reporte-de-incumplimiento"
+    "📢 **Recuerda**: si no puedes participar temporalmente, escribe `!permiso <días>` en "
+    f"#{CANAL_REPORTES} (máximo 7 días).\n"
+    "⛔ Si acumulas 3 faltas por inactividad, serás baneado automáticamente."
 )
 
-# FAQ
+# Fallback para preguntas frecuentes
 FAQ_FALLBACK = {
-    "✅ ¿Cómo funciona VX?": "En VX se publica 1 post diario en #🧵go-viral y debes apoyar los demás posts (🔥).",
-    "✅ ¿Cómo publico mi post?": "Copia el enlace de tu tweet y pégalo en #🧵go-viral. Solo debe ser el URL, sin texto adicional.",
-    "✅ ¿Cómo subo de nivel?": "Sigue las normas, apoya a otros y mantente activo para ganar reputación."
+    "✅ ¿Cómo funciona VX?": (
+        "VX es una comunidad que te ayuda a hacer viral tu contenido en X.\n"
+        "Publicas tu tweet y apoyas a otros con 🔥 y 👍.\n"
+        "¡El trabajo en equipo da resultados!"
+    ),
+    "✅ ¿Cómo publico mi post?": (
+        "Solo publica tu enlace de X en #🧵go-viral, sin texto adicional ni emojis.\n"
+        "Debes dar 🔥 a al menos 1 post antes de publicar el tuyo.\n"
+        "Reacciona a tu propio post con 👍 tras publicarlo."
+    ),
+    "✅ ¿Cómo subo de nivel?": (
+        "Apoya a otros, cumple las normas, y mantente activo.\n"
+        "Los miembros con buen historial reciben reconocimiento y acceso a funciones exclusivas."
+    ),
 }
-
-# Reacción y tiempo
-MAX_MENSAJES_RECIENTES = 20
-INACTIVITY_TIMEOUT = 1800  # 30 minutos
