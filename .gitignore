@@ -1,2 +1,6 @@
+__pycache__/
+.env
 state.json
-*.env
+.DS_Store
+venv/
+env/
