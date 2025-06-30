@@ -1,5 +1,5 @@
 import logging
-import asyncio
+import sys
 from discord_bot import bot
 from config import TOKEN
 from events import on_ready, on_member, on_message
@@ -28,5 +28,13 @@ async def on_member_remove(member):
 async def on_message(message):
     await on_message.handle_on_message(bot, message)
 
+@bot.event
+async def on_error(event, *args, **kwargs):
+    logging.error(f"Error en evento {event}: {sys.exc_info()[1]}")
+
 if __name__ == "__main__":
-    bot.run(TOKEN)
+    try:
+        bot.run(TOKEN)
+    except Exception as e:
+        logging.critical(f"Error al iniciar bot: {str(e)}")
+        sys.exit(1)
