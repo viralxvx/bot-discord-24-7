@@ -1,7 +1,7 @@
 from discord.ui import View, Select, Interaction
-from .config import bot, CANAL_FALTAS, CANAL_LOGS
-from .state_management import save_state, amonestaciones, baneos_temporales, faltas_dict
-from .utils import registrar_log, actualizar_mensaje_faltas
+from config import bot, CANAL_FALTAS, CANAL_LOGS
+from state_management import amonestaciones, baneos_temporales, faltas_dict, save_state
+from utils import registrar_log, actualizar_mensaje_faltas
 
 class ReportMenu(View):
     def __init__(self, reportado, autor):
@@ -26,7 +26,7 @@ class ReportMenu(View):
         if self.reportado.id not in amonestaciones:
             amonestaciones[self.reportado.id] = []
         amonestaciones[self.reportado.id] = [
-            t for t in amonestaciones.get(self.reportado.id, []) if (ahora - t).total_seconds() < 7 * 86400
+            t for t in amonestaciones[self.reportado.id] if (ahora - t).total_seconds() < 7 * 86400
         ]
         amonestaciones[self.reportado.id].append(ahora)
         cantidad = len(amonestaciones[self.reportado.id])
@@ -36,49 +36,44 @@ class ReportMenu(View):
                 f"⚠️ **Amonestación por: {razon}**\n"
                 f"📌 3 amonestaciones = baneo 7 días"
             )
-        except discord.Forbidden:
+        except:
             pass
         logs_channel = discord.utils.get(self.autor.guild.text_channels, name=CANAL_LOGS)
         if logs_channel:
-            try:
-                await logs_channel.send(
-                    f"📜 **Reporte**\n"
-                    f"👤 Reportado: {self.reportado.mention}\n"
-                    f"📣 Por: {self.autor.mention}\n"
-                    f"📌 Infracción: `{razon}`\n"
-                    f"📆 Amonestaciones: `{cantidad}`"
-                )
-            except discord.Forbidden:
-                pass
+            await logs_channel.send(
+                f"📜 **Reporte**\n"
+                f"👤 Reportado: {self.reportado.mention}\n"
+                f"📣 Por: {self.autor.mention}\n"
+                f"📌 Infracción: `{razon}`\n"
+                f"📆 Amonestaciones: `{cantidad}`"
+            )
         role_baneado = discord.utils.get(self.autor.guild.roles, name="baneado")
-        if cantidad >= 6 and baneos_temporales.get(self.reportado.id):
+        if cantidad >= 6 and baneos_temporales[self.reportado.id]:
             try:
                 await self.reportado.send("⛔ **Expulsado permanentemente**")
-            except discord.Forbidden:
+            except:
                 pass
             try:
                 await self.autor.guild.kick(self.reportado, reason="Expulsado por reincidencia")
                 if canal_faltas:
-                    faltas_dict[self.reportado.id] = faltas_dict.get(self.reportado.id, {"estado": "Expulsado"})
                     faltas_dict[self.reportado.id]["estado"] = "Expulsado"
                     await actualizar_mensaje_faltas(canal_faltas, self.reportado, faltas_dict[self.reportado.id]["faltas"], faltas_dict[self.reportado.id]["aciertos"], "Expulsado")
             except discord.Forbidden:
                 pass
-        elif cantidad >= 3 and not baneos_temporales.get(self.reportado.id):
+        elif cantidad >= 3 and not baneos_temporales[self.reportado.id]:
             if role_baneado:
                 try:
                     await self.reportado.send("🚫 **Baneado por 7 días**")
                     await self.reportado.add_roles(role_baneado, reason="3 amonestaciones en 7 días")
                     baneos_temporales[self.reportado.id] = ahora
                     if canal_faltas:
-                        faltas_dict[self.reportado.id] = faltas_dict.get(self.reportado.id, {"estado": "Baneado"})
                         faltas_dict[self.reportado.id]["estado"] = "Baneado"
                         await actualizar_mensaje_faltas(canal_faltas, self.reportado, faltas_dict[self.reportado.id]["faltas"], faltas_dict[self.reportado.id]["aciertos"], "Baneado")
                 except discord.Forbidden:
                     pass
         await interaction.response.send_message("✅ **Reporte registrado**", ephemeral=True)
         await registrar_log(f"Reporte: {self.autor.name} → {self.reportado.name} ({razon})", categoria="reportes")
-        save_state(log=True)
+        save_state()
 
 class SupportMenu(View):
     def __init__(self, autor, query):
@@ -114,7 +109,7 @@ class SupportMenu(View):
                 await admin.send(f"🎫 **Ticket #{ticket_id}** por {self.autor.mention}: '{self.query}'")
                 await interaction.response.send_message(f"✅ **Ticket #{ticket_id} generado**", ephemeral=True)
                 await registrar_log(f"Ticket #{ticket_id}: {self.autor.name}", categoria="soporte")
-            except discord.Forbidden:
+            except Exception:
                 await interaction.response.send_message("❌ **Error al generar ticket**", ephemeral=True)
         elif self.select.values[0] == "Hablar con humano":
             admin = bot.get_user(int(ADMIN_ID))
@@ -125,11 +120,11 @@ class SupportMenu(View):
                 await self.autor.send(f"🔧 **Conectado con administrador**")
                 await admin.send(f"⚠️ **Soporte solicitado** por {self.autor.mention}: '{self.query}'")
                 await interaction.response.send_message("✅ **Admin notificado**", ephemeral=True)
-            except discord.Forbidden:
+            except Exception:
                 await interaction.response.send_message("❌ **Error al contactar admin**", ephemeral=True)
         elif self.select.values[0] == "Cerrar consulta":
             canal_soporte = discord.utils.get(bot.get_all_channels(), name=CANAL_SOPORTE)
-            if canal_soporte and user_id in active_conversations and "message_ids" in active_conversations[user_id]:
+            if user_id in active_conversations and "message_ids" in active_conversations[user_id]:
                 for msg_id in active_conversations[user_id]["message_ids"]:
                     try:
                         msg = await canal_soporte.fetch_message(msg_id)
@@ -143,5 +138,4 @@ class SupportMenu(View):
             await interaction.response.send_message(response, ephemeral=True)
             if user_id in active_conversations:
                 active_conversations[user_id]["message_ids"].append(interaction.message.id)
-                active_conversations[user_id]["last_time"] = datetime.datetime.now(datetime.timezone.utc)
-        save_state(log=True)
+                active_conversations[user_id]["last_time"] = datetime.datetime.now(datetime.timezone.utc))
