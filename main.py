@@ -1,44 +1,35 @@
-import logging
-import sys
-from discord_bot import bot
-from config import TOKEN
+import discord
+from discord.ext import commands
+from config import TOKEN, INTENTS, PREFIX
+from redis_database import connect_redis
+from state_management import load_state, save_state
+from tasks.clean_inactive import clean_inactive_conversations
+from tasks.limpiar_expulsados import limpiar_mensajes_expulsados
+from tasks.reset_faltas import resetear_faltas_diarias
+from tasks.verificar_inactividad import verificar_inactividad
+from events import on_ready, on_member, on_message
+from commands import permisos
 
-# Importar funciones específicas en lugar de módulos
-from events.on_ready import handle_on_ready
-from events.on_member import handle_member_join, handle_member_remove
-from events.on_message import handle_on_message
+# Iniciar bot
+bot = commands.Bot(command_prefix=PREFIX, intents=INTENTS)
 
-# Configuración de logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+# Cargar eventos
+bot.event(on_ready.on_ready(bot))
+bot.event(on_member.on_member_join(bot))
+bot.event(on_message.on_message(bot))
 
-# Registrar eventos
-@bot.event
-async def on_ready():
-    await handle_on_ready(bot)
+# Cargar comandos
+bot.add_command(permisos.permiso)
 
-@bot.event
-async def on_member_join(member):
-    await handle_member_join(member)
+# Cargar tareas programadas
+verificar_inactividad.start(bot)
+resetear_faltas_diarias.start(bot)
+clean_inactive_conversations.start(bot)
+limpiar_mensajes_expulsados.start(bot)
 
-@bot.event
-async def on_member_remove(member):
-    await handle_member_remove(member)
+# Iniciar conexión Redis y cargar estado
+connect_redis()
+load_state()
 
-@bot.event
-async def on_message(message):
-    await handle_on_message(bot, message)
-
-@bot.event
-async def on_error(event, *args, **kwargs):
-    logging.error(f"Error en evento {event}: {sys.exc_info()[1]}")
-
-if __name__ == "__main__":
-    try:
-        bot.run(TOKEN)
-    except Exception as e:
-        logging.critical(f"Error al iniciar bot: {str(e)}")
-        sys.exit(1)
+# Ejecutar bot
+bot.run(TOKEN)
