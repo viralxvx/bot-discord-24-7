@@ -1,27 +1,26 @@
-import discord
-from discord.ext import tasks
-import datetime
-from discord_bot import bot
-from config import CANAL_FALTAS
-from state_management import baneos_temporales, faltas_dict, save_state
+# tasks/limpiar_expulsados.py
 
-@tasks.loop(hours=24)
+import asyncio
+from discord.ext import tasks
+from discord_bot import bot
+from config import CANAL_SOPORTE
+
+@tasks.loop(hours=1)
 async def limpiar_mensajes_expulsados():
-    canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
-    if not canal_faltas:
+    await bot.wait_until_ready()
+    canal_soporte = None
+
+    for guild in bot.guilds:
+        canal_soporte = discord.utils.get(guild.text_channels, name=CANAL_SOPORTE)
+        if canal_soporte:
+            break
+
+    if not canal_soporte:
         return
-        
-    ahora = datetime.datetime.now(datetime.timezone.utc)
-    for user_id, data in list(faltas_dict.items()):
-        if data.get("estado") == "Expulsado" and baneos_temporales.get(user_id) and (ahora - baneos_temporales[user_id]).days >= 7:
-            mensaje_id = data.get("mensaje_id")
-            if mensaje_id:
-                try:
-                    mensaje = await canal_faltas.fetch_message(mensaje_id)
-                    await mensaje.delete()
-                except discord.NotFound:
-                    pass  # Mensaje ya eliminado
-                except discord.Forbidden:
-                    pass  # Sin permisos
-                del faltas_dict[user_id]
-    save_state()
+
+    async for message in canal_soporte.history(limit=100):
+        if message.author not in message.guild.members:
+            try:
+                await message.delete()
+            except:
+                pass
