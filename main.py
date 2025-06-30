@@ -139,7 +139,7 @@ async def on_ready():
                                 "1. **Menciona a un usuario** (ej. @Sharon) para reportar una infracción.\n"
                                 "2. **Selecciona la infracción** del menú que aparecerá. ✅\n"
                                 "3. Usa `!permiso <días>` para solicitar un **permiso de inactividad** (máx. 7 días).\n\n"
-                                "El bot registrará el reporte en #📝logs."
+                                "El bot registrará el reporte en #logs."
                             )
                             await publicar_mensaje_unico(channel, content, pinned=True)
                             procesos_exitosos.append(f"Publicado #{CANAL_REPORTES}")
@@ -221,9 +221,9 @@ async def on_member_join(member):
                     "🏆 Mira las victorias\n"
                     "♟ Estudia las estrategias\n"
                     "🏋 Luego solicita ayuda para tu primer post.\n\n"
-                    "📤 **Revisa tu estado** en #📤faltas para mantenerte al día.\n"
-                    "🚫 **Mensajes repetidos** serán eliminados en todos los canales (excepto #📝logs).\n"
-                    "⏳ Usa `!permiso <días>` en #⛔reporte-de-incumplimiento para pausar la obligación de publicar (máx. 7 días)."
+                    "📤 **Revisa tu estado** en #{CANAL_FALTAS} para mantenerte al día.\n"
+                    "🚫 **Mensajes repetidos** serán eliminados en todos los canales (excepto #logs).\n"
+                    "⏳ Usa `!permiso <días>` en #{CANAL_REPORTES} para pausar la obligación de publicar (máx. 7 días)."
                 )
                 await canal_presentate.send(mensaje)
                 logging.info(f"Mensaje de bienvenida enviado en {canal_presentate.name}")
