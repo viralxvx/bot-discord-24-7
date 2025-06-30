@@ -1,28 +1,24 @@
-async def actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, estado):
-    try:
-        calificacion, barra_visual = await calcular_calificacion(faltas)
-        contenido = (
-            f"👤 **Usuario**: {miembro.mention}\n"
-            f"📊 **Faltas en #🧵go-viral**: {faltas} {'👻' if faltas > 0 else ''}\n"
-            f"✅ **Aciertos**: {aciertos}\n"
-            f"📈 **Calificación**: {barra_visual}\n"
-            f"🚨 **Estado de Inactividad**: {estado}\n"
-        )
-        mensaje_id = faltas_dict[miembro.id]["mensaje_id"]
-        if mensaje_id:
-            try:
-                mensaje = await canal_faltas.fetch_message(mensaje_id)
-                if mensaje.content != contenido:
-                    await mensaje.edit(content=contenido)
-            except discord.NotFound:
-                # El mensaje fue eliminado, crear uno nuevo
-                mensaje = await canal_faltas.send(contenido)
-                faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
-            except discord.Forbidden:
-                pass
-        else:
-            mensaje = await canal_faltas.send(contenido)
-            faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
-        save_state()
-    except Exception as e:
-        print(f"Error actualizando mensaje faltas: {str(e)}")
+import datetime
+import re
+import discord
+
+def is_valid_x_url(url: str) -> bool:
+    """Valida si la URL cumple el patrón esperado de https://x.com/usuario/status/id"""
+    pattern = r"https://x\.com/[^/]+/status/\d+"
+    return bool(re.match(pattern, url))
+
+def normalize_message(content: str) -> str:
+    """Normaliza un mensaje para comparaciones (quita espacios y pasa a minúsculas)"""
+    return content.strip().lower()
+
+def get_current_utc_time():
+    """Devuelve la fecha y hora actual en UTC"""
+    return datetime.datetime.now(datetime.timezone.utc)
+
+def mention_user(user: discord.User) -> str:
+    """Devuelve la mención de un usuario"""
+    return user.mention
+
+def format_ticket_id(counter: int) -> str:
+    """Formatea el ID del ticket con ceros a la izquierda"""
+    return f"ticket-{counter:03d}"
