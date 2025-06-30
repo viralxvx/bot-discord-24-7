@@ -13,10 +13,12 @@ from config import (
 )
 from state_management import faq_data, faltas_dict
 from utils import publicar_mensaje_unico, batch_log, registrar_log
-from tasks import (
-    verificar_inactividad, resetear_faltas_diarias,
-    clean_inactive_conversations, limpiar_mensajes_expulsados
-)
+
+# Importación corregida de las tareas
+from tasks.verificar_inactividad import verificar_inactividad
+from tasks.reset_faltas import resetear_faltas_diarias
+from tasks.clean_inactive import clean_inactive_conversations
+from tasks.limpiar_expulsados import limpiar_mensajes_expulsados
 
 async def handle_on_ready(bot):
     try:
