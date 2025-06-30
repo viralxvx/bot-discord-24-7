@@ -1,3 +1,4 @@
+import discord
 from discord.ext import tasks
 import datetime
 from discord_bot import bot
@@ -18,7 +19,9 @@ async def limpiar_mensajes_expulsados():
                 try:
                     mensaje = await canal_faltas.fetch_message(mensaje_id)
                     await mensaje.delete()
-                except:
-                    pass
+                except discord.NotFound:
+                    pass  # Mensaje ya eliminado
+                except discord.Forbidden:
+                    pass  # Sin permisos
                 del faltas_dict[user_id]
     save_state()
