@@ -1,3 +1,4 @@
+import discord
 from discord.ext import tasks
 import datetime
 from discord_bot import bot
@@ -19,7 +20,9 @@ async def clean_inactive_conversations():
                 try:
                     msg = await canal_soporte.fetch_message(msg_id)
                     await msg.delete()
-                except:
-                    pass
+                except discord.NotFound:
+                    pass  # Mensaje ya eliminado
+                except discord.Forbidden:
+                    pass  # Sin permisos
             del active_conversations[user_id]
     save_state()
