@@ -1,4 +1,3 @@
-from discord import TextChannel
 import re
 import asyncio
 from datetime import datetime
@@ -51,7 +50,6 @@ def calcular_calificacion(faltas):
     return porcentaje, f"{barra_visual} {porcentaje:.2f}%"
 
 async def actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, estado):
-    session = Session()
     try:
         calificacion, barra_visual = calcular_calificacion(faltas)
         contenido = (
@@ -67,40 +65,55 @@ async def actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, est
                 mensaje = await canal_faltas.fetch_message(mensaje_id)
                 if mensaje.content != contenido:
                     await mensaje.edit(content=contenido)
-            except discord.NotFound:
-                mensaje = None
+            except discord.errors.NotFound:
                 mensaje = await canal_faltas.send(contenido)
                 faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
         else:
             mensaje = await canal_faltas.send(contenido)
             faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
-        save_state(log=True)
-    except Exception as e:
-        print(f"Error en actualizar_mensaje_faltas: {e}")
-    finally:
-        session.close()
+    except Exception:
+        pass
 
 async def registrar_log(texto, categoria="general"):
     canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
     if canal_log and texto:
         try:
-            texto = texto[:MAX_LOG_LENGTH] + "..." if len(texto) > MAX_LOG_LENGTH else texto
-            await canal_log.send(f"[{categoria.upper()}] {texto}")
-            await asyncio.sleep(1)
-        except discord.errors.HTTPException as e:
-            if e.status == 429:
-                await asyncio.sleep(e.retry_after)
-            else:
-                print(f"Error en registrar_log: {e}")
+            # Acortar texto si es demasiado largo
+            if len(texto) > MAX_LOG_LENGTH:
+                texto = texto[:MAX_LOG_LENGTH] + "..."
+                
+            # Formato compacto de timestamp
+            timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%H:%M:%S')
+            await canal_log.send(f"[{timestamp}] [{categoria.upper()}] {texto}")
+        except:
+            pass
 
-async def publicar_mensaje_unico(canal: TextChannel, contenido, pinned=False):
-    if not canal:
-        return None
+async def batch_log(messages):
+    """Envía logs en batches con delay para evitar rate limiting"""
+    canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
+    if not canal_log:
+        return
+        
+    for batch in messages:
+        if not batch:
+            continue
+            
+        # Combinar múltiples mensajes en uno solo
+        combined = "\n".join(batch)
+        try:
+            await canal_log.send(combined)
+        except:
+            pass
+        
+        # Esperar antes del próximo batch
+        await asyncio.sleep(LOG_BATCH_DELAY)
+
+async def publicar_mensaje_unico(canal, contenido, pinned=False):
     try:
         contenido_normalizado = contenido.strip().lower()
         mensajes_vistos = set()
         mensajes_a_eliminar = []
-        async for msg in canal.history(limit=100):
+        async for msg in canal.history(limit=None):
             msg_normalizado = msg.content.strip().lower()
             if msg.author == bot.user:
                 if msg_normalizado == contenido_normalizado or msg_normalizado in mensajes_vistos:
@@ -116,6 +129,5 @@ async def publicar_mensaje_unico(canal: TextChannel, contenido, pinned=False):
         if pinned:
             await mensaje.pin()
         return mensaje
-    except Exception as e:
-        print(f"Error en publicar_mensaje_unico: {e}")
+    except:
         return None
