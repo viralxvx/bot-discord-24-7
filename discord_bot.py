@@ -19,8 +19,8 @@ bot.event(on_member.on_member_join)
 bot.event(on_member.on_member_remove)
 bot.event(on_message.on_message)
 
-# Registrar comandos
-bot.add_command(permisos.permiso)
+# Registrar el cog permisos
+bot.add_cog(permisos.Permisos(bot))
 
 # Iniciar tareas programadas
 @bot.event
