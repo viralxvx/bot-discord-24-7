@@ -1,0 +1,19 @@
+# handlers/logs.py
+
+import discord
+import datetime
+from discord_bot import bot
+from config import CANAL_LOGS  # Nombre del canal de logs
+
+async def registrar_log(mensaje: str, categoria: str = "general"):
+    """Envía un mensaje de log al canal de logs configurado."""
+    canal_logs = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
+    if canal_logs:
+        timestamp = datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        contenido = f"[{timestamp}] [{categoria.upper()}] {mensaje}"
+        try:
+            await canal_logs.send(contenido)
+        except Exception as e:
+            print(f"Error enviando log al canal: {e}")
+    else:
+        print(f"No se encontró el canal de logs '{CANAL_LOGS}'. Log: {mensaje}")
