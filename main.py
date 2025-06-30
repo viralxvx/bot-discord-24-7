@@ -31,7 +31,7 @@ ADMIN_ID = os.environ.get("ADMIN_ID", "1174775323649392844")
 INACTIVITY_TIMEOUT = 300  # 5 minutos en segundos
 MAX_MENSAJES_RECIENTES = 10  # Número máximo de mensajes recientes a rastrear por canal
 MAX_LOG_LENGTH = 500  # Longitud máxima para mensajes de log
-LOG_BATCH_DELAY = 1.0  # Delay entre batches de logs (segundos)
+LOG_BATCH_DELAY = 2.0  # Aumentado a 2 segundos para evitar rate limits
 
 intents = discord.Intents.all()
 intents.members = True
@@ -39,6 +39,8 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Configuración de la base de datos PostgreSQL
+if "DATABASE_URL" not in os.environ:
+    raise Exception("Error: La variable de entorno DATABASE_URL no está configurada. Configúrala en Railway.")
 DATABASE_URL = os.environ["DATABASE_URL"]
 engine = create_engine(DATABASE_URL)
 Base = declarative_base()
@@ -201,10 +203,14 @@ async def registrar_log(texto, categoria="general"):
             # Acortar texto si es demasiado largo
             if len(texto) > MAX_LOG_LENGTH:
                 texto = texto[:MAX_LOG_LENGTH] + "..."
-                
+            
             # Formato compacto de timestamp
             timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%H:%M:%S')
             await canal_log.send(f"[{timestamp}] [{categoria.upper()}] {texto}")
+        except discord.errors.HTTPException as e:
+            if e.status == 429:
+                await asyncio.sleep(5)  # Pausa adicional de 5 segundos para manejar rate limit
+                await registrar_log(texto, categoria)  # Reintento
         except:
             pass
 
@@ -213,20 +219,17 @@ async def batch_log(messages):
     canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
     if not canal_log:
         return
-        
+    
     for batch in messages:
         if not batch:
             continue
-            
-        # Combinar múltiples mensajes en uno solo
-        combined = "\n".join(batch)
+        # Limitar a 1 mensaje por batch para evitar exceso
+        combined = "\n".join(batch[:1])  # Enviar solo el primer mensaje del batch
         try:
             await canal_log.send(combined)
         except:
             pass
-        
-        # Esperar antes del próximo batch
-        await asyncio.sleep(LOG_BATCH_DELAY)
+        await asyncio.sleep(LOG_BATCH_DELAY)  # Esperar 2 segundos entre envíos
 
 async def verificar_historial_repetidos():
     pass  # Eliminado para optimizar inicio
@@ -291,14 +294,15 @@ async def on_ready():
                 mensaje_sistema = await canal_faltas.send(MENSAJE_ACTUALIZACION_SISTEMA)
             procesos_exitosos.append("Mensaje sistema faltas")
             
+            # Solo inicializar faltas para nuevos miembros
             for guild in bot.guilds:
                 for member in guild.members:
                     if member.bot:
                         continue
                     if member.id not in faltas_dict:
                         faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
-                    await actualizar_mensaje_faltas(canal_faltas, member, faltas_dict[member.id]["faltas"], faltas_dict[member.id]["aciertos"], faltas_dict[member.id]["estado"])
-            procesos_exitosos.append(f"Actualizados {len(guild.members)} miembros")
+                        await actualizar_mensaje_faltas(canal_faltas, member, 0, 0, "OK")
+                procesos_exitosos.append(f"Inicializados {sum(1 for m in guild.members if m.id not in faltas_dict)} nuevos miembros")
         except:
             add_log("Error en canal faltas", "error")
     
