@@ -1,7 +1,6 @@
-# discord_bot.py
 import discord
 from discord.ext import commands
-from config import TOKEN, CANAL_OBJETIVO, ADMIN_ID  # otras constantes
+from config import TOKEN
 
 intents = discord.Intents.all()
 intents.members = True
