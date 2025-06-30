@@ -14,8 +14,8 @@ from discord import SelectOption, Interaction
 import sys
 from sqlalchemy import create_engine, Column, String, Integer, JSON, DateTime
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from waitress import serve  # Reemplazando app.run() para compatibilidad con Railway
+from sqlalchemy.orm import sessionmaker, scoped_session
+import time
 
 # Configuración del bot
 TOKEN = os.environ["TOKEN"]
@@ -31,19 +31,34 @@ CANAL_FALTAS = "📤faltas"
 ADMIN_ID = os.environ.get("ADMIN_ID", "1174775323649392844")
 INACTIVITY_TIMEOUT = 300  # 5 minutos en segundos
 MAX_MENSAJES_RECIENTES = 10  # Número máximo de mensajes recientes a rastrear por canal
-MAX_LOG_LENGTH = 500  # Longitud máxima para mensajes de log
+MAX_LOG_LENGTH = 1900  # Longitud máxima para mensajes de log (límite de Discord)
+SAVE_STATE_DELAY = 5  # Retraso mínimo entre guardados de estado en segundos
+last_save_time = 0  # Variable para controlar la frecuencia de guardado
 
 intents = discord.Intents.all()
 intents.members = True
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Configuración de la base de datos PostgreSQL
+# Configuración de la base de datos PostgreSQL con manejo de reconexión
 if "DATABASE_URL" not in os.environ:
     raise Exception("Error: La variable de entorno DATABASE_URL no está configurada. Configúrala en Railway.")
 DATABASE_URL = os.environ["DATABASE_URL"]
-engine = create_engine(DATABASE_URL)
+if not DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgres://")
+if "?sslmode" not in DATABASE_URL:
+    DATABASE_URL += "?sslmode=require"
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=5,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_pre_ping=True,  # Verifica la conexión antes de usarla
+    connect_args={'connect_timeout': 10}  # Timeout de conexión
+)
 Base = declarative_base()
+session_factory = sessionmaker(bind=engine)
+Session = scoped_session(session_factory)  # Sesiones thread-safe
 
 class State(Base):
     __tablename__ = "bot_state"
@@ -59,7 +74,6 @@ class State(Base):
     mensajes_recientes = Column(JSON)
 
 Base.metadata.create_all(engine)
-Session = sessionmaker(bind=engine)
 
 # Estado global (cargado desde la base de datos)
 ultima_publicacion_dict = {}
@@ -75,53 +89,63 @@ mensajes_recientes = {}
 def load_state():
     global ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, ticket_counter, active_conversations, faq_data, faltas_dict, mensajes_recientes
     session = Session()
-    state = session.query(State).first()
-    if state:
-        ultima_publicacion_dict = {int(k): datetime.datetime.fromisoformat(v) for k, v in state.ultima_publicacion_dict.items()} if state.ultima_publicacion_dict else {}
-        amonestaciones = {int(k): [datetime.datetime.fromisoformat(t) for t in v] for k, v in state.amonestaciones.items()} if state.amonestaciones else {}
-        baneos_temporales = {int(k): datetime.datetime.fromisoformat(v) if v else None for k, v in state.baneos_temporales.items()} if state.baneos_temporales else {}
-        permisos_inactividad = {int(k): {"inicio": datetime.datetime.fromisoformat(v["inicio"]), "duracion": v["duracion"]} if v else None for k, v in state.permisos_inactividad.items()} if state.permisos_inactividad else {}
-        ticket_counter = state.ticket_counter or 0
-        active_conversations = state.active_conversations or {}
-        faq_data = state.faq_data or {}
-        faltas_dict = {int(k): v for k, v in state.faltas_dict.items()} if state.faltas_dict else {}
-        mensajes_recientes = {int(k): v for k, v in state.mensajes_recientes.items()} if state.mensajes_recientes else {}
-    else:
-        # Valores por defecto si no hay estado
-        ultima_publicacion_dict = {}
-        amonestaciones = {}
-        baneos_temporales = {}
-        permisos_inactividad = {}
-        ticket_counter = 0
-        active_conversations = {}
-        faq_data = {}
-        faltas_dict = {}
-        mensajes_recientes = {}
-    session.close()
+    try:
+        state = session.query(State).first()
+        if state:
+            ultima_publicacion_dict = {int(k): datetime.datetime.fromisoformat(v) for k, v in state.ultima_publicacion_dict.items()} if state.ultima_publicacion_dict else {}
+            amonestaciones = {int(k): [datetime.datetime.fromisoformat(t) for t in v] for k, v in state.amonestaciones.items()} if state.amonestaciones else {}
+            baneos_temporales = {int(k): datetime.datetime.fromisoformat(v) if v else None for k, v in state.baneos_temporales.items()} if state.baneos_temporales else {}
+            permisos_inactividad = {int(k): {"inicio": datetime.datetime.fromisoformat(v["inicio"]), "duracion": v["duracion"]} if v else None for k, v in state.permisos_inactividad.items()} if state.permisos_inactividad else {}
+            ticket_counter = state.ticket_counter or 0
+            active_conversations = state.active_conversations or {}
+            faq_data = state.faq_data or {}
+            faltas_dict = {int(k): v for k, v in state.faltas_dict.items()} if state.faltas_dict else {}
+            mensajes_recientes = {int(k): v for k, v in state.mensajes_recientes.items()} if state.mensajes_recientes else {}
+        else:
+            # Valores por defecto si no hay estado
+            ultima_publicacion_dict = {}
+            amonestaciones = {}
+            baneos_temporales = {}
+            permisos_inactividad = {}
+            ticket_counter = 0
+            active_conversations = {}
+            faq_data = {}
+            faltas_dict = {}
+            mensajes_recientes = {}
+    finally:
+        session.close()
 
-def save_state():
+def save_state(log=False):
+    global last_save_time
+    current_time = time.time()
+    if current_time - last_save_time < SAVE_STATE_DELAY:
+        return  # Evitar guardados frecuentes
     session = Session()
-    state = session.query(State).first() or State(id="global")
-    state.ultima_publicacion_dict = {str(k): v.isoformat() for k, v in ultima_publicacion_dict.items()}
-    state.amonestaciones = {str(k): [t.isoformat() for t in v] for k, v in amonestaciones.items()}
-    state.baneos_temporales = {str(k): v.isoformat() if v else None for k, v in baneos_temporales.items()}
-    state.permisos_inactividad = {str(k): {"inicio": v["inicio"].isoformat(), "duracion": v["duracion"]} if v else None for k, v in permisos_inactividad.items()}
-    state.ticket_counter = ticket_counter
-    state.active_conversations = active_conversations
-    state.faq_data = faq_data
-    state.faltas_dict = {
-        str(k): {
-            "faltas": v["faltas"],
-            "aciertos": v["aciertos"],
-            "estado": v["estado"],
-            "mensaje_id": v["mensaje_id"],
-            "ultima_falta_time": v["ultima_falta_time"].isoformat() if v["ultima_falta_time"] else None
-        } for k, v in faltas_dict.items()
-    }
-    state.mensajes_recientes = {str(k): v for k, v in mensajes_recientes.items()}
-    session.commit()
-    session.close()
-    asyncio.create_task(registrar_log("Estado guardado correctamente en la base de datos", categoria="estado"))
+    try:
+        state = session.query(State).first() or State(id="global")
+        state.ultima_publicacion_dict = {str(k): v.isoformat() for k, v in ultima_publicacion_dict.items()}
+        state.amonestaciones = {str(k): [t.isoformat() for t in v] for k, v in amonestaciones.items()}
+        state.baneos_temporales = {str(k): v.isoformat() if v else None for k, v in baneos_temporales.items()}
+        state.permisos_inactividad = {str(k): {"inicio": v["inicio"].isoformat(), "duracion": v["duracion"]} if v else None for k, v in permisos_inactividad.items()}
+        state.ticket_counter = ticket_counter
+        state.active_conversations = active_conversations
+        state.faq_data = faq_data
+        state.faltas_dict = {
+            str(k): {
+                "faltas": v["faltas"],
+                "aciertos": v["aciertos"],
+                "estado": v["estado"],
+                "mensaje_id": v["mensaje_id"],
+                "ultima_falta_time": v["ultima_falta_time"].isoformat() if v["ultima_falta_time"] else None
+            } for k, v in faltas_dict.items()
+        }
+        state.mensajes_recientes = {str(k): v for k, v in mensajes_recientes.items()}
+        session.commit()
+        last_save_time = current_time
+        if log:
+            asyncio.create_task(registrar_log("Estado guardado correctamente en la base de datos", categoria="estado"))
+    finally:
+        session.close()
 
 # Mensajes de normas y anuncios
 MENSAJE_NORMAS = (
@@ -171,6 +195,7 @@ def calcular_calificacion(faltas):
     return porcentaje, f"{barra_visual} {porcentaje:.2f}%"
 
 async def actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, estado):
+    session = Session()
     try:
         calificacion, barra_visual = calcular_calificacion(faltas)
         contenido = (
@@ -193,9 +218,11 @@ async def actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, est
         else:
             mensaje = await canal_faltas.send(contenido)
             faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
-        save_state()
+        save_state(log=True)
     except Exception as e:
         print(f"Error en actualizar_mensaje_faltas: {e}")
+    finally:
+        session.close()
 
 async def registrar_log(texto, categoria="general"):
     canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
@@ -203,8 +230,12 @@ async def registrar_log(texto, categoria="general"):
         try:
             texto = texto[:MAX_LOG_LENGTH] + "..." if len(texto) > MAX_LOG_LENGTH else texto
             await canal_log.send(f"[{categoria.upper()}] {texto}")
-        except:
-            pass
+            await asyncio.sleep(1)  # Retraso de 1 segundo para respetar límites de tasa
+        except discord.errors.HTTPException as e:
+            if e.status == 429:
+                await asyncio.sleep(e.retry_after)  # Esperar el tiempo sugerido por Discord
+            else:
+                print(f"Error en registrar_log: {e}")
 
 async def verificar_historial_repetidos():
     pass  # Eliminado para optimizar inicio
@@ -252,7 +283,7 @@ async def on_ready():
         resetear_faltas_diarias.start()
     
     # Lista para acumular logs
-    log_text = "Bot iniciado"
+    log_text = ["Bot iniciado"]
     procesos_exitosos = []
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     if canal_faltas:
@@ -269,17 +300,16 @@ async def on_ready():
                 mensaje_sistema = await canal_faltas.send(MENSAJE_ACTUALIZACION_SISTEMA)
             procesos_exitosos.append("Mensaje sistema faltas")
             
-            # Solo inicializar faltas para nuevos miembros
+            # Inicializar solo para un miembro de ejemplo (o ninguno) para evitar rate limits
             for guild in bot.guilds:
-                for member in guild.members:
-                    if member.bot:
-                        continue
-                    if member.id not in faltas_dict:
-                        faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
-                        await actualizar_mensaje_faltas(canal_faltas, member, 0, 0, "OK")
-                procesos_exitosos.append(f"Inicializados {sum(1 for m in guild.members if m.id not in faltas_dict)} nuevos miembros")
+                sample_member = next((m for m in guild.members if not m.bot), None)
+                if sample_member and sample_member.id not in faltas_dict:
+                    faltas_dict[sample_member.id] = {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
+                    await actualizar_mensaje_faltas(canal_faltas, sample_member, 0, 0, "OK")
+                    break  # Limitar a un solo miembro
+            procesos_exitosos.append("Inicialización de faltas para 1 miembro")
         except Exception as e:
-            log_text += f"\nError en canal faltas: {e}"
+            log_text.append(f"Error en canal faltas: {e}")
     
     canal_flujo = discord.utils.get(bot.get_all_channels(), name=CANAL_FLUJO_SOPORTE)
     if canal_flujo:
@@ -300,7 +330,7 @@ async def on_ready():
                         faq_data[question] = "\n".join(response)
             procesos_exitosos.append("Carga FAQ")
         except Exception as e:
-            log_text += f"\nError en carga FAQ: {e}"
+            log_text.append(f"Error en carga FAQ: {e}")
     if not faq_data:
         faq_data.update(FAQ_FALLBACK)
         procesos_exitosos.append("FAQ por defecto")
@@ -336,16 +366,16 @@ async def on_ready():
                     tasks.append(publicar_mensaje_unico(channel, MENSAJE_ANUNCIO_PERMISOS))
                     procesos_exitosos.append(f"Publicado #{CANAL_ANUNCIOS}")
             except Exception as e:
-                log_text += f"\nError en canal {channel.name}: {e}"
+                log_text.append(f"Error en canal {channel.name}: {e}")
     
     # Ejecutar tareas de publicación en paralelo
     await asyncio.gather(*tasks, return_exceptions=True)
     
-    # Registrar log consolidado
+    # Registrar log consolidado con retraso
     if procesos_exitosos:
-        log_text += f"\nProcesos completados: {', '.join(procesos_exitosos)}"
+        log_text.append(f"Procesos completados: {', '.join(procesos_exitosos)}")
     if log_text:
-        await registrar_log(log_text)
+        await registrar_log("\n".join(log_text))
 
 @bot.event
 async def on_member_join(member):
@@ -376,7 +406,7 @@ async def on_member_join(member):
         except discord.Forbidden:
             pass
     await registrar_log(f"👤 Nuevo miembro: {member.name}", categoria="miembros")
-    save_state()
+    save_state(log=True)
 
 @bot.command()
 async def permiso(ctx, dias: int):
@@ -396,7 +426,7 @@ async def permiso(ctx, dias: int):
     permisos_inactividad[ctx.author.id] = {"inicio": ahora, "duracion": dias}
     await ctx.send(f"✅ **Permiso otorgado** a {ctx.author.mention} por {dias} días")
     await registrar_log(f"Permiso: {ctx.author.name} por {dias}d", categoria="permisos")
-    save_state()
+    save_state(log=True)
 
 @tasks.loop(hours=24)
 async def verificar_inactividad():
@@ -467,7 +497,7 @@ async def verificar_inactividad():
             amonestaciones[user_id] = []
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, miembro, faltas_dict[user_id]["faltas"], aciertos, "OK")
-        save_state()
+        save_state(log=True)
 
 @tasks.loop(hours=24)
 async def resetear_faltas_diarias():
@@ -488,7 +518,7 @@ async def resetear_faltas_diarias():
                     )
                 except discord.Forbidden:
                     pass
-    save_state()
+    save_state(log=True)
 
 @tasks.loop(minutes=1)
 async def clean_inactive_conversations():
@@ -507,7 +537,7 @@ async def clean_inactive_conversations():
                 except:
                     pass
             del active_conversations[user_id]
-    save_state()
+    save_state(log=True)
 
 @tasks.loop(hours=24)
 async def limpiar_mensajes_expulsados():
@@ -525,7 +555,7 @@ async def limpiar_mensajes_expulsados():
                 except:
                     pass
                 del faltas_dict[user_id]
-    save_state()
+    save_state(log=True)
 
 class ReportMenu(View):
     def __init__(self, reportado, autor):
@@ -602,7 +632,7 @@ class ReportMenu(View):
                     pass
         await interaction.response.send_message("✅ **Reporte registrado**", ephemeral=True)
         await registrar_log(f"Reporte: {self.autor.name} → {self.reportado.name} ({razon})", categoria="reportes")
-        save_state()
+        save_state(log=True)
 
 class SupportMenu(View):
     def __init__(self, autor, query):
@@ -668,7 +698,7 @@ class SupportMenu(View):
             if user_id in active_conversations:
                 active_conversations[user_id]["message_ids"].append(interaction.message.id)
                 active_conversations[user_id]["last_time"] = datetime.datetime.now(datetime.timezone.utc)
-        save_state()
+        save_state(log=True)
 
 @bot.event
 async def on_message(message):
@@ -694,7 +724,7 @@ async def on_message(message):
             mensajes_recientes[canal_id].append(message.content)
             if len(mensajes_recientes[canal_id]) > MAX_MENSAJES_RECIENTES:
                 mensajes_recientes[canal_id].pop(0)
-            save_state()
+            save_state(log=True)
     
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     if message.author.id not in faltas_dict:
@@ -750,7 +780,7 @@ async def on_message(message):
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            save_state()
+            save_state(log=True)
             return
         url = urls[0].split('?')[0]
         url_pattern = r"https://x\.com/[^/]+/status/\d+"
@@ -770,7 +800,7 @@ async def on_message(message):
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            save_state()
+            save_state(log=True)
             return
         new_message = message
         mensajes = []
@@ -788,7 +818,7 @@ async def on_message(message):
             faltas_dict[message.author.id]["aciertos"] += 1
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            save_state()
+            save_state(log=True)
             return
         diferencia = ahora - ultima_publicacion.created_at.replace(tzinfo=None)
         publicaciones_despues = [m for m in mensajes if m.created_at > ultima_publicacion.created_at and m.author != message.author]
@@ -823,7 +853,7 @@ async def on_message(message):
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            save_state()
+            save_state(log=True)
             return
         if len(publicaciones_despues) < 1 and diferencia.total_seconds() < 86400:
             await new_message.delete()
@@ -841,7 +871,7 @@ async def on_message(message):
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            save_state()
+            save_state(log=True)
             return
         def check_reaccion_propia(reaction, user):
             return reaction.message.id == new_message.id and str(reaction.emoji) == "👍" and user == message.author
@@ -850,7 +880,7 @@ async def on_message(message):
             faltas_dict[message.author.id]["aciertos"] += 1
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            save_state()
+            save_state(log=True)
         except:
             await new_message.delete()
             faltas_dict[message.author.id]["faltas"] += 1
@@ -867,7 +897,7 @@ async def on_message(message):
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            save_state()
+            save_state(log=True)
             return
         ultima_publicacion_dict[message.author.id] = ahora
     elif message.channel and message.channel.name in [CANAL_NORMAS_GENERALES, CANAL_X_NORMAS] and not message.author.bot:
@@ -877,7 +907,7 @@ async def on_message(message):
                 f"📢 **Norma actualizada**: {message.channel.mention}"
             ))
     await bot.process_commands(message)
-    save_state()
+    save_state(log=True)
 
 @bot.event
 async def on_reaction_add(reaction, user):
@@ -906,7 +936,7 @@ async def on_reaction_add(reaction, user):
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, user, faltas_dict[user.id]["faltas"], faltas_dict[user.id]["aciertos"], faltas_dict[user.id]["estado"])
-            save_state()
+            save_state(log=True)
         elif str(reaction.emoji) == "🔥" and user == autor:
             await reaction.remove(user)
             faltas_dict[user.id]["faltas"] += 1
@@ -923,12 +953,12 @@ async def on_reaction_add(reaction, user):
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, user, faltas_dict[user.id]["faltas"], faltas_dict[user.id]["aciertos"], faltas_dict[user.id]["estado"])
-            save_state()
+            save_state(log=True)
 
 @bot.event
 async def on_member_remove(member):
     await registrar_log(f"👋 Miembro salió: {member.name}", categoria="miembros")
-    save_state()
+    save_state(log=True)
 
 app = Flask('')
 
@@ -950,15 +980,17 @@ def get_state():
     if api_key != os.environ.get("API_KEY", "your-secret-key"):
         return jsonify({"error": "Unauthorized"}), 401
     session = Session()
-    state = session.query(State).first() or {}
-    session.close()
-    return jsonify(state.faltas_dict if state else {})
+    try:
+        state = session.query(State).first() or {}
+        return jsonify(state.faltas_dict if state else {})
+    finally:
+        session.close()
 
 import atexit
-atexit.register(save_state)
+atexit.register(lambda: save_state(log=True))
 
 def run_webserver():
-    serve(app, host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
     t = Thread(target=run_webserver)
