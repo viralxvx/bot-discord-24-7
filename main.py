@@ -1,4 +1,4 @@
-from flask import Flask
+from flask import Flask, jsonify
 from threading import Thread
 import discord
 import re
@@ -6,6 +6,7 @@ import os
 import datetime
 import json
 import asyncio
+import threading
 from discord.ext import commands, tasks
 from collections import defaultdict
 from discord.ui import View, Select
@@ -376,7 +377,7 @@ async def on_ready():
     clean_inactive_conversations.start()
     limpiar_mensajes_expulsados.start()
     resetear_faltas_diarias.start()
-    
+
 @bot.event
 async def on_member_join(member):
     canal_presentate = discord.utils.get(member.guild.text_channels, name="👉preséntate")
@@ -934,15 +935,23 @@ app = Flask('')
 def home():
     return "El bot está corriendo!"
 
-def run():
-    app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
+@app.route('/health')
+def health():
+    return jsonify({
+        "status": "running",
+        "bot_ready": bot.is_ready(),
+        "last_ready": datetime.datetime.utcnow().isoformat()
+    })
 
 import atexit
 atexit.register(save_state)
 
-keep_alive()
-bot.run(TOKEN)
+if __name__ == '__main__':
+    from waitress import serve
+    
+    # Iniciar el bot en un hilo separado
+    bot_thread = threading.Thread(target=bot.run, args=(TOKEN,), daemon=True)
+    bot_thread.start()
+    
+    # Iniciar el servidor web con Waitress
+    serve(app, host="0.0.0.0", port=8080)
