@@ -1,88 +1,95 @@
+# utils.py
 import discord
 import asyncio
-import datetime
-from discord_bot import bot
 from config import CANAL_LOGS, MAX_LOG_LENGTH, LOG_BATCH_DELAY
-from state_management import save_state, faltas_dict
+from discord_bot import bot
+import logging
 
-async def calcular_calificacion(faltas):
-    porcentaje = max(0, 100 - faltas)
-    barras = int(porcentaje // 10)
-    barra_visual = "[" + "█" * barras + " " * (10 - barras) + "]"
-    return porcentaje, f"{barra_visual} {porcentaje:.2f}%"
-
-async def actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, estado):
+async def registrar_log(mensaje, categoria="bot"):
     try:
-        calificacion, barra_visual = await calcular_calificacion(faltas)
-        contenido = (
-            f"👤 **Usuario**: {miembro.mention}\n"
-            f"📊 **Faltas en #🧵go-viral**: {faltas} {'👻' if faltas > 0 else ''}\n"
-            f"✅ **Aciertos**: {aciertos}\n"
-            f"📈 **Calificación**: {barra_visual}\n"
-            f"🚨 **Estado de Inactividad**: {estado}\n"
-        )
-        mensaje_id = faltas_dict[miembro.id]["mensaje_id"]
-        if mensaje_id:
-            try:
-                mensaje = await canal_faltas.fetch_message(mensaje_id)
-                if mensaje.content != contenido:
-                    await mensaje.edit(content=contenido)
-            except discord.errors.NotFound:
-                mensaje = await canal_faltas.send(contenido)
-                faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
-        else:
-            mensaje = await canal_faltas.send(contenido)
-            faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
-        await save_state()
-    except Exception as e:
-        pass
-
-async def registrar_log(texto, categoria="general"):
-    canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
-    if canal_log and texto:
-        try:
-            if len(texto) > MAX_LOG_LENGTH:
-                texto = texto[:MAX_LOG_LENGTH] + "..."
+        canal_logs = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
+        if canal_logs:
             timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%H:%M:%S')
-            await canal_log.send(f"[{timestamp}] [{categoria.upper()}] {texto}")
-        except:
-            pass
-
-async def batch_log(messages):
-    canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
-    if not canal_log:
-        return
-        
-    for batch in messages:
-        if not batch:
-            continue
-        combined = "\n".join(batch)
-        try:
-            await canal_log.send(combined)
-        except:
-            pass
-        await asyncio.sleep(LOG_BATCH_DELAY)
+            await canal_logs.send(f"[{timestamp}] [{categoria.upper()}] {mensaje}")
+            logging.info(f"Log registrado en {CANAL_LOGS}: {mensaje}")
+        else:
+            logging.warning(f"Canal de logs {CANAL_LOGS} no encontrado")
+    except discord.Forbidden:
+        logging.error(f"Permisos insuficientes para enviar log en {CANAL_LOGS}")
+    except Exception as e:
+        logging.error(f"Error al registrar log: {str(e)}")
+        logging.error(traceback.format_exc())
 
 async def publicar_mensaje_unico(canal, contenido, pinned=False):
     try:
-        contenido_normalizado = contenido.strip().lower()
-        mensajes_vistos = set()
-        mensajes_a_eliminar = []
-        async for msg in canal.history(limit=None):
-            msg_normalizado = msg.content.strip().lower()
-            if msg.author == bot.user:
-                if msg_normalizado == contenido_normalizado or msg_normalizado in mensajes_vistos:
-                    mensajes_a_eliminar.append(msg)
-            if pinned and msg.pinned and msg.author == bot.user:
-                mensajes_a_eliminar.append(msg)
-        for msg in mensajes_a_eliminar:
-            try:
-                await msg.delete()
-            except:
-                pass
-        mensaje = await canal.send(contenido)
+        async for msg in canal.history(limit=100):
+            if msg.author == bot.user and msg.content == contenido:
+                if pinned and not msg.pinned:
+                    await msg.pin()
+                return msg
+        msg = await canal.send(contenido)
         if pinned:
-            await mensaje.pin()
-        return mensaje
-    except:
-        return None
+            await msg.pin()
+        logging.info(f"Mensaje publicado en {canal.name}")
+        return msg
+    except discord.Forbidden:
+        logging.error(f"Permisos insuficientes en {canal.name}")
+        await registrar_log(f"Permisos insuficientes en {canal.name}", categoria="error")
+    except Exception as e:
+        logging.error(f"Error publicando mensaje en {canal.name}: {str(e)}")
+        logging.error(traceback.format_exc())
+        await registrar_log(f"Error publicando en {canal.name}: {str(e)}", categoria="error")
+
+async def actualizar_mensaje_faltas(canal, member, faltas, aciertos, estado):
+    try:
+        mensaje_sistema = None
+        async for msg in canal.history(limit=100):
+            if msg.author == bot.user and msg.content.startswith("🚫 **FALTAS DE LOS USUARIOS**"):
+                mensaje_sistema = msg
+                break
+        contenido = (
+            f"🚫 **FALTAS DE LOS USUARIOS**\n\n"
+            f"**Usuario**: {member.mention}\n"
+            f"**Faltas**: {faltas}\n"
+            f"**Aciertos**: {aciertos}\n"
+            f"**Estado**: {estado}"
+        )
+        if mensaje_sistema:
+            await mensaje_sistema.edit(content=contenido)
+            logging.info(f"Mensaje de faltas editado en {canal.name} para {member.name}")
+        else:
+            mensaje_sistema = await canal.send(contenido)
+            logging.info(f"Mensaje de faltas enviado en {canal.name} para {member.name}")
+        return mensaje_sistema
+    except discord.Forbidden:
+        logging.error(f"Permisos insuficientes en {canal.name}")
+        await registrar_log(f"Permisos insuficientes en {canal.name}", categoria="error")
+    except Exception as e:
+        logging.error(f"Error actualizando mensaje de faltas en {canal.name}: {str(e)}")
+        logging.error(traceback.format_exc())
+        await registrar_log(f"Error actualizando mensaje de faltas en {canal.name}: {str(e)}", categoria="error")
+
+async def batch_log(log_batches):
+    try:
+        canal_logs = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
+        if not canal_logs:
+            logging.warning(f"Canal de logs {CANAL_LOGS} no encontrado")
+            return
+        
+        for batch in log_batches:
+            message = "\n".join(batch)
+            if len(message) > MAX_LOG_LENGTH:
+                messages = [message[i:i+MAX_LOG_LENGTH] for i in range(0, len(message), MAX_LOG_LENGTH)]
+                for msg in messages:
+                    await canal_logs.send(msg)
+                    logging.info(f"Lote de logs enviado a {CANAL_LOGS}")
+                    await asyncio.sleep(LOG_BATCH_DELAY)
+            else:
+                await canal_logs.send(message)
+                logging.info(f"Lote de logs enviado a {CANAL_LOGS}")
+                await asyncio.sleep(LOG_BATCH_DELAY)
+    except discord.Forbidden:
+        logging.error(f"Permisos insuficientes para enviar logs en {CANAL_LOGS}")
+    except Exception as e:
+        logging.error(f"Error al enviar logs en lote: {str(e)}")
+        logging.error(traceback.format_exc())
