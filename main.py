@@ -26,7 +26,7 @@ from views import ReportMenu, SupportMenu
 from message_handlers import on_message, on_reaction_add
 from utils import MENSAJE_NORMAS, MENSAJE_ANUNCIO_PERMISOS, MENSAJE_ACTUALIZACION_SISTEMA, FAQ_FALLBACK, calcular_calificacion, actualizar_mensaje_faltas, registrar_log, batch_log, publicar_mensaje_unico
 from app import app, run_webserver, keep_alive
-from state_management import ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, ticket_counter, active_conversations, faq_data, faltas_dict, mensajes_recientes, save_state
+from state_management import ultima_publication_dict, amonestaciones, baneos_temporales, permisos_inactividad, ticket_counter, active_conversations, faq_data, faltas_dict, mensajes_recientes, save_state
 
 # Estado persistente
 STATE_FILE = "state.json"
