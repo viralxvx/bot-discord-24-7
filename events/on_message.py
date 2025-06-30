@@ -14,10 +14,8 @@ from utils import (
     publicar_mensaje_unico
 )
 # Importaciones corregidas
-from handlers import (
-    go_viral, reporte_incumplimiento, 
-    soporte, normas_generales
-)
+from handlers import go_viral, soporte, normas_generales
+from handlers.report_menu import handle_reporte_message  # Importación directa
 
 async def handle_on_message(bot, message):
     # Manejo de mensajes repetidos
@@ -48,7 +46,7 @@ async def handle_on_message(bot, message):
             await go_viral.handle_go_viral_message(message)
             
         elif message.channel.name == CANAL_REPORTES and not message.author.bot:
-            await reporte_incumplimiento.handle_reporte_message(message)
+            await handle_reporte_message(message)  # Usar función importada directamente
             
         elif message.channel.name == CANAL_SOPORTE and not message.author.bot:
             await soporte.handle_soporte_message(message)
