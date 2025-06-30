@@ -1,7 +1,11 @@
+# state_management.py
+import os
 import json
 import datetime
 from collections import defaultdict
-from config import STATE_FILE
+
+# Usar /data para persistencia en Railway
+STATE_FILE = os.getenv("STATE_PATH", "/data/state.json")
 
 # Variables globales para el estado
 ultima_publicacion_dict = defaultdict(lambda: datetime.datetime.now(datetime.timezone.utc))
