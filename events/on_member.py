@@ -1,14 +1,16 @@
 import discord
-from config import CANAL_FALTAS
-from state_management import faltas_dict
-from utils import actualizar_mensaje_faltas, registrar_log
+from handlers.faltas import actualizar_mensaje_faltas
+from utils import registrar_log, faltas_dict
 
-async def handle_member_join(member):
-    try:
-        canal_presentate = discord.utils.get(member.guild.text_channels, name="👉preséntate")
-        canal_faltas = discord.utils.get(member.guild.text_channels, name=CANAL_FALTAS)
-        
-        if canal_presentate:
+CANAL_FALTAS = "📤faltas"
+CANAL_PRESENTATE = "👉preséntate"
+
+async def on_member_join(member):
+    canal_presentate = discord.utils.get(member.guild.text_channels, name=CANAL_PRESENTATE)
+    canal_faltas = discord.utils.get(member.guild.text_channels, name=CANAL_FALTAS)
+
+    if canal_presentate:
+        try:
             mensaje = (
                 f"👋 **¡Bienvenid@ a VX {member.mention}!**\n\n"
                 "**Sigue estos pasos**:\n"
@@ -22,18 +24,15 @@ async def handle_member_join(member):
                 "⏳ Usa `!permiso <días>` en #⛔reporte-de-incumplimiento para pausar la obligación de publicar (máx. 7 días)."
             )
             await canal_presentate.send(mensaje)
-                
-        if canal_faltas:
+        except discord.Forbidden:
+            pass
+
+    if canal_faltas:
+        try:
             if member.id not in faltas_dict:
                 faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
             await actualizar_mensaje_faltas(canal_faltas, member, 0, 0, "OK")
-                
-        await registrar_log(f"👤 Nuevo miembro: {member.name}", categoria="miembros")
-    except Exception as e:
-        print(f"Error en on_member_join: {str(e)}")
+        except discord.Forbidden:
+            pass
 
-async def handle_member_remove(member):
-    try:
-        await registrar_log(f"👋 Miembro salió: {member.name}", categoria="miembros")
-    except Exception as e:
-        print(f"Error en on_member_remove: {str(e)}")
+    await registrar_log(f"👤 Nuevo miembro: {member.name}", categoria="miembros")
