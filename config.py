@@ -10,6 +10,7 @@ CANAL_LOGS = "logs"  # Ajusta según el nombre exacto
 CANAL_FLUJO_SOPORTE = "soporte"  # Ajusta si es diferente
 MAX_LOG_LENGTH = 2000  # Longitud máxima para los mensajes de log en Discord
 LOG_BATCH_DELAY = 60  # Segundos entre envíos de lotes de logs
+INACTIVITY_TIMEOUT = 7  # Días de inactividad antes de registrar una falta
 
 MENSAJE_NORMAS = (
     "📜 **Normas Generales**\n\n"
