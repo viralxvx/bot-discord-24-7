@@ -147,11 +147,11 @@ async def load_state():
         logging.info("Cargando mensajes_recientes...")
         mensajes_recientes.clear()
         mensajes = redis_client.hgetall("mensajes_recientes")
-        for user_id, data in mensajes.items():
+        for channel_id, messages in mensajes.items():
             try:
-                mensajes_recientes[user_id] = json.loads(data)
+                mensajes_recientes[channel_id] = json.loads(messages)
             except json.JSONDecodeError as e:
-                logging.error(f"Error al parsear JSON en mensajes_recientes para user_id {user_id}: {data}, error: {str(e)}")
+                logging.error(f"Error al parsear JSON en mensajes_recientes para channel_id {channel_id}: {messages}, error: {str(e)}")
         logging.info(f"Cargadas {len(mensajes)} entradas de mensajes_recientes")
 
         logging.info("Estado cargado desde Redis correctamente")
@@ -210,7 +210,14 @@ async def save_state():
             redis_client.delete("permisos_inactividad")
             for user_id, data in permisos_inactividad.items():
                 if data:
-                    redis_client.hset("permisos_inactividad", user_id, json.dumps(data, ensure_ascii=False))
+                    # Convertir objetos datetime a cadenas antes de serializar
+                    serialized_data = {}
+                    for key, value in data.items():
+                        if isinstance(value, datetime.datetime):
+                            serialized_data[key] = value.isoformat()
+                        else:
+                            serialized_data[key] = value
+                    redis_client.hset("permisos_inactividad", user_id, json.dumps(serialized_data, ensure_ascii=False))
             logging.info(f"Guardadas {len(permisos_inactividad)} entradas en permisos_inactividad")
         except Exception as e:
             logging.error(f"Error guardando permisos_inactividad: {str(e)}")
@@ -256,7 +263,11 @@ async def save_state():
         try:
             redis_client.delete("faltas_dict")
             for user_id, data in faltas_dict.items():
-                redis_client.hset("faltas_dict", user_id, json.dumps(data, ensure_ascii=False))
+                # Convertir ultima_falta_time a cadena si existe
+                serialized_data = data.copy()
+                if serialized_data.get("ultima_falta_time"):
+                    serialized_data["ultima_falta_time"] = serialized_data["ultima_falta_time"].isoformat()
+                redis_client.hset("faltas_dict", user_id, json.dumps(serialized_data, ensure_ascii=False))
             logging.info(f"Guardadas {len(faltas_dict)} entradas en faltas_dict")
         except Exception as e:
             logging.error(f"Error guardando faltas_dict: {str(e)}")
@@ -267,8 +278,8 @@ async def save_state():
         logging.info("Guardando mensajes_recientes...")
         try:
             redis_client.delete("mensajes_recientes")
-            for user_id, messages in mensajes_recientes.items():
-                redis_client.hset("mensajes_recientes", user_id, json.dumps(messages, ensure_ascii=False))
+            for channel_id, messages in mensajes_recientes.items():
+                redis_client.hset("mensajes_recientes", channel_id, json.dumps(messages, ensure_ascii=False))
             logging.info(f"Guardadas {len(mensajes_recientes)} entradas en mensajes_recientes")
         except Exception as e:
             logging.error(f"Error guardando mensajes_recientes: {str(e)}")
