@@ -4,9 +4,9 @@ import os
 # Añadir el directorio actual al path para permitir importaciones absolutas
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from config import bot, engine, Session
+from config import engine, Session
 from models import Base
-from discord_bot import *
+from discord_bot import bot
 from commands import *
 from tasks import *
 from views import *
