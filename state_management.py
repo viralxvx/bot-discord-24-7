@@ -1,39 +1,46 @@
-from redis_database import save_state, load_state
+import asyncio
+import json
+from redis_database import redis_client
 
-# Claves para guardar distintos estados
-KEY_FALTAS = "bot:faltas_dict"
-KEY_AMONESTACIONES = "bot:amonestaciones"
-KEY_PERMISOS = "bot:permisos_inactividad"
-KEY_BANEOS = "bot:baneos_temporales"
-KEY_ULTIMA_PUBLICACION = "bot:ultima_publicacion_dict"
-KEY_ACTIVE_CONVERSATIONS = "bot:active_conversations"
-KEY_MENSAJES_RECIENTES = "bot:mensajes_recientes"
-KEY_TICKET_COUNTER = "bot:ticket_counter"
+# Prefijos para las keys en Redis
+ACTIVE_CONV_KEY = "active_conversations"
+FALTAS_DICT_KEY = "faltas_dict"
+ULTIMA_PUBLICACION_KEY = "ultima_publicacion_dict"
 
-def save_all_states(bot_state):
-    """
-    Guarda todos los estados en Redis usando el diccionario bot_state
-    """
-    save_state(KEY_FALTAS, bot_state.get("faltas_dict", {}))
-    save_state(KEY_AMONESTACIONES, bot_state.get("amonestaciones", {}))
-    save_state(KEY_PERMISOS, bot_state.get("permisos_inactividad", {}))
-    save_state(KEY_BANEOS, bot_state.get("baneos_temporales", {}))
-    save_state(KEY_ULTIMA_PUBLICACION, bot_state.get("ultima_publicacion_dict", {}))
-    save_state(KEY_ACTIVE_CONVERSATIONS, bot_state.get("active_conversations", {}))
-    save_state(KEY_MENSAJES_RECIENTES, bot_state.get("mensajes_recientes", {}))
-    save_state(KEY_TICKET_COUNTER, bot_state.get("ticket_counter", 0))
+async def save_state(key: str, data: dict):
+    """Guarda el estado serializado en Redis"""
+    try:
+        await redis_client.set(key, json.dumps(data))
+    except Exception as e:
+        print(f"Error guardando estado {key}: {e}")
 
-def load_all_states():
-    """
-    Carga todos los estados desde Redis y devuelve un diccionario con ellos
-    """
-    return {
-        "faltas_dict": load_state(KEY_FALTAS, {}),
-        "amonestaciones": load_state(KEY_AMONESTACIONES, {}),
-        "permisos_inactividad": load_state(KEY_PERMISOS, {}),
-        "baneos_temporales": load_state(KEY_BANEOS, {}),
-        "ultima_publicacion_dict": load_state(KEY_ULTIMA_PUBLICACION, {}),
-        "active_conversations": load_state(KEY_ACTIVE_CONVERSATIONS, {}),
-        "mensajes_recientes": load_state(KEY_MENSAJES_RECIENTES, {}),
-        "ticket_counter": load_state(KEY_TICKET_COUNTER, 0),
-    }
+async def load_state(key: str) -> dict:
+    """Carga el estado desde Redis, o devuelve dict vacío si no existe"""
+    try:
+        data = await redis_client.get(key)
+        if data:
+            return json.loads(data)
+        return {}
+    except Exception as e:
+        print(f"Error cargando estado {key}: {e}")
+        return {}
+
+# Funciones específicas para cada estado
+
+async def save_active_conversations(state: dict):
+    await save_state(ACTIVE_CONV_KEY, state)
+
+async def load_active_conversations() -> dict:
+    return await load_state(ACTIVE_CONV_KEY)
+
+async def save_faltas_dict(state: dict):
+    await save_state(FALTAS_DICT_KEY, state)
+
+async def load_faltas_dict() -> dict:
+    return await load_state(FALTAS_DICT_KEY)
+
+async def save_ultima_publicacion_dict(state: dict):
+    await save_state(ULTIMA_PUBLICACION_KEY, state)
+
+async def load_ultima_publicacion_dict() -> dict:
+    return await load_state(ULTIMA_PUBLICACION_KEY)
