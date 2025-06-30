@@ -1,7 +1,11 @@
-from discord.ui import View, Select, Interaction
-from config import bot, CANAL_FALTAS, CANAL_LOGS
-from state_management import amonestaciones, baneos_temporales, faltas_dict, save_state
-from utils import registrar_log, actualizar_mensaje_faltas
+import discord
+import datetime
+from discord.ui import View, Select
+from discord import SelectOption, Interaction
+from discord_bot import bot
+from config import CANAL_LOGS, CANAL_FALTAS, FAQ_FALLBACK
+from state_management import amonestaciones, baneos_temporales, save_state, faltas_dict, active_conversations, ticket_counter, faq_data
+from utils import actualizar_mensaje_faltas, registrar_log
 
 class ReportMenu(View):
     def __init__(self, reportado, autor):
@@ -23,13 +27,17 @@ class ReportMenu(View):
     async def select_callback(self, interaction: Interaction):
         razon = self.select.values[0].upper()
         ahora = datetime.datetime.now(datetime.timezone.utc)
+        
         if self.reportado.id not in amonestaciones:
             amonestaciones[self.reportado.id] = []
+            
         amonestaciones[self.reportado.id] = [
-            t for t in amonestaciones[self.reportado.id] if (ahora - t).total_seconds() < 7 * 86400
+            t for t in amonestaciones[self.reportado.id] 
+            if (ahora - t).total_seconds() < 7 * 86400
         ]
         amonestaciones[self.reportado.id].append(ahora)
         cantidad = len(amonestaciones[self.reportado.id])
+        
         canal_faltas = discord.utils.get(self.autor.guild.text_channels, name=CANAL_FALTAS)
         try:
             await self.reportado.send(
@@ -38,6 +46,7 @@ class ReportMenu(View):
             )
         except:
             pass
+            
         logs_channel = discord.utils.get(self.autor.guild.text_channels, name=CANAL_LOGS)
         if logs_channel:
             await logs_channel.send(
@@ -47,6 +56,7 @@ class ReportMenu(View):
                 f"📌 Infracción: `{razon}`\n"
                 f"📆 Amonestaciones: `{cantidad}`"
             )
+            
         role_baneado = discord.utils.get(self.autor.guild.roles, name="baneado")
         if cantidad >= 6 and baneos_temporales[self.reportado.id]:
             try:
@@ -60,6 +70,7 @@ class ReportMenu(View):
                     await actualizar_mensaje_faltas(canal_faltas, self.reportado, faltas_dict[self.reportado.id]["faltas"], faltas_dict[self.reportado.id]["aciertos"], "Expulsado")
             except discord.Forbidden:
                 pass
+                
         elif cantidad >= 3 and not baneos_temporales[self.reportado.id]:
             if role_baneado:
                 try:
@@ -71,6 +82,7 @@ class ReportMenu(View):
                         await actualizar_mensaje_faltas(canal_faltas, self.reportado, faltas_dict[self.reportado.id]["faltas"], faltas_dict[self.reportado.id]["aciertos"], "Baneado")
                 except discord.Forbidden:
                     pass
+                    
         await interaction.response.send_message("✅ **Reporte registrado**", ephemeral=True)
         await registrar_log(f"Reporte: {self.autor.name} → {self.reportado.name} ({razon})", categoria="reportes")
         save_state()
@@ -96,6 +108,7 @@ class SupportMenu(View):
 
     async def select_callback(self, interaction: Interaction):
         global ticket_counter, active_conversations
+        
         user_id = self.autor.id
         if self.select.values[0] == "Generar ticket":
             ticket_counter += 1
@@ -111,6 +124,7 @@ class SupportMenu(View):
                 await registrar_log(f"Ticket #{ticket_id}: {self.autor.name}", categoria="soporte")
             except Exception:
                 await interaction.response.send_message("❌ **Error al generar ticket**", ephemeral=True)
+                
         elif self.select.values[0] == "Hablar con humano":
             admin = bot.get_user(int(ADMIN_ID))
             if not admin:
@@ -122,7 +136,9 @@ class SupportMenu(View):
                 await interaction.response.send_message("✅ **Admin notificado**", ephemeral=True)
             except Exception:
                 await interaction.response.send_message("❌ **Error al contactar admin**", ephemeral=True)
+                
         elif self.select.values[0] == "Cerrar consulta":
+            from config import CANAL_SOPORTE
             canal_soporte = discord.utils.get(bot.get_all_channels(), name=CANAL_SOPORTE)
             if user_id in active_conversations and "message_ids" in active_conversations[user_id]:
                 for msg_id in active_conversations[user_id]["message_ids"]:
@@ -133,9 +149,12 @@ class SupportMenu(View):
                         pass
             del active_conversations[user_id]
             await interaction.response.send_message("✅ **Consulta cerrada**", ephemeral=True)
+            
         elif self.select.values[0] in ["✅ ¿Cómo funciona VX?", "✅ ¿Cómo publico mi post?", "✅ ¿Cómo subo de nivel?"]:
             response = faq_data.get(self.select.values[0], FAQ_FALLBACK.get(self.select.values[0], "No se encontró respuesta"))
             await interaction.response.send_message(response, ephemeral=True)
             if user_id in active_conversations:
                 active_conversations[user_id]["message_ids"].append(interaction.message.id)
-                active_conversations[user_id]["last_time"] = datetime.datetime.now(datetime.timezone.utc))
+                active_conversations[user_id]["last_time"] = datetime.datetime.now(datetime.timezone.utc)
+                
+        save_state()
