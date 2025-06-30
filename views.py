@@ -150,7 +150,6 @@ class SupportMenu(View):
             await interaction.response.send_message("✅ **Consulta cerrada**", ephemeral=True)
             
         elif self.select.values[0] in ["✅ ¿Cómo funciona VX?", "✅ ¿Cómo publico mi post?", "✅ ¿Cómo subo de nivel?"]:
-            # CORRECCIÓN APLICADA AQUÍ
             response = faq_data.get(self.select.values[0], FAQ_FALLBACK.get(self.select.values[0], "No se encontró respuesta"))
             await interaction.response.send_message(response, ephemeral=True)
             if user_id in active_conversations:
