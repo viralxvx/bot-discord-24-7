@@ -5,10 +5,11 @@ import datetime
 from discord.ext import tasks
 from config import CANAL_SOPORTE
 from redis_database import redis
-from discord_bot import bot
+import discord
 
 @tasks.loop(minutes=10)
 async def clean_inactive_conversations():
+    from discord_bot import bot  # Import dentro para evitar circular import
     await bot.wait_until_ready()
     canal_soporte = None
 
