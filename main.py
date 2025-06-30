@@ -185,8 +185,12 @@ async def on_ready():
             log_batches.append(current_batch)
         
         if log_batches:
-            await batch_log(log_batches)
-            logging.info("Logs enviados al canal de logs")
+            try:
+                await batch_log(log_batches)
+                logging.info("Logs enviados al canal de logs")
+            except Exception as e:
+                logging.error(f"Error al enviar logs al canal de logs: {str(e)}")
+                logging.error(traceback.format_exc())
         
         # Guardar estado después de la configuración
         logging.info("Guardando estado inicial...")
