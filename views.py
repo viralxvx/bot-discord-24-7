@@ -3,7 +3,7 @@ import datetime
 from discord.ui import View, Select
 from discord import SelectOption, Interaction
 from discord_bot import bot
-from config import CANAL_LOGS, CANAL_FALTAS, FAQ_FALLBACK
+from config import CANAL_LOGS, CANAL_FALTAS, FAQ_FALLBACK, ADMIN_ID
 from state_management import amonestaciones, baneos_temporales, save_state, faltas_dict, active_conversations, ticket_counter, faq_data
 from utils import actualizar_mensaje_faltas, registrar_log
 
@@ -107,8 +107,6 @@ class SupportMenu(View):
         self.add_item(self.select)
 
     async def select_callback(self, interaction: Interaction):
-        global ticket_counter, active_conversations
-        
         user_id = self.autor.id
         if self.select.values[0] == "Generar ticket":
             ticket_counter += 1
@@ -147,11 +145,12 @@ class SupportMenu(View):
                         await msg.delete()
                     except:
                         pass
-            del active_conversations[user_id]
+            if user_id in active_conversations:
+                del active_conversations[user_id]
             await interaction.response.send_message("✅ **Consulta cerrada**", ephemeral=True)
             
         elif self.select.values[0] in ["✅ ¿Cómo funciona VX?", "✅ ¿Cómo publico mi post?", "✅ ¿Cómo subo de nivel?"]:
-            response = faq_data.get(self.select.values[0], FAQ_FALLBACK.get(self.select.values[0], "No se encontró respuesta"))
+            response = faq_data.get(self.select.values[0], FAQ_FALLBACK.get(self.select.values[0], "No se encontró respuesta")
             await interaction.response.send_message(response, ephemeral=True)
             if user_id in active_conversations:
                 active_conversations[user_id]["message_ids"].append(interaction.message.id)
