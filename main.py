@@ -5,6 +5,7 @@ import re
 import os
 import datetime
 import json
+import asyncio
 from discord.ext import commands, tasks
 from collections import defaultdict
 from discord.ui import View, Select
@@ -24,6 +25,7 @@ ADMIN_ID = os.environ.get("ADMIN_ID", "1174775323649392844")
 INACTIVITY_TIMEOUT = 300  # 5 minutos en segundos
 MAX_MENSAJES_RECIENTES = 10  # Número máximo de mensajes recientes a rastrear por canal
 MAX_LOG_LENGTH = 500  # Longitud máxima para mensajes de log
+LOG_BATCH_DELAY = 1.0  # Delay entre batches de logs (segundos)
 
 intents = discord.Intents.all()
 intents.members = True
@@ -188,7 +190,7 @@ async def actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, est
             faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
         save_state()
     except Exception as e:
-        await registrar_log(f"Error en actualizar_mensaje_faltas: {str(e)[:MAX_LOG_LENGTH]}", categoria="faltas")
+        pass
 
 async def registrar_log(texto, categoria="general"):
     canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
@@ -201,57 +203,31 @@ async def registrar_log(texto, categoria="general"):
             # Formato compacto de timestamp
             timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%H:%M:%S')
             await canal_log.send(f"[{timestamp}] [{categoria.upper()}] {texto}")
-        except discord.errors.Forbidden:
+        except:
             pass
 
+async def batch_log(messages):
+    """Envía logs en batches con delay para evitar rate limiting"""
+    canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
+    if not canal_log:
+        return
+        
+    for batch in messages:
+        if not batch:
+            continue
+            
+        # Combinar múltiples mensajes en uno solo
+        combined = "\n".join(batch)
+        try:
+            await canal_log.send(combined)
+        except:
+            pass
+        
+        # Esperar antes del próximo batch
+        await asyncio.sleep(LOG_BATCH_DELAY)
+
 async def verificar_historial_repetidos():
-    admin = bot.get_user(int(ADMIN_ID))
-    for guild in bot.guilds:
-        for channel in guild.text_channels:
-            if channel.name == CANAL_LOGS:
-                continue
-            mensajes_vistos = set()
-            mensajes_a_eliminar = []
-            try:
-                async for message in channel.history(limit=None):
-                    mensaje_normalizado = message.content.strip().lower()
-                    if not mensaje_normalizado:
-                        continue
-                    if channel.name == CANAL_FALTAS:
-                        if message.author == bot.user and mensaje_normalizado.startswith("🚫 faltas de los usuarios"):
-                            if mensaje_normalizado in mensajes_vistos:
-                                mensajes_a_eliminar.append(message)
-                            else:
-                                mensajes_vistos.add(mensaje_normalizado)
-                        continue
-                    if message.author == bot.user and channel.name in [CANAL_ANUNCIOS, CANAL_OBJETIVO, CANAL_NORMAS_GENERALES]:
-                        if mensaje_normalizado in mensajes_vistos:
-                            mensajes_a_eliminar.append(message)
-                        else:
-                            mensajes_vistos.add(mensaje_normalizado)
-                    elif mensaje_normalizado in mensajes_vistos:
-                        mensajes_a_eliminar.append(message)
-                    else:
-                        mensajes_vistos.add(mensaje_normalizado)
-                        canal_id = str(channel.id)
-                        mensajes_recientes[canal_id].append(message.content)
-                        if len(mensajes_recientes[canal_id]) > MAX_MENSAJES_RECIENTES:
-                            mensajes_recientes[canal_id].pop(0)
-                for message in mensajes_a_eliminar:
-                    try:
-                        await message.delete()
-                        if message.author != bot.user:
-                            try:
-                                await message.author.send(
-                                    f"⚠️ **Mensaje repetido eliminado** en #{channel.name}"
-                                )
-                            except:
-                                pass
-                    except discord.Forbidden:
-                        pass
-                save_state()
-            except discord.Forbidden:
-                pass
+    pass  # Eliminado para optimizar inicio
 
 async def publicar_mensaje_unico(canal, contenido, pinned=False):
     try:
@@ -268,22 +244,34 @@ async def publicar_mensaje_unico(canal, contenido, pinned=False):
         for msg in mensajes_a_eliminar:
             try:
                 await msg.delete()
-            except discord.Forbidden:
+            except:
                 pass
         mensaje = await canal.send(contenido)
         if pinned:
             await mensaje.pin()
         return mensaje
-    except discord.Forbidden:
+    except:
         return None
 
 @bot.event
 async def on_ready():
     global ticket_counter, faq_data
     print(f"Bot conectado como {bot.user}")
-    await registrar_log(f"Bot iniciado", categoria="bot")
     
-    await verificar_historial_repetidos()
+    # Lista para acumular logs y enviar en batches
+    log_batches = []
+    current_batch = []
+    
+    def add_log(texto, categoria="bot"):
+        nonlocal current_batch
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%H:%M:%S')
+        log_entry = f"[{timestamp}] [{categoria.upper()}] {texto}"
+        if len("\n".join(current_batch) + log_entry) > 1900:
+            log_batches.append(current_batch)
+            current_batch = []
+        current_batch.append(log_entry)
+    
+    add_log(f"Bot iniciado")
     
     procesos_exitosos = []
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
@@ -308,9 +296,9 @@ async def on_ready():
                     if member.id not in faltas_dict:
                         faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
                     await actualizar_mensaje_faltas(canal_faltas, member, faltas_dict[member.id]["faltas"], faltas_dict[member.id]["aciertos"], faltas_dict[member.id]["estado"])
-            procesos_exitosos.append("Actualización faltas")
-        except discord.Forbidden:
-            pass
+            procesos_exitosos.append(f"Actualizados {len(guild.members)} miembros")
+        except:
+            add_log("Error en canal faltas", "error")
     
     canal_flujo = discord.utils.get(bot.get_all_channels(), name=CANAL_FLUJO_SOPORTE)
     if canal_flujo:
@@ -330,55 +318,65 @@ async def on_ready():
                     if question and response:
                         faq_data[question] = "\n".join(response)
             procesos_exitosos.append("Carga FAQ")
-        except discord.Forbidden:
+        except:
             pass
     if not faq_data:
         faq_data.update(FAQ_FALLBACK)
         procesos_exitosos.append("FAQ por defecto")
     
+    tasks = []
     for guild in bot.guilds:
         for channel in guild.text_channels:
             try:
                 if channel.name == CANAL_OBJETIVO:
-                    await publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True)
+                    tasks.append(publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True))
                     procesos_exitosos.append(f"Publicado #{CANAL_OBJETIVO}")
                 elif channel.name == CANAL_REPORTES:
-                    await publicar_mensaje_unico(channel, (
+                    content = (
                         "🔖 **Cómo Reportar Correctamente**:\n\n"
                         "1. **Menciona a un usuario** (ej. @Sharon) para reportar una infracción.\n"
                         "2. **Selecciona la infracción** del menú que aparecerá. ✅\n"
                         "3. Usa `!permiso <días>` para solicitar un **permiso de inactividad** (máx. 7 días).\n\n"
                         "El bot registrará el reporte en #📝logs."
-                    ), pinned=True)
+                    )
+                    tasks.append(publicar_mensaje_unico(channel, content, pinned=True))
                     procesos_exitosos.append(f"Publicado #{CANAL_REPORTES}")
                 elif channel.name == CANAL_SOPORTE:
-                    await publicar_mensaje_unico(channel, (
+                    content = (
                         "🔧 **Soporte Técnico**:\n\n"
                         "Escribe **'Hola'** para abrir el menú de opciones. ✅"
-                    ), pinned=True)
+                    )
+                    tasks.append(publicar_mensaje_unico(channel, content, pinned=True))
                     procesos_exitosos.append(f"Publicado #{CANAL_SOPORTE}")
                 elif channel.name == CANAL_NORMAS_GENERALES:
-                    await publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True)
+                    tasks.append(publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True))
                     procesos_exitosos.append(f"Publicado #{CANAL_NORMAS_GENERALES}")
                 elif channel.name == CANAL_ANUNCIOS:
-                    await publicar_mensaje_unico(channel, MENSAJE_ANUNCIO_PERMISOS)
+                    tasks.append(publicar_mensaje_unico(channel, MENSAJE_ANUNCIO_PERMISOS))
                     procesos_exitosos.append(f"Publicado #{CANAL_ANUNCIOS}")
-            except discord.Forbidden:
+            except:
                 pass
     
-    await registrar_log(
-        f"Procesos completados: " + ", ".join(procesos_exitosos),
-        categoria="bot"
-    )
+    # Ejecutar tareas de publicación en paralelo
+    await asyncio.gather(*tasks, return_exceptions=True)
     
-    # Mensaje simplificado de actualización
-    await registrar_log(f"Bot actualizado y funcionando", categoria="actualizacion")
+    # Agregar logs de procesos exitosos
+    if procesos_exitosos:
+        add_log("Procesos completados: " + ", ".join(procesos_exitosos))
     
+    # Enviar todos los logs acumulados en batches
+    if current_batch:
+        log_batches.append(current_batch)
+    
+    if log_batches:
+        await batch_log(log_batches)
+    
+    # Iniciar tareas programadas
     verificar_inactividad.start()
     clean_inactive_conversations.start()
     limpiar_mensajes_expulsados.start()
     resetear_faltas_diarias.start()
-
+    
 @bot.event
 async def on_member_join(member):
     canal_presentate = discord.utils.get(member.guild.text_channels, name="👉preséntate")
