@@ -1,17 +1,15 @@
-import asyncio
 import datetime
 from discord.ext import tasks
 import discord
-from config import CANAL_SOPORTE
 from redis_database import redis
+from config import CANAL_SOPORTE
 
 @tasks.loop(minutes=10)
-async def clean_inactive_conversations():
-    from discord_bot import bot  # Importar aquí para evitar importación circular
-
+async def clean_inactive():
+    from discord_bot import bot  # Evita import circular
     await bot.wait_until_ready()
-    canal_soporte = None
 
+    canal_soporte = None
     for guild in bot.guilds:
         canal_soporte = discord.utils.get(guild.text_channels, name=CANAL_SOPORTE)
         if canal_soporte:
@@ -34,7 +32,7 @@ async def clean_inactive_conversations():
         except ValueError:
             continue
 
-        if (now - last_time).total_seconds() > 600:  # 10 minutos
+        if (now - last_time).total_seconds() > 600:
             msg_ids = data.get("message_ids", "").split(",")
             for msg_id in msg_ids:
                 try:
