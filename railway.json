@@ -3,5 +3,16 @@
     "data": {
       "path": "/data"
     }
+  },
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile"
+  },
+  "deploy": {
+    "startCommand": "python main.py",
+    "restartPolicy": {
+      "type": "always"
+    },
+    "type": "worker"
   }
 }
