@@ -1,3 +1,16 @@
+import os
+
+# Verificar permisos de /data
+try:
+    print("="*50)
+    print("Verificando permisos de /data")
+    print("Contenido de /data:", os.listdir('/data'))
+    print("Permisos de /data:", oct(os.stat('/data').st_mode)[-3:])
+    print("="*50)
+except Exception as e:
+    print("Error al acceder a /data:", str(e))
+    print("="*50)
+    
 import discord
 import asyncio
 import datetime
