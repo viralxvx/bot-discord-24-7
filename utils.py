@@ -3,7 +3,7 @@ import asyncio
 import datetime
 from discord_bot import bot
 from config import CANAL_LOGS, MAX_LOG_LENGTH, LOG_BATCH_DELAY
-from state_management import faltas_dict, save_state
+from state_management import save_state, faltas_dict
 
 async def calcular_calificacion(faltas):
     porcentaje = max(0, 100 - faltas)
