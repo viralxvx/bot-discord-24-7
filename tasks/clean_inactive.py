@@ -1,15 +1,14 @@
-# tasks/clean_inactive.py
-
 import asyncio
 import datetime
 from discord.ext import tasks
+import discord
 from config import CANAL_SOPORTE
 from redis_database import redis
-import discord
 
 @tasks.loop(minutes=10)
 async def clean_inactive_conversations():
-    from discord_bot import bot  # Import dentro para evitar circular import
+    from discord_bot import bot  # Importar aquí para evitar importación circular
+
     await bot.wait_until_ready()
     canal_soporte = None
 
