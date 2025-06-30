@@ -27,4 +27,4 @@ async def permiso(ctx, dias: int):
     permisos_inactividad[ctx.author.id] = {"inicio": ahora, "duracion": dias}
     await ctx.send(f"✅ **Permiso otorgado** a {ctx.author.mention} por {dias} días")
     await registrar_log(f"Permiso: {ctx.author.name} por {dias}d", categoria="permisos")
-    save_state()
+    await save_state()
