@@ -1,28 +1,45 @@
-import discord
-from discord.ext import tasks
-import datetime
-from discord_bot import bot
-from config import CANAL_SOPORTE, INACTIVITY_TIMEOUT
-from state_management import active_conversations, save_state
+# tasks/clean_inactive.py
 
-@tasks.loop(minutes=1)
+import asyncio
+import datetime
+from discord.ext import tasks
+from config import CANAL_SOPORTE
+from redis_database import redis
+from discord_bot import bot
+
+@tasks.loop(minutes=10)
 async def clean_inactive_conversations():
-    canal_soporte = discord.utils.get(bot.get_all_channels(), name=CANAL_SOPORTE)
+    await bot.wait_until_ready()
+    canal_soporte = None
+
+    for guild in bot.guilds:
+        canal_soporte = discord.utils.get(guild.text_channels, name=CANAL_SOPORTE)
+        if canal_soporte:
+            break
+
     if not canal_soporte:
         return
-        
-    ahora = datetime.datetime.now(datetime.timezone.utc)
-    for user_id, data in list(active_conversations.items()):
-        last_message_time = data.get("last_time")
-        message_ids = data.get("message_ids", [])
-        if last_message_time and (ahora - last_message_time).total_seconds() > INACTIVITY_TIMEOUT:
-            for msg_id in message_ids:
+
+    now = datetime.datetime.utcnow()
+    keys = await redis.keys("convo:*")
+
+    for key in keys:
+        data = await redis.hgetall(key)
+        last_time_str = data.get("last_time")
+        if not last_time_str:
+            continue
+
+        try:
+            last_time = datetime.datetime.fromisoformat(last_time_str)
+        except ValueError:
+            continue
+
+        if (now - last_time).total_seconds() > 600:  # 10 minutos
+            msg_ids = data.get("message_ids", "").split(",")
+            for msg_id in msg_ids:
                 try:
-                    msg = await canal_soporte.fetch_message(msg_id)
+                    msg = await canal_soporte.fetch_message(int(msg_id))
                     await msg.delete()
-                except discord.NotFound:
-                    pass  # Mensaje ya eliminado
-                except discord.Forbidden:
-                    pass  # Sin permisos
-            del active_conversations[user_id]
-    save_state()
+                except:
+                    pass
+            await redis.delete(key)
