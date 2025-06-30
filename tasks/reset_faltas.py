@@ -1,3 +1,4 @@
+import discord
 from discord.ext import tasks
 import datetime
 from discord_bot import bot
@@ -14,7 +15,7 @@ async def resetear_faltas_diarias():
     ahora = datetime.datetime.now(datetime.timezone.utc)
     
     for user_id, data in list(faltas_dict.items()):
-        if data["ultima_falta_time"] and (ahora - data["ultima_falta_time"]).total_seconds() >= 86400:
+        if data.get("ultima_falta_time") and (ahora - data["ultima_falta_time"]).total_seconds() >= 86400:
             miembro = discord.utils.get(bot.get_all_members(), id=int(user_id))
             if miembro:
                 faltas_dict[user_id]["faltas"] = 0
