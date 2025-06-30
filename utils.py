@@ -33,7 +33,7 @@ async def actualizar_mensaje_faltas(canal_faltas, miembro, faltas, aciertos, est
         else:
             mensaje = await canal_faltas.send(contenido)
             faltas_dict[miembro.id]["mensaje_id"] = mensaje.id
-        save_state()
+        await save_state()
     except Exception as e:
         pass
 
