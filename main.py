@@ -1,21 +1,20 @@
 import discord
-from discord_bot import bot
-from config import TOKEN
-from app import keep_alive
-import state_management
+import asyncio
+import datetime
 import atexit
+from discord_bot import bot
+from config import TOKEN, CANAL_OBJETIVO, CANAL_FALTAS, CANAL_REPORTES, CANAL_SOPORTE, CANAL_NORMAS_GENERALES, CANAL_ANUNCIOS, CANAL_LOGS, MENSAJE_NORMAS, MENSAJE_ANUNCIO_PERMISOS, MENSAJE_ACTUALIZACION_SISTEMA, FAQ_FALLBACK
+from state_management import save_state, ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, faltas_dict, mensajes_recientes, faq_data, active_conversations
+from utils import registrar_log, publicar_mensaje_unico, actualizar_mensaje_faltas, batch_log
 import tasks
 import commands
 import message_handlers
-import asyncio
-import datetime
-from config import CANAL_OBJETIVO, CANAL_FALTAS, CANAL_REPORTES, CANAL_SOPORTE, CANAL_NORMAS_GENERALES, CANAL_ANUNCIOS, CANAL_LOGS, MENSAJE_NORMAS, MENSAJE_ANUNCIO_PERMISOS, MENSAJE_ACTUALIZACION_SISTEMA, FAQ_FALLBACK
-from utils import registrar_log, publicar_mensaje_unico, actualizar_mensaje_faltas, batch_log
-from state_management import save_state, ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, faltas_dict, mensajes_recientes, faq_data
 
 # Registrar guardado de estado al salir
 atexit.register(save_state)
 
+# Iniciar servidor web
+from app import keep_alive
 keep_alive()
 
 @bot.event
