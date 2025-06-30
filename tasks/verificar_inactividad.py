@@ -1,5 +1,5 @@
-from discord.ext import tasks
 import discord
+from discord.ext import tasks
 import datetime
 from discord_bot import bot
 from config import CANAL_OBJETIVO
