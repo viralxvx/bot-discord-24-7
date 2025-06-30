@@ -1,27 +1,25 @@
-import redis
 import os
-import json
-from typing import Any
+import redis
+from dotenv import load_dotenv
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+load_dotenv()
 
-r = redis.from_url(REDIS_URL, decode_responses=True)
+REDIS_URL = os.getenv("REDIS_URL")
 
-def save_state(key: str, data: Any):
-    """Guarda datos en Redis en formato JSON."""
-    try:
-        json_data = json.dumps(data)
-        r.set(key, json_data)
-    except Exception as e:
-        print(f"Error guardando estado en Redis: {e}")
+# Crear conexión a Redis
+redis_client = redis.from_url(REDIS_URL)
 
-def load_state(key: str, default=None):
-    """Carga datos desde Redis, parseando JSON."""
-    try:
-        data = r.get(key)
-        if data:
-            return json.loads(data)
-        return default
-    except Exception as e:
-        print(f"Error cargando estado de Redis: {e}")
-        return default
+def guardar_estado(clave, valor):
+    """Guardar un valor en Redis como string JSON."""
+    redis_client.set(clave, valor)
+
+def obtener_estado(clave):
+    """Obtener un valor de Redis, retorna None si no existe."""
+    valor = redis_client.get(clave)
+    if valor:
+        return valor.decode("utf-8")
+    return None
+
+def eliminar_estado(clave):
+    """Eliminar un valor guardado en Redis."""
+    redis_client.delete(clave)
