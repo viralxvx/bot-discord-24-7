@@ -1,0 +1,19 @@
+import discord
+from config import CANAL_ANUNCIOS
+
+async def manejar_x_normas(message):
+    if message.author.bot:
+        return
+
+    canal_anuncios = discord.utils.get(message.guild.text_channels, name=CANAL_ANUNCIOS)
+    if canal_anuncios:
+        await publicar_mensaje_unico(
+            canal_anuncios,
+            f"📢 **Norma actualizada**: {message.channel.mention}"
+        )
+
+async def publicar_mensaje_unico(canal, contenido):
+    async for msg in canal.history(limit=20):
+        if msg.author.bot and contenido in msg.content:
+            return  # Ya se publicó
+    await canal.send(contenido)
