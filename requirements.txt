@@ -2,5 +2,6 @@ discord.py==2.3.2
 Flask==2.3.3
 sqlalchemy==1.4.49
 psycopg2-binary==2.9.9
+waitress==2.1.2
 # apscheduler  # Comentado hasta que lo uses
 # python-dotenv  # Comentado hasta que lo uses
