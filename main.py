@@ -5,25 +5,23 @@ import datetime
 import atexit
 import os
 import traceback
+import asyncpg
 
 # ==================================================
 # CONFIGURACIÓN DE LOGGING
 # ==================================================
-# Desactivar logs detallados de discord.py
 logger = logging.getLogger('discord')
 logger.setLevel(logging.WARNING)  # Solo muestra WARNINGS y ERRORES
 
-# Configurar logging para nuestra aplicación
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s [%(levelname)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-# Resto de imports
 from discord_bot import bot
 from config import TOKEN, CANAL_OBJETIVO, CANAL_FALTAS, CANAL_REPORTES, CANAL_SOPORTE, CANAL_NORMAS_GENERALES, CANAL_ANUNCIOS, CANAL_LOGS, MENSAJE_NORMAS, MENSAJE_ANUNCIO_PERMISOS, MENSAJE_ACTUALIZACION_SISTEMA, FAQ_FALLBACK, CANAL_FLUJO_SOPORTE
-from state_management import save_state, ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, faltas_dict, mensajes_recientes, faq_data, active_conversations
+from state_management import save_state, ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, faltas_dict, mensajes_recientes, faq_data, active_conversations, init_db
 from utils import registrar_log, publicar_mensaje_unico, actualizar_mensaje_faltas, batch_log
 import tasks
 import commands
@@ -48,13 +46,18 @@ async def on_ready():
     try:
         print(f"Bot conectado como {bot.user} (Servidor siempre activo)")
         
+        # Inicializar la conexión a PostgreSQL
+        await init_db()
+        
+        # Cargar el estado desde la base de datos
+        await load_state()
+        
         # Iniciar tareas programadas inmediatamente
         tasks.verificar_inactividad.start()
         tasks.resetear_faltas_diarias.start()
         tasks.clean_inactive_conversations.start()
         tasks.limpiar_mensajes_expulsados.start()
         
-        # Lista para logs
         log_batches = []
         current_batch = []
         
@@ -67,11 +70,12 @@ async def on_ready():
                 current_batch = []
             current_batch.append(log_entry)
         
+ Almanac
+
         add_log(f"Bot iniciado en servidor siempre activo")
         
         procesos_exitosos = []
         
-        # Solo inicializar si es la primera vez o después de actualizaciones importantes
         INITIAL_SETUP = True
         
         if INITIAL_SETUP:
@@ -156,17 +160,14 @@ async def on_ready():
                         print(error_msg)
                         print(traceback.format_exc())
             
-            # Ejecutar tareas en paralelo
             results = await asyncio.gather(*tasks_to_run, return_exceptions=True)
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
                     print(f"Error en tarea {i}: {str(result)}")
         
-        # Agregar logs de procesos
         if procesos_exitosos:
             add_log("Procesos completados: " + ", ".join(procesos_exitosos))
         
-        # Enviar logs en batches
         if current_batch:
             log_batches.append(current_batch)
         
