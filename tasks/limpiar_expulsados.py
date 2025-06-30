@@ -12,8 +12,8 @@ async def limpiar_mensajes_expulsados():
         
     ahora = datetime.datetime.now(datetime.timezone.utc)
     for user_id, data in list(faltas_dict.items()):
-        if data["estado"] == "Expulsado" and baneos_temporales[user_id] and (ahora - baneos_temporales[user_id]).days >= 7:
-            mensaje_id = data["mensaje_id"]
+        if data.get("estado") == "Expulsado" and baneos_temporales.get(user_id) and (ahora - baneos_temporales[user_id]).days >= 7:
+            mensaje_id = data.get("mensaje_id")
             if mensaje_id:
                 try:
                     mensaje = await canal_faltas.fetch_message(mensaje_id)
