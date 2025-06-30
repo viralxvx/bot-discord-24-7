@@ -1,93 +1,180 @@
-import sys
-import os
-from threading import Thread
-
-# Añadir el directorio actual al path para permitir importaciones absolutas
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from flask import Flask, jsonify
 import discord
-import re
-import datetime
-import json
-import asyncio
-import threading
-from discord.ext import commands, tasks
-from collections import defaultdict
-from discord.ui import View, Select
-from discord import SelectOption, Interaction
+from discord_bot import bot
+from config import TOKEN
+from app import keep_alive
+import state_management
 import atexit
+import tasks
+import commands
+import message_handlers
+import asyncio
+import datetime
+from config import CANAL_OBJETIVO, CANAL_FALTAS, CANAL_REPORTES, CANAL_SOPORTE, CANAL_NORMAS_GENERALES, CANAL_ANUNCIOS, CANAL_LOGS, MENSAJE_NORMAS, MENSAJE_ANUNCIO_PERMISOS, MENSAJE_ACTUALIZACION_SISTEMA, FAQ_FALLBACK
+from utils import registrar_log, publicar_mensaje_unico, actualizar_mensaje_faltas, batch_log
+from state_management import save_state, ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, faltas_dict, mensajes_recientes, faq_data
 
-from config import TOKEN, CANAL_OBJETIVO, CANAL_LOGS, CANAL_REPORTES, CANAL_SOPORTE, CANAL_FLUJO_SOPORTE, CANAL_ANUNCIOS, CANAL_NORMAS_GENERALES, CANAL_X_NORMAS, CANAL_FALTAS, ADMIN_ID, INACTIVITY_TIMEOUT, MAX_MENSAJES_RECIENTES, MAX_LOG_LENGTH, LOG_BATCH_DELAY
-from discord_bot import bot, on_ready, on_member_remove
-from commands import permiso
-from tasks import verificar_inactividad, resetear_faltas_diarias, clean_inactive_conversations, limpiar_mensajes_expulsados
-from views import ReportMenu, SupportMenu
-from message_handlers import on_message, on_reaction_add
-from utils import MENSAJE_NORMAS, MENSAJE_ANUNCIO_PERMISOS, MENSAJE_ACTUALIZACION_SISTEMA, FAQ_FALLBACK, calcular_calificacion, actualizar_mensaje_faltas, registrar_log, batch_log, publicar_mensaje_unico
-from app import app, run_webserver, keep_alive
-from state_management import ultima_publication_dict, amonestaciones, baneos_temporales, permisos_inactividad, ticket_counter, active_conversations, faq_data, faltas_dict, mensajes_recientes, save_state
-
-# Estado persistente
-STATE_FILE = "state.json"
-try:
-    with open(STATE_FILE, "r") as f:
-        state = json.load(f)
-    
-    # Función para cargar datetime con UTC si es naive
-    def load_datetime(dt_str):
-        if dt_str is None:
-            return None
-        dt = datetime.datetime.fromisoformat(dt_str)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=datetime.timezone.utc)
-        return dt
-    
-    ultima_publicacion_dict.clear()
-    ultima_publicacion_dict.update({k: load_datetime(v) for k, v in state.get("ultima_publicacion_dict", {}).items()})
-    
-    amonestaciones.clear()
-    amonestaciones.update({k: [load_datetime(t) for t in v] for k, v in state.get("amonestaciones", {}).items()})
-    
-    baneos_temporales.clear()
-    baneos_temporales.update({k: load_datetime(v) for k, v in state.get("baneos_temporales", {}).items()})
-    
-    permisos_inactividad.clear()
-    permisos_inactividad.update({k: {"inicio": load_datetime(v["inicio"]), "duracion": v["duracion"]} if v else None 
-                               for k, v in state.get("permisos_inactividad", {}).items()})
-    
-    ticket_counter = state.get("ticket_counter", 0)
-    active_conversations = state.get("active_conversations", {})
-    faq_data = state.get("faq_data", {})
-    
-    faltas_dict.clear()
-    faltas_dict.update({
-        k: {
-            "faltas": v["faltas"],
-            "aciertos": v["aciertos"],
-            "estado": v["estado"],
-            "mensaje_id": v["mensaje_id"],
-            "ultima_falta_time": load_datetime(v["ultima_falta_time"]) if v["ultima_falta_time"] else None
-        } for k, v in state.get("faltas_dict", {}).items()
-    })
-    
-    mensajes_recientes.clear()
-    mensajes_recientes.update(state.get("mensajes_recientes", {}))
-except FileNotFoundError:
-    ultima_publicacion_dict.default_factory = lambda: datetime.datetime.now(datetime.timezone.utc)
-    amonestaciones.default_factory = list
-    baneos_temporales.default_factory = lambda: None
-    permisos_inactividad.default_factory = lambda: None
-    ticket_counter = 0
-    active_conversations = {}
-    faq_data = {}
-    faltas_dict.default_factory = lambda: {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
-    mensajes_recientes.default_factory = list
-
+# Registrar guardado de estado al salir
 atexit.register(save_state)
 
-# Iniciar el servidor web en un hilo separado
 keep_alive()
 
-# Iniciar el bot
-bot.run(TOKEN)
+@bot.event
+async def on_ready():
+    print(f"Bot conectado como {bot.user}")
+    
+    # Lista para logs
+    log_batches = []
+    current_batch = []
+    
+    def add_log(texto, categoria="bot"):
+        nonlocal current_batch
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%H:%M:%S')
+        log_entry = f"[{timestamp}] [{categoria.upper()}] {texto}"
+        if len("\n".join(current_batch) + log_entry) > 1900:
+            log_batches.append(current_batch)
+            current_batch = []
+        current_batch.append(log_entry)
+    
+    add_log(f"Bot iniciado")
+    
+    procesos_exitosos = []
+    canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
+    if canal_faltas:
+        try:
+            mensaje_sistema = None
+            async for msg in canal_faltas.history(limit=100):
+                if msg.author == bot.user and msg.content.startswith("🚫 **FALTAS DE LOS USUARIOS**"):
+                    mensaje_sistema = msg
+                    break
+            if mensaje_sistema:
+                if mensaje_sistema.content != MENSAJE_ACTUALIZACION_SISTEMA:
+                    await mensaje_sistema.edit(content=MENSAJE_ACTUALIZACION_SISTEMA)
+            else:
+                mensaje_sistema = await canal_faltas.send(MENSAJE_ACTUALIZACION_SISTEMA)
+            procesos_exitosos.append("Mensaje sistema faltas")
+            
+            for guild in bot.guilds:
+                for member in guild.members:
+                    if member.bot:
+                        continue
+                    if member.id not in faltas_dict:
+                        faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
+                    await actualizar_mensaje_faltas(canal_faltas, member, faltas_dict[member.id]["faltas"], faltas_dict[member.id]["aciertos"], faltas_dict[member.id]["estado"])
+            procesos_exitosos.append(f"Actualizados {len(guild.members)} miembros")
+        except Exception as e:
+            add_log(f"Error en canal faltas: {str(e)}", "error")
+    
+    canal_flujo = discord.utils.get(bot.get_all_channels(), name=CANAL_FLUJO_SOPORTE)
+    if canal_flujo:
+        try:
+            async for msg in canal_flujo.history(limit=100):
+                if msg.author == bot.user and msg.pinned:
+                    lines = msg.content.split("\n")
+                    question = None
+                    response = []
+                    for line in lines:
+                        if line.startswith("**Pregunta:"):
+                            question = line.replace("**Pregunta:**", "").strip()
+                        elif line.startswith("**Respuesta:**"):
+                            response = [line.replace("**Respuesta:**", "").strip()]
+                        elif question and not line.startswith("**"):
+                            response.append(line.strip())
+                    if question and response:
+                        faq_data[question] = "\n".join(response)
+            procesos_exitosos.append("Carga FAQ")
+        except:
+            pass
+            
+    if not faq_data:
+        faq_data.update(FAQ_FALLBACK)
+        procesos_exitosos.append("FAQ por defecto")
+    
+    tasks_to_run = []
+    for guild in bot.guilds:
+        for channel in guild.text_channels:
+            try:
+                if channel.name == CANAL_OBJETIVO:
+                    tasks_to_run.append(publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True))
+                    procesos_exitosos.append(f"Publicado #{CANAL_OBJETIVO}")
+                elif channel.name == CANAL_REPORTES:
+                    content = (
+                        "🔖 **Cómo Reportar Correctamente**:\n\n"
+                        "1. **Menciona a un usuario** (ej. @Sharon) para reportar una infracción.\n"
+                        "2. **Selecciona la infracción** del menú que aparecerá. ✅\n"
+                        "3. Usa `!permiso <días>` para solicitar un **permiso de inactividad** (máx. 7 días).\n\n"
+                        "El bot registrará el reporte en #📝logs."
+                    )
+                    tasks_to_run.append(publicar_mensaje_unico(channel, content, pinned=True))
+                    procesos_exitosos.append(f"Publicado #{CANAL_REPORTES}")
+                elif channel.name == CANAL_SOPORTE:
+                    content = "🔧 **Soporte Técnico**:\n\nEscribe **'Hola'** para abrir el menú de opciones. ✅"
+                    tasks_to_run.append(publicar_mensaje_unico(channel, content, pinned=True))
+                    procesos_exitosos.append(f"Publicado #{CANAL_SOPORTE}")
+                elif channel.name == CANAL_NORMAS_GENERALES:
+                    tasks_to_run.append(publicar_mensaje_unico(channel, MENSAJE_NORMAS, pinned=True))
+                    procesos_exitosos.append(f"Publicado #{CANAL_NORMAS_GENERALES}")
+                elif channel.name == CANAL_ANUNCIOS:
+                    tasks_to_run.append(publicar_mensaje_unico(channel, MENSAJE_ANUNCIO_PERMISOS))
+                    procesos_exitosos.append(f"Publicado #{CANAL_ANUNCIOS}")
+            except Exception as e:
+                add_log(f"Error publicando en {channel.name}: {str(e)}", "error")
+    
+    # Ejecutar tareas en paralelo
+    await asyncio.gather(*tasks_to_run, return_exceptions=True)
+    
+    # Agregar logs de procesos
+    if procesos_exitosos:
+        add_log("Procesos completados: " + ", ".join(procesos_exitosos))
+    
+    # Enviar logs en batches
+    if current_batch:
+        log_batches.append(current_batch)
+    
+    if log_batches:
+        await batch_log(log_batches)
+    
+    # Iniciar tareas programadas
+    tasks.verificar_inactividad.start()
+    tasks.resetear_faltas_diarias.start()
+    tasks.clean_inactive_conversations.start()
+    tasks.limpiar_mensajes_expulsados.start()
+
+@bot.event
+async def on_member_join(member):
+    canal_presentate = discord.utils.get(member.guild.text_channels, name="👉preséntate")
+    canal_faltas = discord.utils.get(member.guild.text_channels, name=CANAL_FALTAS)
+    
+    if canal_presentate:
+        try:
+            mensaje = (
+                f"👋 **¡Bienvenid@ a VX {member.mention}!**\n\n"
+                "**Sigue estos pasos**:\n"
+                "📖 Lee las 3 guías\n"
+                "✅ Revisa las normas\n"
+                "🏆 Mira las victorias\n"
+                "♟ Estudia las estrategias\n"
+                "🏋 Luego solicita ayuda para tu primer post.\n\n"
+                "📤 **Revisa tu estado** en #📤faltas para mantenerte al día.\n"
+                "🚫 **Mensajes repetidos** serán eliminados en todos los canales (excepto #📝logs).\n"
+                "⏳ Usa `!permiso <días>` en #⛔reporte-de-incumplimiento para pausar la obligación de publicar (máx. 7 días)."
+            )
+            await canal_presentate.send(mensaje)
+        except discord.Forbidden:
+            pass
+            
+    if canal_faltas:
+        try:
+            if member.id not in faltas_dict:
+                faltas_dict[member.id] = {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
+            await actualizar_mensaje_faltas(canal_faltas, member, 0, 0, "OK")
+        except discord.Forbidden:
+            pass
+            
+    await registrar_log(f"👤 Nuevo miembro: {member.name}", categoria="miembros")
+
+@bot.event
+async def on_member_remove(member):
+    await registrar_log(f"👋 Miembro salió: {member.name}", categoria="miembros")
+
+if __name__ == "__main__":
+    bot.run(TOKEN)
