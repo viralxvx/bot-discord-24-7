@@ -2,7 +2,6 @@ import logging
 import discord
 import asyncio
 import datetime
-import os
 import traceback
 from config import (
     CANAL_OBJETIVO, CANAL_FALTAS, CANAL_REPORTES, 
@@ -13,8 +12,6 @@ from config import (
 )
 from state_management import faq_data, faltas_dict
 from utils import publicar_mensaje_unico, batch_log, registrar_log
-
-# Importación corregida de las tareas
 from tasks.verificar_inactividad import verificar_inactividad
 from tasks.reset_faltas import resetear_faltas_diarias
 from tasks.clean_inactive import clean_inactive_conversations
