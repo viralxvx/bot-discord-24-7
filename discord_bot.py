@@ -3,7 +3,6 @@ from discord.ext import commands
 import asyncio
 from config import TOKEN, PREFIX
 from events import on_ready, on_member, on_message
-from commands import permisos
 from tasks import clean_inactive, limpiar_expulsados, reset_faltas, verificar_inactividad
 
 intents = discord.Intents.default()
@@ -19,10 +18,7 @@ bot.event(on_member.on_member_join)
 bot.event(on_member.on_member_remove)
 bot.event(on_message.on_message)
 
-# Registrar el cog permisos
-bot.add_cog(permisos.Permisos(bot))
-
-# Iniciar tareas programadas
+# Iniciar tareas programadas cuando el bot esté listo
 @bot.event
 async def on_ready_event():
     verificar_inactividad.start()
@@ -32,5 +28,12 @@ async def on_ready_event():
 
 bot.event(on_ready_event)
 
-def run_bot():
-    bot.run(TOKEN)
+async def main():
+    # Cargar extensiones (cogs)
+    await bot.load_extension("commands.permisos")
+
+    # Ejecutar bot
+    await bot.start(TOKEN)
+
+if __name__ == "__main__":
+    asyncio.run(main())
