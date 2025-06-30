@@ -79,7 +79,7 @@ async def verificar_inactividad():
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, miembro, faltas_dict[user_id]["faltas"], aciertos, "OK")
                 
-        save_state()
+        await save_state()
 
 @tasks.loop(hours=24)
 async def resetear_faltas_diarias():
@@ -100,7 +100,7 @@ async def resetear_faltas_diarias():
                     await miembro.send(f"✅ **Faltas reiniciadas** en #🧵go-viral")
                 except:
                     pass
-    save_state()
+    await save_state()
 
 @tasks.loop(minutes=1)
 async def clean_inactive_conversations():
@@ -120,7 +120,7 @@ async def clean_inactive_conversations():
                 except:
                     pass
             del active_conversations[user_id]
-    save_state()
+    await save_state()
 
 @tasks.loop(hours=24)
 async def limpiar_mensajes_expulsados():
@@ -139,4 +139,4 @@ async def limpiar_mensajes_expulsados():
                 except:
                     pass
                 del faltas_dict[user_id]
-    save_state()
+    await save_state()
