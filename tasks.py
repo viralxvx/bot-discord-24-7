@@ -2,13 +2,16 @@ import discord
 from discord.ext import tasks
 import datetime
 from discord_bot import bot
-from config import CANAL_OBJETIVO, CANAL_FALTAS
-from state_management import ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, save_state, faltas_dict
+from config import CANAL_OBJETIVO, CANAL_FALTAS, INACTIVITY_TIMEOUT, CANAL_SOPORTE
+from state_management import ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, save_state, faltas_dict, active_conversations
 from utils import actualizar_mensaje_faltas, registrar_log
 
 @tasks.loop(hours=24)
 async def verificar_inactividad():
     canal = discord.utils.get(bot.get_all_channels(), name=CANAL_OBJETIVO)
+    if not canal:
+        return
+        
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     ahora = datetime.datetime.now(datetime.timezone.utc)
     
@@ -81,6 +84,9 @@ async def verificar_inactividad():
 @tasks.loop(hours=24)
 async def resetear_faltas_diarias():
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
+    if not canal_faltas:
+        return
+        
     ahora = datetime.datetime.now(datetime.timezone.utc)
     
     for user_id, data in list(faltas_dict.items()):
@@ -98,9 +104,6 @@ async def resetear_faltas_diarias():
 
 @tasks.loop(minutes=1)
 async def clean_inactive_conversations():
-    from config import CANAL_SOPORTE, INACTIVITY_TIMEOUT
-    from state_management import active_conversations, save_state
-    
     canal_soporte = discord.utils.get(bot.get_all_channels(), name=CANAL_SOPORTE)
     if not canal_soporte:
         return
@@ -121,9 +124,6 @@ async def clean_inactive_conversations():
 
 @tasks.loop(hours=24)
 async def limpiar_mensajes_expulsados():
-    from state_management import baneos_temporales, faltas_dict, save_state
-    from config import CANAL_FALTAS
-    
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     if not canal_faltas:
         return
