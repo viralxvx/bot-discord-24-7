@@ -1,8 +1,9 @@
-from collections import defaultdict
-import datetime
 import json
+import datetime
+from collections import defaultdict
+from config import STATE_FILE
 
-# Estado persistente (globales)
+# Variables globales para el estado
 ultima_publicacion_dict = defaultdict(lambda: datetime.datetime.now(datetime.timezone.utc))
 amonestaciones = defaultdict(list)
 baneos_temporales = defaultdict(lambda: None)
@@ -13,7 +14,66 @@ faq_data = {}
 faltas_dict = defaultdict(lambda: {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None})
 mensajes_recientes = defaultdict(list)
 
-STATE_FILE = "state.json"
+def load_state():
+    global ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, ticket_counter, active_conversations, faq_data, faltas_dict, mensajes_recientes
+    
+    try:
+        with open(STATE_FILE, "r") as f:
+            state = json.load(f)
+        
+        # Función para cargar datetime
+        def load_datetime(dt_str):
+            if dt_str is None:
+                return None
+            dt = datetime.datetime.fromisoformat(dt_str)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.timezone.utc)
+            return dt
+        
+        # Cargar cada variable
+        ultima_publicacion_dict = defaultdict(
+            lambda: datetime.datetime.now(datetime.timezone.utc),
+            {k: load_datetime(v) for k, v in state.get("ultima_publicacion_dict", {}).items()}
+        )
+        
+        amonestaciones = defaultdict(
+            list, 
+            {k: [load_datetime(t) for t in v] for k, v in state.get("amonestaciones", {}).items()}
+        )
+        
+        baneos_temporales = defaultdict(
+            lambda: None,
+            {k: load_datetime(v) for k, v in state.get("baneos_temporales", {}).items()}
+        )
+        
+        permisos_inactividad = defaultdict(
+            lambda: None,
+            {k: {"inicio": load_datetime(v["inicio"]), "duracion": v["duracion"]} if v else None 
+             for k, v in state.get("permisos_inactividad", {}).items()}
+        )
+        
+        ticket_counter = state.get("ticket_counter", 0)
+        active_conversations = state.get("active_conversations", {})
+        faq_data = state.get("faq_data", {})
+        
+        faltas_dict = defaultdict(
+            lambda: {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None},
+            {
+                k: {
+                    "faltas": v["faltas"],
+                    "aciertos": v["aciertos"],
+                    "estado": v["estado"],
+                    "mensaje_id": v["mensaje_id"],
+                    "ultima_falta_time": load_datetime(v["ultima_falta_time"]) if v["ultima_falta_time"] else None
+                } for k, v in state.get("faltas_dict", {}).items()
+            }
+        )
+        
+        mensajes_recientes = defaultdict(list, state.get("mensajes_recientes", {}))
+        
+    except FileNotFoundError:
+        # Mantener valores por defecto si no existe el archivo
+        pass
 
 def save_state():
     state = {
@@ -37,3 +97,6 @@ def save_state():
     }
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
+
+# Cargar estado al importar
+load_state()
