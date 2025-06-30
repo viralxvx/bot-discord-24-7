@@ -1,13 +1,15 @@
 # config.py
-TOKEN = "your_bot_token_here"  # Asegúrate de que esto esté configurado en las variables de entorno en Railway
+TOKEN = "your_bot_token_here"  # Configurado en las variables de entorno en Railway
 CANAL_OBJETIVO = "go-viral"  # Ajusta según el nombre exacto en Discord
 CANAL_FALTAS = "faltas"  # Ajusta según el nombre exacto (por ejemplo, "📤faltas" o "faltas")
 CANAL_REPORTES = "reporte-de-incumplimiento"  # Ajusta según el nombre exacto
 CANAL_SOPORTE = "soporte"  # Ajusta según el nombre exacto
-CANAL_NORMAS_GENERALES = "✅normas-generales"  # Coincide con el canal encontrado en los logs
+CANAL_NORMAS_GENERALES = "✅normas-generales"  # Coincide con el canal en los logs
 CANAL_ANUNCIOS = "anuncios"  # Ajusta según el nombre exacto
 CANAL_LOGS = "logs"  # Ajusta según el nombre exacto
 CANAL_FLUJO_SOPORTE = "soporte"  # Ajusta si es diferente
+MAX_LOG_LENGTH = 2000  # Longitud máxima para los mensajes de log en Discord
+LOG_BATCH_DELAY = 60  # Segundos entre envíos de lotes de logs
 
 MENSAJE_NORMAS = (
     "📜 **Normas Generales**\n\n"
