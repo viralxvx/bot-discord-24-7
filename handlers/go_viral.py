@@ -1,6 +1,7 @@
 import re
 import discord
 import datetime
+from discord_bot import bot
 from state_management import ultima_publicacion_dict, faltas_dict, save_state
 from utils import actualizar_mensaje_faltas, registrar_log
 from config import CANAL_OBJETIVO, CANAL_FALTAS
@@ -39,12 +40,13 @@ async def handle_go_viral_message(message):
     if not ultima_publicacion:
         ultima_publicacion_dict[message.author.id] = ahora
         faltas_dict[message.author.id]["aciertos"] += 1
+        canal_faltas = discord.utils.get(message.guild.text_channels, name=CANAL_FALTAS)
         if canal_faltas:
             await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
         return
         
-    diferencia = ahora - ultima_publicacion.created_at.replace(tzinfo=None)
-    publicaciones_despues = [m for m in mensajes if m.created_at > ultima_publicacion.created_at and m.author != message.author]
+    diferencia = ahora - ultima_publicacion.created_at.replace(tzinfo=datetime.timezone.utc)
+    publicaciones_despues = [m for m in mensajes if m.created_at.replace(tzinfo=datetime.timezone.utc) > ultima_publicacion.created_at.replace(tzinfo=datetime.timezone.utc) and m.author != message.author]
     
     no_apoyados = []
     for msg in publicaciones_despues:
@@ -73,6 +75,7 @@ async def handle_go_viral_message(message):
     try:
         await bot.wait_for("reaction_add", timeout=60, check=check_reaccion_propia)
         faltas_dict[message.author.id]["aciertos"] += 1
+        canal_faltas = discord.utils.get(message.guild.text_channels, name=CANAL_FALTAS)
         if canal_faltas:
             await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
     except:
@@ -96,4 +99,44 @@ async def handle_invalid_format(message, ahora):
     if canal_faltas:
         await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
 
-# Funciones similares para handle_missing_reactions, handle_early_post, handle_missing_self_reaction
+async def handle_missing_reactions(message, ahora, no_apoyados):
+    await message.delete()
+    faltas_dict[message.author.id]["faltas"] += 1
+    faltas_dict[message.author.id]["ultima_falta_time"] = ahora
+    advertencia = await message.channel.send(f"{message.author.mention} **Falta de reacciones**")
+    await advertencia.delete(delay=15)
+    try:
+        await message.author.send(f"⚠️ **Falta**: Reacciones pendientes en #🧵go-viral")
+    except:
+        pass
+    canal_faltas = discord.utils.get(message.guild.text_channels, name=CANAL_FALTAS)
+    if canal_faltas:
+        await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
+
+async def handle_early_post(message, ahora):
+    await message.delete()
+    faltas_dict[message.author.id]["faltas"] += 1
+    faltas_dict[message.author.id]["ultima_falta_time"] = ahora
+    advertencia = await message.channel.send(f"{message.author.mention} **Espera 24h**")
+    await advertencia.delete(delay=15)
+    try:
+        await message.author.send(f"⚠️ **Falta**: Publicación antes de 24h")
+    except:
+        pass
+    canal_faltas = discord.utils.get(message.guild.text_channels, name=CANAL_FALTAS)
+    if canal_faltas:
+        await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
+
+async def handle_missing_self_reaction(message, ahora):
+    await message.delete()
+    faltas_dict[message.author.id]["faltas"] += 1
+    faltas_dict[message.author.id]["ultima_falta_time"] = ahora
+    advertencia = await message.channel.send(f"{message.author.mention} **Falta reacción propia**")
+    await advertencia.delete(delay=15)
+    try:
+        await message.author.send(f"⚠️ **Falta**: Sin reacción 👍 propia")
+    except:
+        pass
+    canal_faltas = discord.utils.get(message.guild.text_channels, name=CANAL_FALTAS)
+    if canal_faltas:
+        await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
