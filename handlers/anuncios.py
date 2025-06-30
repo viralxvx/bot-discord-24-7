@@ -1,10 +1,9 @@
 import discord
-from utils import publicar_mensaje_unico
-from config import CANAL_ANUNCIOS, MENSAJE_ANUNCIO_PERMISOS
+from handlers.logs import registrar_log
 
-async def handle_anuncios(message):
-    if message.channel.name != CANAL_ANUNCIOS or message.author.bot:
-        return
-        
-    # Publicar mensaje único en anuncios
-    await publicar_mensaje_unico(message.channel, MENSAJE_ANUNCIO_PERMISOS)
+async def handle_anuncios(bot: discord.Client, message: discord.Message):
+    try:
+        log_msg = f"📢 Anuncio publicado por {message.author.name}: {message.content[:100]}"
+        await registrar_log(log_msg, categoria="anuncios")
+    except Exception as e:
+        print(f"[ERROR] al manejar anuncio: {e}")
