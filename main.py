@@ -1,28 +1,29 @@
-import discord
-from discord.ext import commands
 import asyncio
+import os
+from dotenv import load_dotenv
+from discord_bot import bot  # Instancia principal del bot
+from redis_database import redis_client  # Cliente Redis
+import logging
 
-from config import TOKEN
-from events.on_ready import on_ready
-from events.on_member import on_member_join, on_member_remove
-from events.on_message import on_message
-from utils import save_state  # si usas utils para guardar estado
+load_dotenv()  # Carga variables de entorno desde .env
 
-intents = discord.Intents.default()
-intents.members = True
-intents.message_content = True  # necesario para leer mensajes
+TOKEN = os.getenv("DISCORD_TOKEN")
+if not TOKEN:
+    raise RuntimeError("⚠️ No se encontró la variable de entorno DISCORD_TOKEN")
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+logging.basicConfig(level=logging.INFO)
 
-# Registrar eventos
-bot.event(on_ready)
-bot.event(on_member_join)
-bot.event(on_member_remove)
-bot.event(on_message)
+async def main():
+    try:
+        logging.info("Iniciando bot...")
+        await bot.start(TOKEN)
+    except KeyboardInterrupt:
+        logging.info("Bot detenido manualmente")
+    finally:
+        await bot.close()
+        if redis_client:
+            await redis_client.close()
+        logging.info("Conexiones cerradas")
 
-# Evento para limpiar al cerrar (opcional)
-import atexit
-atexit.register(save_state)
-
-# Ejecutar el bot
-bot.run(TOKEN)
+if __name__ == "__main__":
+    asyncio.run(main())
