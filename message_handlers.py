@@ -1,17 +1,15 @@
 from discord.ext import commands
-from .config import bot, CANAL_FALTAS, CANAL_SOPORTE, CANAL_OBJETIVO, CANAL_NORMAS_GENERALES, CANAL_X_NORMAS
-from .state_management import save_state, ultima_publicacion_dict, faltas_dict, active_conversations, mensajes_recientes
-from .views import ReportMenu, SupportMenu
-from .utils import registrar_log, actualizar_mensaje_faltas, publicar_mensaje_unico
+from config import bot, CANAL_FALTAS, CANAL_SOPORTE, CANAL_OBJETIVO, CANAL_NORMAS_GENERALES, CANAL_X_NORMAS
+from state_management import save_state, ultima_publicacion_dict, faltas_dict, active_conversations, mensajes_recientes
+from views import ReportMenu, SupportMenu
+from utils import registrar_log, actualizar_mensaje_faltas, publicar_mensaje_unico
 import re
 
 @bot.event
 async def on_message(message):
     global active_conversations, mensajes_recientes
-    if not message.channel or message.channel.name not in [CANAL_LOGS, CANAL_FALTAS]:
+    if message.channel.name not in [CANAL_LOGS, CANAL_FALTAS]:
         canal_id = str(message.channel.id)
-        if canal_id not in mensajes_recientes:
-            mensajes_recientes[canal_id] = []
         mensaje_normalizado = message.content.strip().lower()
         if mensaje_normalizado:
             if any(mensaje_normalizado == msg.strip().lower() for msg in mensajes_recientes[canal_id]):
@@ -22,19 +20,17 @@ async def on_message(message):
                             await message.author.send(
                                 f"⚠️ **Mensaje repetido eliminado** en #{message.channel.name}"
                             )
-                        except discord.Forbidden:
+                        except:
                             pass
                 except discord.Forbidden:
                     pass
             mensajes_recientes[canal_id].append(message.content)
             if len(mensajes_recientes[canal_id]) > MAX_MENSAJES_RECIENTES:
                 mensajes_recientes[canal_id].pop(0)
-            save_state(log=True)
+            save_state()
     
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
-    if message.author.id not in faltas_dict:
-        faltas_dict[message.author.id] = {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
-    if message.channel and message.channel.name == CANAL_REPORTES and not message.author.bot:
+    if message.channel.name == CANAL_REPORTES and not message.author.bot:
         if message.mentions:
             reportado = message.mentions[0]
             await message.channel.send(
@@ -44,7 +40,7 @@ async def on_message(message):
             await message.delete()
         else:
             await message.channel.send("⚠️ **Menciona un usuario** o usa `!permiso <días>`")
-    elif message.channel and message.channel.name == CANAL_SOPORTE and not message.author.bot:
+    elif message.channel.name == CANAL_SOPORTE and not message.author.bot:
         user_id = message.author.id
         if user_id not in active_conversations:
             active_conversations[user_id] = {"message_ids": [], "last_time": datetime.datetime.now(datetime.timezone.utc)}
@@ -66,7 +62,7 @@ async def on_message(message):
         active_conversations[user_id]["message_ids"].append(msg.id)
         active_conversations[user_id]["last_time"] = datetime.datetime.now(datetime.timezone.utc)
         await message.delete()
-    elif message.channel and message.channel.name == CANAL_OBJETIVO and not message.author.bot:
+    elif message.channel.name == CANAL_OBJETIVO and not message.author.bot:
         ahora = datetime.datetime.now(datetime.timezone.utc)
         urls = re.findall(r"https://x\.com/[^\s]+", message.content.strip())
         if len(urls) != 1 or (len(urls) == 1 and message.content.strip() != urls[0]):
@@ -81,11 +77,10 @@ async def on_message(message):
                 await message.author.send(
                     f"⚠️ **Falta**: Formato incorrecto en #🧵go-viral"
                 )
-            except discord.Forbidden:
+            except:
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            save_state(log=True)
             return
         url = urls[0].split('?')[0]
         url_pattern = r"https://x\.com/[^/]+/status/\d+"
@@ -101,11 +96,10 @@ async def on_message(message):
                 await message.author.send(
                     f"⚠️ **Falta**: URL inválida en #🧵go-viral"
                 )
-            except discord.Forbidden:
+            except:
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            save_state(log=True)
             return
         new_message = message
         mensajes = []
@@ -123,7 +117,6 @@ async def on_message(message):
             faltas_dict[message.author.id]["aciertos"] += 1
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            save_state(log=True)
             return
         diferencia = ahora - ultima_publicacion.created_at.replace(tzinfo=None)
         publicaciones_despues = [m for m in mensajes if m.created_at > ultima_publicacion.created_at and m.author != message.author]
@@ -154,11 +147,10 @@ async def on_message(message):
                 await message.author.send(
                     f"⚠️ **Falta**: Reacciones pendientes en #🧵go-viral"
                 )
-            except discord.Forbidden:
+            except:
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            save_state(log=True)
             return
         if len(publicaciones_despues) < 1 and diferencia.total_seconds() < 86400:
             await new_message.delete()
@@ -172,11 +164,10 @@ async def on_message(message):
                 await message.author.send(
                     f"⚠️ **Falta**: Publicación antes de 24h"
                 )
-            except discord.Forbidden:
+            except:
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            save_state(log=True)
             return
         def check_reaccion_propia(reaction, user):
             return reaction.message.id == new_message.id and str(reaction.emoji) == "👍" and user == message.author
@@ -185,7 +176,6 @@ async def on_message(message):
             faltas_dict[message.author.id]["aciertos"] += 1
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            save_state(log=True)
         except:
             await new_message.delete()
             faltas_dict[message.author.id]["faltas"] += 1
@@ -198,29 +188,25 @@ async def on_message(message):
                 await message.author.send(
                     f"⚠️ **Falta**: Sin reacción 👍 propia"
                 )
-            except discord.Forbidden:
+            except:
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, message.author, faltas_dict[message.author.id]["faltas"], faltas_dict[message.author.id]["aciertos"], faltas_dict[message.author.id]["estado"])
-            save_state(log=True)
             return
         ultima_publicacion_dict[message.author.id] = ahora
-    elif message.channel and message.channel.name in [CANAL_NORMAS_GENERALES, CANAL_X_NORMAS] and not message.author.bot:
+    elif message.channel.name in [CANAL_NORMAS_GENERALES, CANAL_X_NORMAS] and not message.author.bot:
         canal_anuncios = discord.utils.get(message.guild.text_channels, name=CANAL_ANUNCIOS)
         if canal_anuncios:
             await publicar_mensaje_unico(canal_anuncios, (
                 f"📢 **Norma actualizada**: {message.channel.mention}"
             ))
     await bot.process_commands(message)
-    save_state(log=True)
 
 @bot.event
 async def on_reaction_add(reaction, user):
-    if not reaction.message.channel or user.bot or reaction.message.channel.name != CANAL_OBJETIVO:
+    if user.bot or reaction.message.channel.name != CANAL_OBJETIVO:
         return
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
-    if user.id not in faltas_dict:
-        faltas_dict[user.id] = {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None}
     autor = reaction.message.author
     emoji_valido = "👍" if user == autor else "🔥"
     ahora = datetime.datetime.now(datetime.timezone.utc)
@@ -237,11 +223,10 @@ async def on_reaction_add(reaction, user):
                 await user.send(
                     f"⚠️ **Falta**: Reacción incorrecta en #🧵go-viral"
                 )
-            except discord.Forbidden:
+            except:
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, user, faltas_dict[user.id]["faltas"], faltas_dict[user.id]["aciertos"], faltas_dict[user.id]["estado"])
-            save_state(log=True)
         elif str(reaction.emoji) == "🔥" and user == autor:
             await reaction.remove(user)
             faltas_dict[user.id]["faltas"] += 1
@@ -254,8 +239,7 @@ async def on_reaction_add(reaction, user):
                 await user.send(
                     f"⚠️ **Falta**: 🔥 en tu propia publicación"
                 )
-            except discord.Forbidden:
+            except:
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, user, faltas_dict[user.id]["faltas"], faltas_dict[user.id]["aciertos"], faltas_dict[user.id]["estado"])
-            save_state(log=True)
