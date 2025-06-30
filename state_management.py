@@ -1,7 +1,7 @@
 import os
 import json
 import datetime
-import asyncpg
+import redis
 import asyncio
 import logging
 from collections import defaultdict
@@ -18,239 +18,156 @@ faq_data = {}
 faltas_dict = defaultdict(lambda: {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None, "ultima_falta_time": None})
 mensajes_recientes = defaultdict(list)
 
-# Conexión a PostgreSQL
-pool = None
+# Conexión a Redis
+redis_client = None
 
 async def init_db():
-    global pool
-    max_retries = 3
+    global redis_client
+    max_retries = 5
     retry_delay = 5  # segundos
     for attempt in range(max_retries):
         try:
-            await asyncio.sleep(3)  # Retardo inicial
-            pool = await asyncpg.create_pool(os.environ["DATABASE_URL"], max_size=10)
-            logging.info("Conexión a PostgreSQL establecida correctamente")
-            async with pool.acquire() as conn:
-                # Crear tablas si no existen
-                await conn.execute('''
-                    CREATE TABLE IF NOT EXISTS ultima_publicacion (
-                        user_id TEXT PRIMARY KEY,
-                        timestamp TIMESTAMP WITH TIME ZONE
-                    )
-                ''')
-                await conn.execute('''
-                    CREATE TABLE IF NOT EXISTS amonestaciones (
-                        user_id TEXT,
-                        timestamp TIMESTAMP WITH TIME ZONE,
-                        PRIMARY KEY (user_id, timestamp)
-                    )
-                ''')
-                await conn.execute('''
-                    CREATE TABLE IF NOT EXISTS baneos_temporales (
-                        user_id TEXT PRIMARY KEY,
-                        timestamp TIMESTAMP WITH TIME ZONE
-                    )
-                ''')
-                await conn.execute('''
-                    CREATE TABLE IF NOT EXISTS permisos_inactividad (
-                        user_id TEXT PRIMARY KEY,
-                        inicio TIMESTAMP WITH TIME ZONE,
-                        duracion INTEGER
-                    )
-                ''')
-                await conn.execute('''
-                    CREATE TABLE IF NOT EXISTS ticket_counter (
-                        id SERIAL PRIMARY KEY,
-                        value INTEGER
-                    )
-                ''')
-                await conn.execute('''
-                    CREATE TABLE IF NOT EXISTS active_conversations (
-                        user_id TEXT PRIMARY KEY,
-                        message_ids JSONB,
-                        last_time TIMESTAMP WITH TIME ZONE
-                    )
-                ''')
-                await conn.execute('''
-                    CREATE TABLE IF NOT EXISTS faq_data (
-                        question TEXT PRIMARY KEY,
-                        response TEXT
-                    )
-                ''')
-                await conn.execute('''
-                    CREATE TABLE IF NOT EXISTS faltas_dict (
-                        user_id TEXT PRIMARY KEY,
-                        faltas INTEGER,
-                        aciertos INTEGER,
-                        estado TEXT,
-                        mensaje_id TEXT,
-                        ultima_falta_time TIMESTAMP WITH TIME ZONE
-                    )
-                ''')
-                await conn.execute('''
-                    CREATE TABLE IF NOT EXISTS mensajes_recientes (
-                        channel_id TEXT PRIMARY KEY,
-                        messages JSONB
-                    )
-                ''')
-            logging.info("Tablas de PostgreSQL creadas o verificadas correctamente")
+            # Usar REDIS_URL desde las variables de entorno
+            redis_url = os.environ.get("REDIS_URL")
+            if not redis_url:
+                raise ValueError("REDIS_URL no está configurado en las variables de entorno")
+            
+            # Configurar cliente Redis
+            redis_client = redis.Redis.from_url(
+                redis_url,
+                decode_responses=True,  # Decodificar respuestas como strings
+                retry_on_timeout=True,
+                socket_timeout=5,
+                socket_connect_timeout=5
+            )
+            
+            # Probar la conexión con un ping
+            redis_client.ping()
+            logging.info(f"Conexión a Redis establecida correctamente (intento {attempt + 1})")
             return
         except Exception as e:
-            logging.error(f"Intento {attempt + 1}/{max_retries} de conexión a PostgreSQL falló: {str(e)}")
+            logging.error(f"Intento {attempt + 1}/{max_retries} de conexión a Redis falló: {str(e)}")
             if attempt < max_retries - 1:
                 logging.info(f"Reintentando en {retry_delay} segundos...")
                 await asyncio.sleep(retry_delay)
             else:
-                logging.error("No se pudo conectar a PostgreSQL después de varios intentos")
+                logging.error("No se pudo conectar a Redis después de varios intentos")
                 raise
 
 async def load_state():
     global ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, ticket_counter, active_conversations, faq_data, faltas_dict, mensajes_recientes
     try:
-        async with pool.acquire() as conn:
-            # Cargar ultima_publicacion_dict
-            records = await conn.fetch('SELECT user_id, timestamp FROM ultima_publicacion')
-            ultima_publicacion_dict = defaultdict(lambda: datetime.datetime.now(datetime.timezone.utc))
-            for record in records:
-                ultima_publicacion_dict[record['user_id']] = record['timestamp']
+        # Cargar ultima_publicacion_dict
+        ultima_publicacion = redis_client.hgetall("ultima_publicacion")
+        ultima_publicacion_dict = defaultdict(lambda: datetime.datetime.now(datetime.timezone.utc))
+        for user_id, timestamp in ultima_publicacion.items():
+            ultima_publicacion_dict[user_id] = datetime.datetime.fromisoformat(timestamp)
 
-            # Cargar amonestaciones
-            amonestaciones.clear()
-            records = await conn.fetch('SELECT user_id, timestamp FROM amonestaciones')
-            for record in records:
-                amonestaciones[record['user_id']].append(record['timestamp'])
+        # Cargar amonestaciones
+        amonestaciones.clear()
+        for user_id in redis_client.smembers("amonestaciones_users"):
+            timestamps = redis_client.lrange(f"amonestaciones:{user_id}", 0, -1)
+            amonestaciones[user_id] = [datetime.datetime.fromisoformat(ts) for ts in timestamps]
 
-            # Cargar baneos_temporales
-            baneos_temporales.clear()
-            records = await conn.fetch('SELECT user_id, timestamp FROM baneos_temporales')
-            for record in records:
-                baneos_temporales[record['user_id']] = record['timestamp']
+        # Cargar baneos_temporales
+        baneos_temporales.clear()
+        baneos = redis_client.hgetall("baneos_temporales")
+        for user_id, timestamp in baneos.items():
+            if timestamp:
+                baneos_temporales[user_id] = datetime.datetime.fromisoformat(timestamp)
 
-            # Cargar permisos_inactividad
-            permisos_inactividad.clear()
-            records = await conn.fetch('SELECT user_id, inicio, duracion FROM permisos_inactividad')
-            for record in records:
-                permisos_inactividad[record['user_id']] = {"inicio": record['inicio'], "duracion": record['duracion']}
+        # Cargar permisos_inactividad
+        permisos_inactividad.clear()
+        permisos = redis_client.hgetall("permisos_inactividad")
+        for user_id, data in permisos.items():
+            if data:
+                permisos_inactividad[user_id] = json.loads(data)
 
-            # Cargar ticket_counter
-            record = await conn.fetchrow('SELECT value FROM ticket_counter WHERE id = 1')
-            global ticket_counter
-            ticket_counter = record['value'] if record else 0
+        # Cargar ticket_counter
+        ticket_counter_value = redis_client.get("ticket_counter")
+        global ticket_counter
+        ticket_counter = int(ticket_counter_value) if ticket_counter_value else 0
 
-            # Cargar active_conversations
-            active_conversations.clear()
-            records = await conn.fetch('SELECT user_id, message_ids, last_time FROM active_conversations')
-            for record in records:
-                active_conversations[record['user_id']] = {
-                    "message_ids": record['message_ids'],
-                    "last_time": record['last_time']
-                }
+        # Cargar active_conversations
+        active_conversations.clear()
+        conversations = redis_client.hgetall("active_conversations")
+        for user_id, data in conversations.items():
+            active_conversations[user_id] = json.loads(data)
 
-            # Cargar faq_data
-            faq_data.clear()
-            records = await conn.fetch('SELECT question, response FROM faq_data')
-            for record in records:
-                faq_data[record['question']] = record['response']
+        # Cargar faq_data
+        faq_data.clear()
+        faq = redis_client.hgetall("faq_data")
+        for question, response in faq.items():
+            faq_data[question] = response
 
-            # Cargar faltas_dict
-            faltas_dict.clear()
-            records = await conn.fetch('SELECT user_id, faltas, aciertos, estado, mensaje_id, ultima_falta_time FROM faltas_dict')
-            for record in records:
-                faltas_dict[record['user_id']] = {
-                    "faltas": record['faltas'],
-                    "aciertos": record['aciertos'],
-                    "estado": record['estado'],
-                    "mensaje_id": record['mensaje_id'],
-                    "ultima_falta_time": record['ultima_falta_time']
-                }
+        # Cargar faltas_dict
+        faltas_dict.clear()
+        faltas = redis_client.hgetall("faltas_dict")
+        for user_id, data in faltas.items():
+            faltas_dict[user_id] = json.loads(data)
 
-            # Cargar mensajes_recientes
-            mensajes_recientes.clear()
-            records = await conn.fetch('SELECT channel_id, messages FROM mensajes_recientes')
-            for record in records:
-                mensajes_recientes[record['channel_id']] = record['messages']
-            logging.info("Estado cargado desde PostgreSQL correctamente")
+        # Cargar mensajes_recientes
+        mensajes_recientes.clear()
+        mensajes = redis_client.hgetall("mensajes_recientes")
+        for channel_id, messages in mensajes.items():
+            mensajes_recientes[channel_id] = json.loads(messages)
+
+        logging.info("Estado cargado desde Redis correctamente")
     except Exception as e:
-        logging.error(f"Error al cargar estado desde PostgreSQL: {str(e)}")
+        logging.error(f"Error al cargar estado desde Redis: {str(e)}")
         raise
 
 async def save_state():
     try:
-        async with pool.acquire() as conn:
-            async with conn.transaction():
-                # Guardar ultima_publicacion_dict
-                await conn.execute('DELETE FROM ultima_publicacion')
-                for user_id, timestamp in ultima_publicacion_dict.items():
-                    await conn.execute(
-                        'INSERT INTO ultima_publicacion (user_id, timestamp) VALUES ($1, $2)',
-                        str(user_id), timestamp
-                    )
+        # Guardar ultima_publicacion_dict
+        redis_client.delete("ultima_publicacion")
+        for user_id, timestamp in ultima_publicacion_dict.items():
+            redis_client.hset("ultima_publicacion", user_id, timestamp.isoformat())
 
-                # Guardar amonestaciones
-                await conn.execute('DELETE FROM amonestaciones')
-                for user_id, timestamps in amonestaciones.items():
-                    for timestamp in timestamps:
-                        await conn.execute(
-                            'INSERT INTO amonestaciones (user_id, timestamp) VALUES ($1, $2)',
-                            str(user_id), timestamp
-                        )
+        # Guardar amonestaciones
+        redis_client.delete("amonestaciones_users")
+        for user_id, timestamps in amonestaciones.items():
+            redis_client.sadd("amonestaciones_users", user_id)
+            redis_client.delete(f"amonestaciones:{user_id}")
+            for timestamp in timestamps:
+                redis_client.rpush(f"amonestaciones:{user_id}", timestamp.isoformat())
 
-                # Guardar baneos_temporales
-                await conn.execute('DELETE FROM baneos_temporales')
-                for user_id, timestamp in baneos_temporales.items():
-                    if timestamp:
-                        await conn.execute(
-                            'INSERT INTO baneos_temporales (user_id, timestamp) VALUES ($1, $2)',
-                            str(user_id), timestamp
-                        )
+        # Guardar baneos_temporales
+        redis_client.delete("baneos_temporales")
+        for user_id, timestamp in baneos_temporales.items():
+            if timestamp:
+                redis_client.hset("baneos_temporales", user_id, timestamp.isoformat())
 
-                # Guardar permisos_inactividad
-                await conn.execute('DELETE FROM permisos_inactividad')
-                for user_id, data in permisos_inactividad.items():
-                    if data:
-                        await conn.execute(
-                            'INSERT INTO permisos_inactividad (user_id, inicio, duracion) VALUES ($1, $2, $3)',
-                            str(user_id), data["inicio"], data["duracion"]
-                        )
+        # Guardar permisos_inactividad
+        redis_client.delete("permisos_inactividad")
+        for user_id, data in permisos_inactividad.items():
+            if data:
+                redis_client.hset("permisos_inactividad", user_id, json.dumps(data))
 
-                # Guardar ticket_counter
-                await conn.execute(
-                    'INSERT INTO ticket_counter (id, value) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET value = $1',
-                    ticket_counter
-                )
+        # Guardar ticket_counter
+        redis_client.set("ticket_counter", ticket_counter)
 
-                # Guardar active_conversations
-                await conn.execute('DELETE FROM active_conversations')
-                for user_id, data in active_conversations.items():
-                    await conn.execute(
-                        'INSERT INTO active_conversations (user_id, message_ids, last_time) VALUES ($1, $2, $3)',
-                        str(user_id), data["message_ids"], data["last_time"]
-                    )
+        # Guardar active_conversations
+        redis_client.delete("active_conversations")
+        for user_id, data in active_conversations.items():
+            redis_client.hset("active_conversations", user_id, json.dumps(data))
 
-                # Guardar faq_data
-                await conn.execute('DELETE FROM faq_data')
-                for question, response in faq_data.items():
-                    await conn.execute(
-                        'INSERT INTO faq_data (question, response) VALUES ($1, $2)',
-                        question, response
-                    )
+        # Guardar faq_data
+        redis_client.delete("faq_data")
+        for question, response in faq_data.items():
+            redis_client.hset("faq_data", question, response)
 
-                # Guardar faltas_dict
-                await conn.execute('DELETE FROM faltas_dict')
-                for user_id, data in faltas_dict.items():
-                    await conn.execute(
-                        'INSERT INTO faltas_dict (user_id, faltas, aciertos, estado, mensaje_id, ultima_falta_time) VALUES ($1, $2, $3, $4, $5, $6)',
-                        str(user_id), data["faltas"], data["aciertos"], data["estado"], data["mensaje_id"], data["ultima_falta_time"]
-                    )
+        # Guardar faltas_dict
+        redis_client.delete("faltas_dict")
+        for user_id, data in faltas_dict.items():
+            redis_client.hset("faltas_dict", user_id, json.dumps(data))
 
-                # Guardar mensajes_recientes
-                await conn.execute('DELETE FROM mensajes_recientes')
-                for channel_id, messages in mensajes_recientes.items():
-                    await conn.execute(
-                        'INSERT INTO mensajes_recientes (channel_id, messages) VALUES ($1, $2)',
-                        str(channel_id), messages
-                    )
-                logging.info("Estado guardado en PostgreSQL correctamente")
+        # Guardar mensajes_recientes
+        redis_client.delete("mensajes_recientes")
+        for channel_id, messages in mensajes_recientes.items():
+            redis_client.hset("mensajes_recientes", channel_id, json.dumps(messages))
+
+        logging.info("Estado guardado en Redis correctamente")
     except Exception as e:
-        logging.error(f"Error al guardar estado en PostgreSQL: {str(e)}")
+        logging.error(f"Error al guardar estado en Redis: {str(e)}")
         raise
