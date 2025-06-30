@@ -7,9 +7,9 @@ import logging
 
 load_dotenv()  # Carga variables de entorno desde .env
 
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv("TOKEN")
 if not TOKEN:
-    raise RuntimeError("⚠️ No se encontró la variable de entorno DISCORD_TOKEN")
+    raise RuntimeError("⚠️ No se encontró la variable de entorno TOKEN")
 
 logging.basicConfig(level=logging.INFO)
 
@@ -21,8 +21,11 @@ async def main():
         logging.info("Bot detenido manualmente")
     finally:
         await bot.close()
-        if redis_client:
-            await redis_client.close()
+        # Cerrar conexión Redis si existe y tiene método close
+        if redis_client and hasattr(redis_client, "close"):
+            close_coro = redis_client.close()
+            if asyncio.iscoroutine(close_coro):
+                await close_coro
         logging.info("Conexiones cerradas")
 
 if __name__ == "__main__":
