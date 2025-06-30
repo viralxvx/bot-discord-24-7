@@ -1,15 +1,13 @@
-import asyncio
 from discord.ext import tasks
 import discord
 from config import CANAL_SOPORTE
 
 @tasks.loop(hours=1)
-async def limpiar_mensajes_expulsados():
-    from discord_bot import bot  # Importar aquí para evitar importación circular
-
+async def limpiar_expulsados():
+    from discord_bot import bot  # Evita import circular
     await bot.wait_until_ready()
-    canal_soporte = None
 
+    canal_soporte = None
     for guild in bot.guilds:
         canal_soporte = discord.utils.get(guild.text_channels, name=CANAL_SOPORTE)
         if canal_soporte:
