@@ -13,7 +13,7 @@ from utils import (
     actualizar_mensaje_faltas, registrar_log, 
     publicar_mensaje_unico
 )
-# Importación corregida usando rutas relativas
+# Importaciones corregidas
 from views.report_menu import ReportMenu
 from views.support_menu import SupportMenu
 from handlers import (
