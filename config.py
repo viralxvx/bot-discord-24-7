@@ -1,47 +1,37 @@
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
-
-# Token del bot Discord (se usa en main.py)
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-
-# IDs y nombres de canales (ajusta según tu servidor)
-CANAL_LOGS = "logs"                  # Nombre canal logs
-CANAL_FALTAS = "faltas"              # Nombre canal faltas
-CANAL_REPORTES = "reportes"          # Nombre canal reportes
-CANAL_SOPORTE = "soporte"            # Nombre canal soporte
-CANAL_OBJETIVO = "go-viral"          # Nombre canal objetivo (viral)
-CANAL_NORMAS_GENERALES = "normas-generales"  # Nombre canal normas generales
-CANAL_X_NORMAS = "x-normas"          # Nombre canal X normas
-CANAL_ANUNCIOS = "anuncios"          # Nombre canal anuncios
-
-# ID del administrador para enviar mensajes directos
-ADMIN_ID = os.getenv("ADMIN_ID")
+# Token del bot Discord (asegúrate de definir DISCORD_TOKEN en Railway)
+TOKEN = os.getenv("DISCORD_TOKEN")
 
 # Prefijo para comandos
-COMMAND_PREFIX = "!"
+PREFIX = "!"
 
-# Parámetros generales
-MAX_MENSAJES_RECIENTES = 5  # Número máximo de mensajes recientes para filtrado
+# ID del administrador (opcional, define ADMIN_ID en Railway, si no 0)
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0"))
 
-# Mensajes predefinidos
+# Nombres de canales usados en el bot
+CANAL_SOPORTE = "👨🔧soporte"
+CANAL_LOGS = "📜logs"
+CANAL_FALTAS = "📤faltas"
+CANAL_REPORTES = "⛔reporte-de-incumplimiento"
+CANAL_OBJETIVO = "🧵go-viral"
+CANAL_NORMAS_GENERALES = "✅normas-generales"
+CANAL_X_NORMAS = "𝕏-normas"
+CANAL_ANUNCIOS = "🔔anuncios"
+
+# Máximo mensajes recientes para control antispam
+MAX_MENSAJES_RECIENTES = 10
+
+# Mensajes de fallback (ejemplo)
+FAQ_FALLBACK = {
+    "✅ ¿Cómo funciona VX?": "Aquí va la respuesta por defecto para VX.",
+    "✅ ¿Cómo publico mi post?": "Aquí va la respuesta para publicar post.",
+    "✅ ¿Cómo subo de nivel?": "Aquí va la respuesta para subir de nivel."
+}
+
+# Mensaje normas ejemplo
 MENSAJE_NORMAS = (
-    "📜 Por favor, lee las normas del servidor y cumple con ellas para evitar sanciones."
+    "Por favor, sigue las normas del servidor para evitar sanciones."
 )
 
-# Respuestas FAQ (puedes agregar más)
-FAQ_DATA = {
-    "✅ ¿Cómo funciona VX?": "VX funciona así...",
-    "✅ ¿Cómo publico mi post?": "Para publicar un post...",
-    "✅ ¿Cómo subo de nivel?": "Para subir de nivel debes...",
-}
-
-FAQ_FALLBACK = {
-    "✅ ¿Cómo funciona VX?": "No se encontró respuesta para esta pregunta.",
-    "✅ ¿Cómo publico mi post?": "No se encontró respuesta para esta pregunta.",
-    "✅ ¿Cómo subo de nivel?": "No se encontró respuesta para esta pregunta.",
-}
-
-# Aquí más configuraciones que necesites
-
+# Otros parámetros globales que uses pueden ir aquí...
