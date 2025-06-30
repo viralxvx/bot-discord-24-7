@@ -147,11 +147,11 @@ async def load_state():
         logging.info("Cargando mensajes_recientes...")
         mensajes_recientes.clear()
         mensajes = redis_client.hgetall("mensajes_recientes")
-        for channel_id, messages in mensajes.items():
+        for user_id, data in mensajes.items():
             try:
-                mensajes_recientes[channel_id] = json.loads(messages)
+                mensajes_recientes[user_id] = json.loads(data)
             except json.JSONDecodeError as e:
-                logging.error(f"Error al parsear JSON en mensajes_recientes para channel_id {channel_id}: {messages}, error: {str(e)}")
+                logging.error(f"Error al parsear JSON en mensajes_recientes para user_id {user_id}: {data}, error: {str(e)}")
         logging.info(f"Cargadas {len(mensajes)} entradas de mensajes_recientes")
 
         logging.info("Estado cargado desde Redis correctamente")
@@ -166,72 +166,117 @@ async def save_state():
         
         # Guardar ultima_publicacion_dict
         logging.info("Guardando ultima_publicacion...")
-        redis_client.delete("ultima_publicacion")
-        for user_id, timestamp in ultima_publicacion_dict.items():
-            redis_client.hset("ultima_publicacion", user_id, timestamp.isoformat())
-        logging.info(f"Guardadas {len(ultima_publicacion_dict)} entradas en ultima_publicacion")
+        try:
+            redis_client.delete("ultima_publicacion")
+            for user_id, timestamp in ultima_publicacion_dict.items():
+                redis_client.hset("ultima_publicacion", user_id, timestamp.isoformat())
+            logging.info(f"Guardadas {len(ultima_publicacion_dict)} entradas en ultima_publicacion")
+        except Exception as e:
+            logging.error(f"Error guardando ultima_publicacion: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
 
         # Guardar amonestaciones
         logging.info("Guardando amonestaciones...")
-        redis_client.delete("amonestaciones_users")
-        for user_id, timestamps in amonestaciones.items():
-            redis_client.sadd("amonestaciones_users", user_id)
-            redis_client.delete(f"amonestaciones:{user_id}")
-            for timestamp in timestamps:
-                redis_client.rpush(f"amonestaciones:{user_id}", timestamp.isoformat())
-        logging.info(f"Guardadas amonestaciones para {len(amonestaciones)} usuarios")
+        try:
+            redis_client.delete("amonestaciones_users")
+            for user_id, timestamps in amonestaciones.items():
+                redis_client.sadd("amonestaciones_users", user_id)
+                redis_client.delete(f"amonestaciones:{user_id}")
+                for timestamp in timestamps:
+                    redis_client.rpush(f"amonestaciones:{user_id}", timestamp.isoformat())
+            logging.info(f"Guardadas amonestaciones para {len(amonestaciones)} usuarios")
+        except Exception as e:
+            logging.error(f"Error guardando amonestaciones: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
 
         # Guardar baneos_temporales
         logging.info("Guardando baneos_temporales...")
-        redis_client.delete("baneos_temporales")
-        for user_id, timestamp in baneos_temporales.items():
-            if timestamp:
-                redis_client.hset("baneos_temporales", user_id, timestamp.isoformat())
-        logging.info(f"Guardadas {len(baneos_temporales)} entradas en baneos_temporales")
+        try:
+            redis_client.delete("baneos_temporales")
+            for user_id, timestamp in baneos_temporales.items():
+                if timestamp:
+                    redis_client.hset("baneos_temporales", user_id, timestamp.isoformat())
+            logging.info(f"Guardadas {len(baneos_temporales)} entradas en baneos_temporales")
+        except Exception as e:
+            logging.error(f"Error guardando baneos_temporales: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
 
         # Guardar permisos_inactividad
         logging.info("Guardando permisos_inactividad...")
-        redis_client.delete("permisos_inactividad")
-        for user_id, data in permisos_inactividad.items():
-            if data:
-                redis_client.hset("permisos_inactividad", user_id, json.dumps(data))
-        logging.info(f"Guardadas {len(permisos_inactividad)} entradas en permisos_inactividad")
+        try:
+            redis_client.delete("permisos_inactividad")
+            for user_id, data in permisos_inactividad.items():
+                if data:
+                    redis_client.hset("permisos_inactividad", user_id, json.dumps(data, ensure_ascii=False))
+            logging.info(f"Guardadas {len(permisos_inactividad)} entradas en permisos_inactividad")
+        except Exception as e:
+            logging.error(f"Error guardando permisos_inactividad: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
 
         # Guardar ticket_counter
         logging.info("Guardando ticket_counter...")
-        redis_client.set("ticket_counter", ticket_counter)
-        logging.info(f"ticket_counter guardado: {ticket_counter}")
+        try:
+            redis_client.set("ticket_counter", ticket_counter)
+            logging.info(f"ticket_counter guardado: {ticket_counter}")
+        except Exception as e:
+            logging.error(f"Error guardando ticket_counter: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
 
         # Guardar active_conversations
         logging.info("Guardando active_conversations...")
-        redis_client.delete("active_conversations")
-        for user_id, data in active_conversations.items():
-            redis_client.hset("active_conversations", user_id, json.dumps(data))
-        logging.info(f"Guardadas {len(active_conversations)} entradas en active_conversations")
+        try:
+            redis_client.delete("active_conversations")
+            for user_id, data in active_conversations.items():
+                redis_client.hset("active_conversations", user_id, json.dumps(data, ensure_ascii=False))
+            logging.info(f"Guardadas {len(active_conversations)} entradas en active_conversations")
+        except Exception as e:
+            logging.error(f"Error guardando active_conversations: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
 
         # Guardar faq_data
         logging.info("Guardando faq_data...")
-        redis_client.delete("faq_data")
-        for question, response in faq_data.items():
-            redis_client.hset("faq_data", question, response)
-        logging.info(f"Guardadas {len(faq_data)} entradas en faq_data")
+        try:
+            redis_client.delete("faq_data")
+            for question, response in faq_data.items():
+                redis_client.hset("faq_data", question, response)
+            logging.info(f"Guardadas {len(faq_data)} entradas en faq_data")
+        except Exception as e:
+            logging.error(f"Error guardando faq_data: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
 
         # Guardar faltas_dict
         logging.info("Guardando faltas_dict...")
-        redis_client.delete("faltas_dict")
-        for user_id, data in faltas_dict.items():
-            redis_client.hset("faltas_dict", user_id, json.dumps(data))
-        logging.info(f"Guardadas {len(faltas_dict)} entradas en faltas_dict")
+        try:
+            redis_client.delete("faltas_dict")
+            for user_id, data in faltas_dict.items():
+                redis_client.hset("faltas_dict", user_id, json.dumps(data, ensure_ascii=False))
+            logging.info(f"Guardadas {len(faltas_dict)} entradas en faltas_dict")
+        except Exception as e:
+            logging.error(f"Error guardando faltas_dict: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
 
         # Guardar mensajes_recientes
         logging.info("Guardando mensajes_recientes...")
-        redis_client.delete("mensajes_recientes")
-        for channel_id, messages in mensajes_recientes.items():
-            redis_client.hset("mensajes_recientes", channel_id, json.dumps(messages))
-        logging.info(f"Guardadas {len(mensajes_recientes)} entradas en mensajes_recientes")
+        try:
+            redis_client.delete("mensajes_recientes")
+            for user_id, messages in mensajes_recientes.items():
+                redis_client.hset("mensajes_recientes", user_id, json.dumps(messages, ensure_ascii=False))
+            logging.info(f"Guardadas {len(mensajes_recientes)} entradas en mensajes_recientes")
+        except Exception as e:
+            logging.error(f"Error guardando mensajes_recientes: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise
 
         logging.info("Estado guardado en Redis correctamente")
     except Exception as e:
-        logging.error(f"Error al guardar estado en Redis: {str(e)}")
+        logging.error(f"Error crítico al guardar estado en Redis: {str(e)}")
         logging.error(traceback.format_exc())
         raise
