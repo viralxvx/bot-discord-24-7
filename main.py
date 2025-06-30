@@ -44,21 +44,22 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 if "DATABASE_URL" not in os.environ:
     raise Exception("Error: La variable de entorno DATABASE_URL no está configurada. Configúrala en Railway.")
 DATABASE_URL = os.environ["DATABASE_URL"]
-if not DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgres://")
-if "?sslmode" not in DATABASE_URL:
-    DATABASE_URL += "?sslmode=require"
+if not DATABASE_URL.startswith("postgresql+psycopg2://"):
+    if DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://"):
+        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg2://").replace("postgresql://", "postgresql+psycopg2://")
+    if "?sslmode" not in DATABASE_URL:
+        DATABASE_URL += "?sslmode=require"
 engine = create_engine(
     DATABASE_URL,
     pool_size=5,
     max_overflow=10,
     pool_timeout=30,
-    pool_pre_ping=True,  # Verifica la conexión antes de usarla
-    connect_args={'connect_timeout': 10}  # Timeout de conexión
+    pool_pre_ping=True,
+    connect_args={'connect_timeout': 10}
 )
 Base = declarative_base()
 session_factory = sessionmaker(bind=engine)
-Session = scoped_session(session_factory)  # Sesiones thread-safe
+Session = scoped_session(session_factory)
 
 class State(Base):
     __tablename__ = "bot_state"
@@ -102,7 +103,6 @@ def load_state():
             faltas_dict = {int(k): v for k, v in state.faltas_dict.items()} if state.faltas_dict else {}
             mensajes_recientes = {int(k): v for k, v in state.mensajes_recientes.items()} if state.mensajes_recientes else {}
         else:
-            # Valores por defecto si no hay estado
             ultima_publicacion_dict = {}
             amonestaciones = {}
             baneos_temporales = {}
@@ -112,6 +112,8 @@ def load_state():
             faq_data = {}
             faltas_dict = {}
             mensajes_recientes = {}
+    except Exception as e:
+        print(f"Error al cargar el estado: {e}")
     finally:
         session.close()
 
@@ -119,7 +121,7 @@ def save_state(log=False):
     global last_save_time
     current_time = time.time()
     if current_time - last_save_time < SAVE_STATE_DELAY:
-        return  # Evitar guardados frecuentes
+        return
     session = Session()
     try:
         state = session.query(State).first() or State(id="global")
@@ -144,6 +146,8 @@ def save_state(log=False):
         last_save_time = current_time
         if log:
             asyncio.create_task(registrar_log("Estado guardado correctamente en la base de datos", categoria="estado"))
+    except Exception as e:
+        print(f"Error al guardar el estado: {e}")
     finally:
         session.close()
 
