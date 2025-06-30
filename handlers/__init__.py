@@ -7,4 +7,4 @@ from . import normas_generales
 from . import reporte_incumplimiento
 from . import soporte
 from . import x_normas
-from . import logs  
+from . import logs
