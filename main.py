@@ -1,35 +1,48 @@
 import discord
 from discord.ext import commands
-from config import TOKEN, INTENTS, PREFIX
-from redis_database import connect_redis
-from state_management import load_state, save_state
-from tasks.clean_inactive import clean_inactive_conversations
-from tasks.limpiar_expulsados import limpiar_mensajes_expulsados
-from tasks.reset_faltas import resetear_faltas_diarias
-from tasks.verificar_inactividad import verificar_inactividad
-from events import on_ready, on_member, on_message
-from commands import permisos
+from flask import Flask, jsonify
+from threading import Thread
+import os
 
-# Iniciar bot
-bot = commands.Bot(command_prefix=PREFIX, intents=INTENTS)
+from config import TOKEN, INTENTS, EXTENSIONS
+from state_management import save_state
+from redis_database import init_redis
 
-# Cargar eventos
-bot.event(on_ready.on_ready(bot))
-bot.event(on_member.on_member_join(bot))
-bot.event(on_message.on_message(bot))
+bot = commands.Bot(command_prefix="!", intents=INTENTS)
+app = Flask(__name__)
 
-# Cargar comandos
-bot.add_command(permisos.permiso)
+@app.route('/')
+def home():
+    return "El bot está corriendo!"
 
-# Cargar tareas programadas
-verificar_inactividad.start(bot)
-resetear_faltas_diarias.start(bot)
-clean_inactive_conversations.start(bot)
-limpiar_mensajes_expulsados.start(bot)
+@app.route('/health')
+def health():
+    return jsonify({
+        "status": "running",
+        "bot_ready": bot.is_ready(),
+    })
 
-# Iniciar conexión Redis y cargar estado
-connect_redis()
-load_state()
+def run_webserver():
+    app.run(host='0.0.0.0', port=8080)
 
-# Ejecutar bot
-bot.run(TOKEN)
+def keep_alive():
+    t = Thread(target=run_webserver)
+    t.daemon = True
+    t.start()
+
+@bot.event
+async def on_ready():
+    print(f"Bot conectado como {bot.user}")
+
+# Cargar extensiones (módulos)
+for extension in EXTENSIONS:
+    try:
+        bot.load_extension(extension)
+        print(f"✅ Cargado módulo: {extension}")
+    except Exception as e:
+        print(f"❌ Error cargando {extension}: {e}")
+
+if __name__ == "__main__":
+    init_redis()
+    keep_alive()
+    bot.run(TOKEN)
