@@ -13,7 +13,9 @@ from utils import (
     actualizar_mensaje_faltas, registrar_log, 
     publicar_mensaje_unico
 )
-from views import ReportMenu, SupportMenu
+# Importación corregida usando rutas relativas
+from views.report_menu import ReportMenu
+from views.support_menu import SupportMenu
 from handlers import (
     go_viral, reporte_incumplimiento, 
     soporte, normas_generales
