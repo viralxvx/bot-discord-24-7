@@ -1,10 +1,9 @@
 import discord
-from handlers.logs import registrar_log
+from .logs import registrar_log
 
-CANAL_ANUNCIOS = "🔔anuncios"
+CANAL_NORMAS_GENERALES = "✅normas-generales"
+MENSAJE_NORMAS = "Por favor, respeta las normas del servidor."
 
-async def manejar_normas_generales(message: discord.Message):
-    canal_anuncios = discord.utils.get(message.guild.text_channels, name=CANAL_ANUNCIOS)
-    if canal_anuncios:
-        await canal_anuncios.send(f"📢 **Norma actualizada**: {message.channel.mention}")
-        await registrar_log(f"Norma publicada desde {message.channel.name}", categoria="normas")
+async def manejar_normas_generales(message, bot):
+    if message.channel.name == CANAL_NORMAS_GENERALES and not message.author.bot:
+        await registrar_log(f"Norma recordada en {message.channel.name} por {message.author.name}", categoria="normas")
