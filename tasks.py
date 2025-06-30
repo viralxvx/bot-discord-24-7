@@ -1,6 +1,9 @@
+import discord
 from discord.ext import tasks
-from config import bot, CANAL_OBJETIVO, CANAL_FALTAS
-from state_management import ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, faltas_dict, save_state
+import datetime
+from discord_bot import bot
+from config import CANAL_OBJETIVO, CANAL_FALTAS
+from state_management import ultima_publicacion_dict, amonestaciones, baneos_temporales, permisos_inactividad, save_state, faltas_dict
 from utils import actualizar_mensaje_faltas, registrar_log
 
 @tasks.loop(hours=24)
@@ -8,13 +11,16 @@ async def verificar_inactividad():
     canal = discord.utils.get(bot.get_all_channels(), name=CANAL_OBJETIVO)
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     ahora = datetime.datetime.now(datetime.timezone.utc)
+    
     for user_id, ultima in list(ultima_publicacion_dict.items()):
         miembro = canal.guild.get_member(int(user_id))
         if not miembro or miembro.bot:
             continue
+            
         permiso = permisos_inactividad[user_id]
         if permiso and (ahora - permiso["inicio"]).days < permiso["duracion"]:
             continue
+            
         dias_inactivo = (ahora - ultima).days
         faltas = amonestaciones[user_id]
         estado = faltas_dict[user_id]["estado"]
@@ -24,6 +30,7 @@ async def verificar_inactividad():
             amonestaciones[user_id].append(ahora)
             faltas = len([t for t in amonestaciones[user_id] if (ahora - t).total_seconds() < 7 * 86400])
             faltas_dict[user_id]["estado"] = "OK" if faltas < 3 else "Baneado"
+            
             try:
                 await miembro.send(
                     f"⚠️ **Falta por inactividad**: Llevas {dias_inactivo} días sin publicar\n"
@@ -32,6 +39,7 @@ async def verificar_inactividad():
                 )
             except:
                 pass
+                
             if faltas >= 3:
                 role = discord.utils.get(canal.guild.roles, name="baneado")
                 if role:
@@ -48,12 +56,11 @@ async def verificar_inactividad():
                         pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, miembro, faltas_dict[user_id]["faltas"], aciertos, "OK" if faltas < 3 else "Baneado")
+                
         elif dias_inactivo >= 3 and estado == "Baneado" and (ahora - baneos_temporales[user_id]).days >= 3:
             faltas_dict[user_id]["estado"] = "Expulsado"
             try:
-                await miembro.send(
-                    f"⛔ **Expulsado permanentemente** por inactividad"
-                )
+                await miembro.send(f"⛔ **Expulsado permanentemente** por inactividad")
             except:
                 pass
             try:
@@ -63,16 +70,19 @@ async def verificar_inactividad():
                 pass
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, miembro, faltas_dict[user_id]["faltas"], aciertos, "Expulsado")
+                
         elif dias_inactivo < 3 and estado == "OK":
             amonestaciones[user_id] = []
             if canal_faltas:
                 await actualizar_mensaje_faltas(canal_faltas, miembro, faltas_dict[user_id]["faltas"], aciertos, "OK")
+                
         save_state()
 
 @tasks.loop(hours=24)
 async def resetear_faltas_diarias():
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     ahora = datetime.datetime.now(datetime.timezone.utc)
+    
     for user_id, data in list(faltas_dict.items()):
         if data["ultima_falta_time"] and (ahora - data["ultima_falta_time"]).total_seconds() >= 86400:
             miembro = discord.utils.get(bot.get_all_members(), id=int(user_id))
@@ -81,18 +91,20 @@ async def resetear_faltas_diarias():
                 faltas_dict[user_id]["ultima_falta_time"] = None
                 await actualizar_mensaje_faltas(canal_faltas, miembro, 0, data["aciertos"], data["estado"])
                 try:
-                    await miembro.send(
-                        f"✅ **Faltas reiniciadas** en #🧵go-viral"
-                    )
+                    await miembro.send(f"✅ **Faltas reiniciadas** en #🧵go-viral")
                 except:
                     pass
     save_state()
 
 @tasks.loop(minutes=1)
 async def clean_inactive_conversations():
+    from config import CANAL_SOPORTE, INACTIVITY_TIMEOUT
+    from state_management import active_conversations, save_state
+    
     canal_soporte = discord.utils.get(bot.get_all_channels(), name=CANAL_SOPORTE)
     if not canal_soporte:
         return
+        
     ahora = datetime.datetime.now(datetime.timezone.utc)
     for user_id, data in list(active_conversations.items()):
         last_message_time = data.get("last_time")
@@ -109,12 +121,16 @@ async def clean_inactive_conversations():
 
 @tasks.loop(hours=24)
 async def limpiar_mensajes_expulsados():
+    from state_management import baneos_temporales, faltas_dict, save_state
+    from config import CANAL_FALTAS
+    
     canal_faltas = discord.utils.get(bot.get_all_channels(), name=CANAL_FALTAS)
     if not canal_faltas:
         return
+        
     ahora = datetime.datetime.now(datetime.timezone.utc)
     for user_id, data in list(faltas_dict.items()):
-        if data["estado"] == "Expulsado" and (ahora - baneos_temporales[user_id]).days >= 7:
+        if data["estado"] == "Expulsado" and baneos_temporales[user_id] and (ahora - baneos_temporales[user_id]).days >= 7:
             mensaje_id = data["mensaje_id"]
             if mensaje_id:
                 try:
