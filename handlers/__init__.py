@@ -1,5 +1,3 @@
-# handlers/__init__.py
-
 from . import anuncios
 from . import faltas
 from . import go_viral
