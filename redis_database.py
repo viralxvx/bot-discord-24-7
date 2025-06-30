@@ -1,50 +1,27 @@
+import redis
 import os
 import json
-import asyncio
-import aioredis
+from typing import Any
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
-redis = None
+r = redis.from_url(REDIS_URL, decode_responses=True)
 
-async def connect_redis():
-    global redis
-    if not redis:
-        redis = await aioredis.from_url(REDIS_URL, encoding="utf-8", decode_responses=True)
-    return redis
-
-async def save_state(state: dict):
-    """
-    Guarda el estado completo en Redis en formato JSON.
-    """
-    r = await connect_redis()
+def save_state(key: str, data: Any):
+    """Guarda datos en Redis en formato JSON."""
     try:
-        state_json = json.dumps(state)
-        await r.set("bot_state", state_json)
+        json_data = json.dumps(data)
+        r.set(key, json_data)
     except Exception as e:
-        print(f"[Redis] Error guardando estado: {e}")
+        print(f"Error guardando estado en Redis: {e}")
 
-async def load_state():
-    """
-    Carga el estado completo desde Redis y lo devuelve como dict.
-    Si no existe, devuelve dict vacío.
-    """
-    r = await connect_redis()
+def load_state(key: str, default=None):
+    """Carga datos desde Redis, parseando JSON."""
     try:
-        state_json = await r.get("bot_state")
-        if state_json:
-            return json.loads(state_json)
-        return {}
+        data = r.get(key)
+        if data:
+            return json.loads(data)
+        return default
     except Exception as e:
-        print(f"[Redis] Error cargando estado: {e}")
-        return {}
-
-async def clear_state():
-    """
-    Borra el estado guardado en Redis.
-    """
-    r = await connect_redis()
-    try:
-        await r.delete("bot_state")
-    except Exception as e:
-        print(f"[Redis] Error borrando estado: {e}")
+        print(f"Error cargando estado de Redis: {e}")
+        return default
