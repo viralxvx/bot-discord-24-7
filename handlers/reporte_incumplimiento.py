@@ -1,7 +1,7 @@
 import discord
+from views.report_menu import ReportMenu  # Importación corregida
 from config import CANAL_REPORTES
 from state_management import mensajes_recientes, save_state
-from views import ReportMenu
 
 async def handle_reporte_message(message):
     if message.author.bot:
