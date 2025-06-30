@@ -1,4 +1,6 @@
 from flask import Flask, jsonify
+from threading import Thread
+import datetime
 
 app = Flask('')
 
@@ -10,7 +12,7 @@ def home():
 def health():
     return jsonify({
         "status": "running",
-        "bot_ready": bot.is_ready(),
+        "bot_ready": False,
         "last_ready": datetime.datetime.utcnow().isoformat()
     })
 
@@ -18,7 +20,6 @@ def run_webserver():
     app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
-    from threading import Thread
     t = Thread(target=run_webserver)
     t.daemon = True
     t.start()
