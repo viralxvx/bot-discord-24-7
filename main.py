@@ -81,6 +81,16 @@ async def on_ready():
             logging.info("Iniciando configuración inicial de canales...")
             for guild in bot.guilds:
                 logging.info(f"Procesando servidor: {guild.name} (ID: {guild.id})")
+                expected_channels = {
+                    CANAL_FALTAS: "Mensaje sistema faltas",
+                    CANAL_FLUJO_SOPORTE: "Carga FAQ",
+                    CANAL_OBJETIVO: f"Publicado #{CANAL_OBJETIVO}",
+                    CANAL_REPORTES: f"Publicado #{CANAL_REPORTES}",
+                    CANAL_SOPORTE: f"Publicado #{CANAL_SOPORTE}",
+                    CANAL_NORMAS_GENERALES: f"Publicado #{CANAL_NORMAS_GENERALES}",
+                    CANAL_ANUNCIOS: f"Publicado #{CANAL_ANUNCIOS}"
+                }
+                
                 for channel in guild.text_channels:
                     logging.info(f"Verificando canal: {channel.name} (ID: {channel.id})")
                     try:
@@ -155,6 +165,12 @@ async def on_ready():
                         logging.error(f"Error publicando en {channel.name}: {str(e)}")
                         logging.error(traceback.format_exc())
                         add_log(f"Error publicando en {channel.name}: {str(e)}", "error")
+                
+                # Registrar canales no encontrados
+                for channel_name, process_name in expected_channels.items():
+                    if process_name not in procesos_exitosos:
+                        logging.warning(f"Canal {channel_name} no encontrado en el servidor {guild.name}")
+                        add_log(f"Canal {channel_name} no encontrado en el servidor {guild.name}", "warning")
             
             if not faq_data:
                 faq_data.update(FAQ_FALLBACK)
@@ -171,6 +187,11 @@ async def on_ready():
         if log_batches:
             await batch_log(log_batches)
             logging.info("Logs enviados al canal de logs")
+        
+        # Guardar estado después de la configuración
+        logging.info("Guardando estado inicial...")
+        await save_state()
+        logging.info("Estado inicial guardado correctamente")
         
         logging.info("Inicialización completada exitosamente")
     
