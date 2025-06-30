@@ -5,7 +5,6 @@ import datetime
 import atexit
 import os
 import traceback
-import asyncpg
 
 # ==================================================
 # CONFIGURACIÓN DE LOGGING
@@ -46,10 +45,10 @@ async def on_ready():
     try:
         print(f"Bot conectado como {bot.user} (Servidor siempre activo)")
         
-        # Inicializar la conexión a PostgreSQL
+        # Inicializar la conexión a Redis
         await init_db()
         
-        # Cargar el estado desde la base de datos
+        # Cargar el estado desde Redis
         await load_state()
         
         # Iniciar tareas programadas inmediatamente
