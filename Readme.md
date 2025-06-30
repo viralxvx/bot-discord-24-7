@@ -1,24 +1,15 @@
 # Discord Bot Modular con Redis para Railway
 
-Este bot de Discord está modularizado para un mejor mantenimiento y escalabilidad. Usa Redis para gestión eficiente de estados.
+Este proyecto es un bot modular de Discord escrito en Python usando discord.py.  
+Se conecta a Redis para almacenamiento rápido y eficiente, pensado para desplegar en Railway.
 
 ## Requisitos
 
-- Python 3.11+
-- Redis (puede ser servicio externo)
-- Token de Discord
-- Variables de entorno configuradas
+- Python 3.11
+- Redis (manejado vía Railway o localmente)
+- Discord bot token (configurado en .env)
 
-## Estructura del proyecto
-
-- `main.py`: Punto de entrada del bot
-- `config.py`: Configuraciones globales
-- `redis_database.py`: Conexión y gestión Redis
-- `discord_bot.py`: Instancia y configuración principal del bot
-- Carpetas `commands`, `events`, `handlers`, `tasks`, `views`
-
-## Cómo correr localmente
+## Instalación
 
 ```bash
 pip install -r requirements.txt
-python main.py
