@@ -1,67 +1,51 @@
 import redis
-import os
 import json
-import logging
+import os
+from dotenv import load_dotenv
 
-# Configuración de logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('redis')
+load_dotenv()
 
-# Configurar conexión a Redis
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
-redis_conn = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+# Configuración de Redis
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
-# Claves para Redis
-STATE_KEY = "discord_bot_state"
+# Claves de Redis
+CLAVES = {
+    "faltas_dict": "vx:faltas_dict",
+    "amonestaciones": "vx:amonestaciones",
+    "ultima_publicacion": "vx:ultima_publicacion",
+    "permisos_inactividad": "vx:permisos_inactividad",
+    "baneos_temporales": "vx:baneos_temporales",
+    "mensajes_recientes": "vx:mensajes_recientes",
+    "active_conversations": "vx:active_conversations"
+}
 
-def test_connection():
-    try:
-        redis_conn.ping()
-        logger.info("✅ Conexión a Redis establecida")
-        return True
-    except redis.ConnectionError as e:
-        logger.error(f"❌ Error conectando a Redis: {str(e)}")
-        return False
+# Cargar estado
+def cargar_estado():
+    return {
+        "faltas_dict": json.loads(redis_client.get(CLAVES["faltas_dict"]) or "{}"),
+        "amonestaciones": json.loads(redis_client.get(CLAVES["amonestaciones"]) or "{}"),
+        "ultima_publicacion_dict": json.loads(redis_client.get(CLAVES["ultima_publicacion"]) or "{}"),
+        "permisos_inactividad": json.loads(redis_client.get(CLAVES["permisos_inactividad"]) or "{}"),
+        "baneos_temporales": json.loads(redis_client.get(CLAVES["baneos_temporales"]) or "{}"),
+        "mensajes_recientes": json.loads(redis_client.get(CLAVES["mensajes_recientes"]) or "{}"),
+        "active_conversations": json.loads(redis_client.get(CLAVES["active_conversations"]) or "{}"),
+    }
 
-def migrate_from_json(file_path="state.json"):
-    """Migrar datos desde state.json a Redis"""
-    try:
-        with open(file_path, "r") as f:
-            state = json.load(f)
-            redis_conn.set(STATE_KEY, json.dumps(state))
-            logger.info("✅ Datos migrados a Redis desde state.json")
-            return True
-    except FileNotFoundError:
-        logger.warning("⚠️ state.json no encontrado, iniciando con Redis vacío")
-        return False
-    except json.JSONDecodeError:
-        logger.error("❌ Error decodificando state.json")
-        return False
-
-def load_state():
-    """Cargar estado desde Redis"""
-    state_json = redis_conn.get(STATE_KEY)
-    if state_json:
-        try:
-            return json.loads(state_json)
-        except json.JSONDecodeError:
-            logger.error("❌ Error decodificando datos de Redis")
-            return {}
-    
-    # Intentar migrar si no hay datos en Redis
-    if migrate_from_json():
-        return load_state()
-    
-    return {}
-
-def save_state(state):
-    """Guardar estado en Redis"""
-    try:
-        redis_conn.set(STATE_KEY, json.dumps(state))
-        return True
-    except Exception as e:
-        logger.error(f"❌ Error guardando en Redis: {str(e)}")
-        return False
-
-# Probar conexión al importar
-test_connection()
+# Guardar estado
+def guardar_estado(
+    faltas_dict,
+    amonestaciones,
+    ultima_publicacion_dict,
+    permisos_inactividad,
+    baneos_temporales,
+    mensajes_recientes,
+    active_conversations
+):
+    redis_client.set(CLAVES["faltas_dict"], json.dumps(faltas_dict))
+    redis_client.set(CLAVES["amonestaciones"], json.dumps(amonestaciones))
+    redis_client.set(CLAVES["ultima_publicacion"], json.dumps(ultima_publicacion_dict))
+    redis_client.set(CLAVES["permisos_inactividad"], json.dumps(permisos_inactividad))
+    redis_client.set(CLAVES["baneos_temporales"], json.dumps(baneos_temporales))
+    redis_client.set(CLAVES["mensajes_recientes"], json.dumps(mensajes_recientes))
+    redis_client.set(CLAVES["active_conversations"], json.dumps(active_conversations))
