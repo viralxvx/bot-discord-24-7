@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import re
 import asyncio
-import json # Necesario para parsear los posts de Redis
+import json 
 from state_management import RedisState
 from canales.logs import registrar_log
 from canales.faltas import registrar_falta, enviar_advertencia
@@ -176,7 +176,7 @@ class GoViralCog(commands.Cog):
         await registrar_log("Nueva publicación válida registrada (pendiente de 👍)", original_author, final_message.channel, self.bot)
 
         # ------------------------------------------------------------------------------------------------
-        # Mensaje de bienvenida para usuario nuevo (Punto 3)
+        # Mensaje de bienvenida para usuario nuevo
         if is_first_post_ever:
             # Marcamos al usuario como 'no nuevo' para futuras interacciones
             self.redis_state.redis_client.set(f"user_first_post:{user_id_str}", "true") 
@@ -187,8 +187,8 @@ class GoViralCog(commands.Cog):
                 print(f"DEBUG: Mensaje de bienvenida personalizado enviado a {original_author.name} (ID: {first_post_welcome_message.id})")
                 await registrar_log(f"Mensaje de bienvenida personalizado enviado a usuario nuevo: {original_author.name}", self.bot.user, message.channel, self.bot)
 
-                # Programar su eliminación después de 1 hora
-                self.bot.loop.create_task(self.delete_message_after_delay(first_post_welcome_message, 3600)) # 3600 segundos = 1 hora
+                # Programar su eliminación después de 1 hora (3600 segundos)
+                self.bot.loop.create_task(self.delete_message_after_delay(first_post_welcome_message, 3600)) 
             except discord.Forbidden:
                 print(f"ERROR: No tengo permisos para enviar el mensaje de bienvenida personalizado en el canal '{message.channel.name}'.")
             except Exception as e:
@@ -219,7 +219,7 @@ class GoViralCog(commands.Cog):
             
         await self.bot.process_commands(message)
 
-    # Método para borrar mensajes después de un retraso (para el mensaje de bienvenida a nuevos usuarios)
+    # Método para borrar mensajes después de un retraso
     async def delete_message_after_delay(self, message: discord.Message, delay_seconds: int):
         await asyncio.sleep(delay_seconds)
         try:
@@ -238,7 +238,7 @@ class GoViralCog(commands.Cog):
             return
 
         # ------------------------------------------------------------------------------------------------
-        # Punto 4: Canal-go viral solo debe permitir 🔥 y 👍. Cualquier otra reacción debe ser eliminada.
+        # Restricción de reacciones: solo se permiten 👍 y 🔥
         if str(reaction.emoji) not in ['👍', '🔥']:
             try:
                 await reaction.remove(user)
@@ -249,7 +249,7 @@ class GoViralCog(commands.Cog):
             channel_msg = f"{user.mention} {REACCION_NO_PERMITIDA}"
             await enviar_notificacion_temporal(reaction.message.channel, user, channel_msg)
             await registrar_log(f"Reacción no permitida eliminada: '{str(reaction.emoji)}' por {user.name} en mensaje {reaction.message.id}", user, reaction.message.channel, self.bot)
-            return # Salir después de manejar la reacción no permitida
+            return 
 
         # ------------------------------------------------------------------------------------------------
         # Obtener el ID del autor original del mensaje desde Redis para validaciones de reacciones
@@ -266,13 +266,10 @@ class GoViralCog(commands.Cog):
 
         if original_author_id_of_message is None:
             print(f"WARNING: No se encontró información del post {reaction.message.id} en Redis para la reacción de {user.name}.")
-            # Si no se encuentra la info en Redis, no podemos validar si es su propia publicación para 🔥.
-            # Podríamos decidir borrar la reacción 🔥 para ser cautelosos, pero para 👍, se asume que la lógica en on_message ya maneja.
-            # Por ahora, si no hay info, permitimos la reacción 🔥, pero no se registrará como "válida" en Redis.
-            pass # Continuar con las siguientes validaciones si es 👍, o pasar si es 🔥 y no hay info.
+            pass 
 
         # ------------------------------------------------------------------------------------------------
-        # Prohibir 🔥 en propia publicación (Punto 4)
+        # Prohibir 🔥 en propia publicación
         if str(reaction.emoji) == '🔥':
             if original_author_id_of_message is not None and user.id == original_author_id_of_message:
                 try:
@@ -284,7 +281,7 @@ class GoViralCog(commands.Cog):
                     f"{user.mention} {REACCION_FIRE_PROPIA_PUBLICACION}")
                 await registrar_falta(user, "Reacción 🔥 en propia publicación", reaction.message.channel)
                 await registrar_log("Reacción eliminada: 🔥 en propia publicación", user, reaction.message.channel, self.bot)
-                return # Salir después de manejar la reacción prohibida
+                return 
 
             # Registrar reacción 🔥 válida de otro usuario
             elif original_author_id_of_message is not None and user.id != original_author_id_of_message:
@@ -297,7 +294,7 @@ class GoViralCog(commands.Cog):
 async def setup(bot):
     await bot.add_cog(GoViralCog(bot))
 
-# La función enviar_notificacion_temporal se mantiene, pero la adaptamos para recibir dm_content
+# La función enviar_notificacion_temporal se mantiene, adaptada para recibir dm_content
 # y se asegura de registrar en logs y enviar al DM.
 async def enviar_notificacion_temporal(channel, user, channel_content, dm_content=None):
     msg = await channel.send(channel_content)
@@ -313,7 +310,8 @@ async def enviar_notificacion_temporal(channel, user, channel_content, dm_conten
 
     # Enviar al DM del usuario como constancia y registrar en logs
     if dm_content is None: # Si no se provee un contenido específico para DM, usa el del canal
-        dm_content = f"⚠️ **Notificación de {channel.name}**: {channel_content.replace(user.mention, '')}\n\n*Este es un mensaje automático del bot.*"
+        # Eliminamos la mención del usuario en el DM si es la misma que en el canal para evitar duplicados en el DM
+        dm_content = f"⚠️ **Notificación de {channel.name}**: {channel_content.replace(user.mention, '').strip()}\n\n*Este es un mensaje automático del bot.*"
 
     try:
         if user.dm_channel is None:
@@ -324,8 +322,3 @@ async def enviar_notificacion_temporal(channel, user, channel_content, dm_conten
         print(f"Error: No se pudo enviar DM a {user.name}. Puede que tenga los DMs deshabilitados.")
     except Exception as e:
         print(f"Error inesperado al enviar DM a {user.name}: {e}")
-
-    # Ya que `registrar_log` se llamará desde la función principal que llama a esta, no lo duplicamos aquí.
-    # Por ejemplo, en on_message, después de llamar a enviar_notificacion_temporal, se llama a registrar_log.
-    # Para el caso de "Reacción no permitida", lo registramos directamente aquí para simplificar.
-    # Pero para otros casos (URL inválida, etc.), registrar_log ya está en el flujo principal.
