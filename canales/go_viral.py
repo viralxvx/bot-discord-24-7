@@ -5,13 +5,13 @@ import asyncio
 from state_management import RedisState
 from canales.logs import registrar_log
 from canales.faltas import registrar_falta, enviar_advertencia
-from config import CANAL_OBJETIVO, CANAL_LOGS
+from config import CANAL_LOGS  # Mantén CANAL_LOGS si lo necesitas para los logs
 
 def setup(bot):
     @bot.event
     async def on_ready():
         print("Bot está listo, intentando enviar mensaje de bienvenida...")
-        channel = bot.get_channel(CANAL_OBJETIVO)
+        channel = bot.get_channel(1353824447131418676)  # ID directo del canal go-viral
         if channel:
             try:
                 # Verificar si ya existe un mensaje de bienvenida fijado
@@ -32,15 +32,17 @@ def setup(bot):
                 else:
                     print("El mensaje de bienvenida ya está fijado")
             except discord.errors.Forbidden:
-                print("Error: El bot no tiene permisos para fijar mensajes")
+                print("Error: El bot no tiene permisos para enviar mensajes o fijarlos en el canal")
+            except discord.errors.HTTPException as e:
+                print(f"Error HTTP al enviar o fijar el mensaje de bienvenida: {e}")
             except Exception as e:
-                print(f"Error enviando mensaje de bienvenida: {e}")
+                print(f"Error inesperado enviando mensaje de bienvenida: {e}")
         else:
-            print(f"No se encontró el canal con ID: {CANAL_OBJETIVO}")
+            print("No se encontró el canal con ID: 1353824447131418676")
 
     @bot.event
     async def on_message(message):
-        if message.channel.id != CANAL_OBJETIVO or message.author.bot or message.pinned:
+        if message.channel.id != 1353824447131418676 or message.author.bot or message.pinned:
             await bot.process_commands(message)
             return
 
@@ -65,7 +67,7 @@ def setup(bot):
         # Verificar intervalo de publicaciones
         redis_state = RedisState()
         last_post = redis_state.get_last_post(message.author.id)
-        recent_posts = redis_state.get_recent_posts(CANAL_OBJETIVO)
+        recent_posts = redis_state.get_recent_posts(1353824447131418676)
         if last_post and len([p for p in recent_posts if p['author_id'] != message.author.id]) < 2:
             await message.delete()
             await enviar_notificacion_temporal(message.channel, message.author, 
@@ -75,7 +77,7 @@ def setup(bot):
             return
 
         # Verificar reacciones 🔥 en publicaciones previas
-        required_reactions = redis_state.get_required_reactions(message.author.id, CANAL_OBJETIVO)
+        required_reactions = redis_state.get_required_reactions(message.author.id, 1353824447131418676)
         if not all(redis_state.has_reaction(message.author.id, post_id) for post_id in required_reactions):
             await message.delete()
             await enviar_notificacion_temporal(message.channel, message.author, 
@@ -94,7 +96,7 @@ def setup(bot):
             message = new_message
 
         # Guardar publicación en Redis
-        redis_state.save_post(message.id, message.author.id, CANAL_OBJETIVO)
+        redis_state.save_post(message.id, message.author.id, 1353824447131418676)
 
         # Esperar reacción 👍 del autor
         def check_reaction(reaction, user):
@@ -113,7 +115,7 @@ def setup(bot):
 
     @bot.event
     async def on_reaction_add(reaction, user):
-        if reaction.message.channel.id != CANAL_OBJETIVO or user.bot:
+        if reaction.message.channel.id != 1353824447131418676 or user.bot:
             return
 
         # Prohibir 🔥 en propia publicación
