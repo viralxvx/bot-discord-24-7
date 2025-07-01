@@ -1,34 +1,26 @@
 # main.py
+
+import discord
+from discord.ext import commands
 import asyncio
 import os
-from dotenv import load_dotenv
-import logging
+from config import TOKEN
 
-load_dotenv()  # Carga las variables del archivo .env
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+intents.reactions = True
+intents.guilds = True
 
-from discord_bot import bot  # Importa la instancia del bot correctamente creada en bot_instance.py
-from redis_database import redis_client  # Cliente Redis (asumiendo que está bien definido)
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-TOKEN = os.getenv("TOKEN")
-if not TOKEN:
-    raise RuntimeError("⚠️ No se encontró la variable de entorno TOKEN")
+# Importar módulos del bot
+from canales import go_viral, logs
 
-logging.basicConfig(level=logging.INFO)
+@bot.event
+async def on_ready():
+    print(f"Bot conectado como {bot.user.name}")
+    await go_viral.inicializar(bot)
+    await logs.inicializar(bot)
 
-async def main():
-    try:
-        logging.info("Iniciando bot...")
-        await bot.start(TOKEN)
-    except KeyboardInterrupt:
-        logging.info("Bot detenido manualmente")
-    finally:
-        await bot.close()
-        # Cierra la conexión de Redis si existe y tiene método close (soporta await)
-        if redis_client and hasattr(redis_client, "close"):
-            close_coro = redis_client.close()
-            if asyncio.iscoroutine(close_coro):
-                await close_coro
-        logging.info("Conexiones cerradas")
-
-if __name__ == "__main__":
-    asyncio.run(main())
+bot.run(TOKEN)
