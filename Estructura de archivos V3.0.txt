@@ -1,0 +1,990 @@
+
+-----
+
+### **1. Estructura de Carpeta Final:**
+
+Esta es la estructura exacta que debes tener en tu proyecto. Cada carpeta debe contener un archivo `__init__.py` (incluso si está vacío).
+
+```
+tu_proyecto/  <-- Esta es la carpeta raíz de tu bot (lo que subes a GitHub/Railway)
+├── main.py
+├── config.py
+├── requirements.txt      <-- (Contiene las librerías que necesita tu bot)
+├── state_management.py
+|
+├── canales/
+│   ├── __init__.py          <-- Archivo vacío
+│   ├── go_viral.py          
+│   ├── logs.py              
+│   ├── faltas.py            
+│   ├── presentate.py        
+│   |
+│   ├── mensajes/            
+│   │   ├── __init__.py      <-- Archivo vacío
+│   │   └── go_viral.py      
+│   |
+│   └── notificaciones/      
+│       ├── __init__.py      <-- Archivo vacío
+│       └── go_viral.py      
+```
+
+-----
+
+### **2. Archivos de Código Completos:**
+
+Aquí tienes el contenido completo de cada archivo. Puedes copiarlos y pegarlos directamente, asegurándote de que los nombres de los archivos y las carpetas coincidan exactamente con la estructura de arriba.
+
+#### **2.1. `main.py`**
+
+```python
+# main.py
+import discord
+from discord.ext import commands
+import os
+from config import BOT_TOKEN, REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASSWORD
+from state_management import RedisState 
+from canales.logs import registrar_log # Importamos registrar_log aquí para los logs de conexión/desconexión
+
+# Configuración de intents para el bot
+intents = discord.Intents.default()
+intents.message_content = True 
+intents.members = True         
+
+# Inicializa el bot
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+@bot.event
+async def on_ready():
+    # Mensaje de conexión deseado (para consola de Railway)
+    print(f'🟢Bot conectado como {bot.user.name} (ID: {bot.user.id}) y listo para funcionar..')
+    print('------')
+
+    redis_state = RedisState() 
+    bot.redis_state = redis_state 
+
+    # Cargar todos los cogs dinámicamente
+    await load_cogs()
+
+    # Llamar a la lógica on_ready del cog GoViralCog
+    go_viral_cog = bot.get_cog("GoViralCog")
+    if go_viral_cog:
+        await go_viral_cog.go_viral_on_ready()
+    else:
+        print("ERROR: GoViralCog no encontrado. El mensaje de bienvenida no se gestionará.")
+
+    await bot.change_presence(activity=discord.Game(name="Monitoreando el Go-Viral"))
+    
+    # Registrar en el canal de logs de Discord que el bot está en línea
+    await registrar_log("Bot se ha conectado y está en línea.", bot.user, None, bot)
+
+
+@bot.event
+async def on_disconnect():
+    # Este evento se dispara cuando el bot se desconecta de Discord
+    print(f'🔴Bot desconectado. Última conexión: {discord.utils.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")}')
+    # Intentar registrar en el canal de logs, aunque la conexión podría estar perdida
+    # Es posible que este log no siempre llegue si la desconexión es muy abrupta
+    try:
+        # Pasa el objeto bot a registrar_log para que pueda encontrar el canal de logs
+        await registrar_log("Bot se ha desconectado.", bot.user, None, bot)
+    except Exception as e:
+        print(f"Error al intentar registrar desconexión en logs: {e}")
+
+
+# Cargar cogs (extensiones)
+async def load_cogs():
+    # Solo cargamos los módulos que son cogs reales con una función setup()
+    await bot.load_extension("canales.go_viral")
+    await bot.load_extension("canales.presentate") 
+
+    print("All cogs loaded.")
+
+# Ejecutar el bot
+if __name__ == "__main__":
+    redis_state_instance = RedisState() 
+    try:
+        redis_state_instance.redis_client.ping()
+        print("Conexión a Redis exitosa.")
+    except Exception as e:
+        print(f"Error al conectar a Redis: {e}")
+
+    bot.run(BOT_TOKEN)
+```
+
+#### **2.2. `config.py`**
+
+```python
+# config.py
+import os 
+
+# ID del token de tu bot de Discord
+BOT_TOKEN = os.getenv("DISCORD_TOKEN") 
+
+if BOT_TOKEN is None:
+    print("ADVERTENCIA: La variable de entorno DISCORD_TOKEN no está configurada. Asegúrate de que esté en Railway.")
+
+# ID del canal objetivo para la función Go Viral (el canal donde se comparten los links)
+CANAL_OBJETIVO = 1353824447131418676 
+
+# ID del canal donde se registrarán las faltas
+CANAL_FALTAS = 1198906950383188048 # <--- Reemplaza con la ID real de tu canal de faltas
+
+# ID del canal donde se registrarán los logs del bot
+CANAL_LOGS = 1234567890987654321 # <--- ¡REEMPLAZA ESTE CON EL ID REAL DE TU CANAL DE LOGS!
+
+# Canal de presentacion para nuevos miembros
+CANAL_PRESENTATE = 1346959710519038006 # <--- Reemplaza con la ID real de tu canal de presentación
+
+# IDs de los canales mencionados en el mensaje de bienvenida para nuevos miembros
+CANAL_GUIAS_ID = 1353825076516094003 # <--- Reemplaza con la ID real de tu canal de guías
+CANAL_NORMAS_GENERALES_ID = 1353821141017559103 # <--- Reemplaza con la ID real de tu canal de normas
+CANAL_VICTORIAS_ID = 1353823190874456085 # <--- Reemplaza con la ID real de tu canal de victorias
+CANAL_ESTRATEGIAS_PROBADAS_ID = 1376741512796442664 # <--- Reemplaza con la ID real de tu canal de estrategias
+CANAL_ENTRENAMIENTO_ID = 1376209406114664559 # <--- Reemplaza con la ID real de tu canal de entrenamiento
+
+# Configuración de Redis
+REDIS_HOST = "localhost" 
+REDIS_PORT = 6379      
+REDIS_DB = 0           
+REDIS_PASSWORD = None  
+```
+
+#### **2.3. `requirements.txt`**
+
+(Este archivo es crucial para que Railway instale las dependencias. Si tienes otras librerías, agrégalas aquí).
+
+```
+discord.py
+redis
+```
+
+#### **2.4. `state_management.py`**
+
+```python
+import redis
+import os
+import discord # Importar discord para WebhookType
+import json # Importar json para manejar datos de posts
+
+class RedisState:
+    def __init__(self):
+        redis_url = os.getenv('REDIS_URL')
+        if redis_url:
+            self.redis_client = redis.from_url(redis_url, decode_responses=True)
+            print(f"Conectado a Redis: {redis_url}")
+        else:
+            # Fallback for local development if REDIS_URL is not set
+            try:
+                self.redis_client = redis.Redis(
+                    host=os.getenv('REDIS_HOST', 'localhost'),
+                    port=int(os.getenv('REDIS_PORT', 6379)),
+                    db=int(os.getenv('REDIS_DB', 0)),
+                    password=os.getenv('REDIS_PASSWORD'),
+                    decode_responses=True
+                )
+                print(f"Conectado a Redis: redis://{os.getenv('REDIS_HOST', 'localhost')}:{os.getenv('REDIS_PORT', '6379')}")
+            except Exception as e:
+                print(f"Error al conectar a Redis localmente: {e}. Asegúrate de que Redis esté corriendo o REDIS_URL esté configurado en Railway.")
+                self.redis_client = None # O manejar de otra forma, ej. salir
+
+    def get_last_post_time(self, user_id):
+        return self.redis_client.get(f"last_post_time:{user_id}")
+
+    def save_post(self, message_id, author_id, channel_id, url, author_name):
+        post_data = {
+            "message_id": message_id,
+            "author_id": author_id,
+            "url": url,
+            "timestamp": discord.utils.utcnow().timestamp(),
+            "author_name": author_name
+        }
+        self.redis_client.rpush(f"recent_posts:{channel_id}", json.dumps(post_data))
+        # Keep only the last N posts, e.g., 50
+        self.redis_client.ltrim(f"recent_posts:{channel_id}", -50, -1)
+        self.redis_client.set(f"last_post_time:{author_id}", discord.utils.utcnow().timestamp())
+
+    def get_recent_posts(self, channel_id):
+        posts = self.redis_client.lrange(f"recent_posts:{channel_id}", 0, -1)
+        return [json.loads(p) for p in posts]
+
+    def has_reaction(self, user_id, message_id):
+        # Verifica si el usuario ya reaccionó al mensaje específico
+        return self.redis_client.sismember(f"reactions:{message_id}", user_id)
+
+    def save_reaction(self, user_id, message_id):
+        # Guarda que el usuario ha reaccionado a este mensaje
+        self.redis_client.sadd(f"reactions:{message_id}", user_id)
+
+    def get_required_reactions_details(self, current_user_id, channel_id):
+        all_recent_posts = self.get_recent_posts(channel_id)
+        
+        # Filtra solo los posts de otros usuarios
+        other_users_posts = [p for p in all_recent_posts if str(p['author_id']) != str(current_user_id)]
+        
+        # Encuentra el último post del usuario actual (si existe)
+        current_user_last_post_timestamp = None
+        for p in reversed(all_recent_posts):
+            if str(p['author_id']) == str(current_user_id):
+                current_user_last_post_timestamp = p['timestamp']
+                break
+
+        if current_user_last_post_timestamp is None:
+            # Si el usuario actual no ha publicado todavía, no hay reacciones requeridas.
+            return []
+
+        # Los posts de otros que son posteriores al último post del usuario actual
+        # y que el usuario actual aún no ha reaccionado.
+        required_to_react = []
+        for post in other_users_posts:
+            if post['timestamp'] > current_user_last_post_timestamp:
+                if not self.has_reaction(current_user_id, post['message_id']):
+                    required_to_react.append(post)
+        
+        return required_to_react
+    
+    def set_welcome_message_id(self, message_id, channel_id):
+        """Guarda el ID del mensaje de bienvenida activo para un canal."""
+        self.redis_client.set(f"welcome_message_active:{channel_id}", message_id)
+
+    def get_welcome_message_id(self, channel_id):
+        """Obtiene el ID del mensaje de bienvenida activo para un canal."""
+        return self.redis_client.get(f"welcome_message_active:{channel_id}")
+
+    async def get_or_create_webhook(self, channel):
+        webhook_id = self.redis_client.get(f"webhook_id:{channel.id}")
+        webhook_token = self.redis_client.get(f"webhook_token:{channel.id}")
+
+        if webhook_id and webhook_token:
+            try:
+                # Try to fetch existing webhook
+                webhook = discord.Webhook.partial(id=int(webhook_id), token=webhook_token, adapter=discord.AsyncWebhookAdapter(timeout=1))
+                await webhook.fetch() # Test if it's still valid
+                return webhook
+            except (discord.NotFound, discord.HTTPException):
+                print(f"Webhook {webhook_id} not found or invalid, creating new one for channel {channel.name}.")
+                # Webhook might have been deleted or token invalidated, create new one
+                pass
+
+        # If no webhook found in Redis or fetching failed, create a new one
+        try:
+            # Find an existing bot-owned webhook in the channel
+            existing_webhooks = await channel.webhooks()
+            for wh in existing_webhooks:
+                if wh.user == channel.guild.me and wh.name == "Go-Viral-Bot-Webhook":
+                    webhook = wh
+                    break
+            else:
+                # No existing bot-owned webhook, create a new one
+                webhook = await channel.create_webhook(name="Go-Viral-Bot-Webhook")
+
+            self.redis_client.set(f"webhook_id:{channel.id}", webhook.id)
+            self.redis_client.set(f"webhook_token:{channel.id}", webhook.token)
+            return webhook
+        except discord.Forbidden:
+            print(f"ERROR: No tengo permisos para gestionar webhooks en el canal '{channel.name}'.")
+            return None
+        except Exception as e:
+            print(f"ERROR al obtener o crear webhook para el canal '{channel.name}': {e}")
+            return None
+```
+
+#### **2.5. `canales/__init__.py`**
+
+```python
+# canales/__init__.py
+# Este archivo debe estar vacío
+```
+
+#### **2.6. `canales/go_viral.py`**
+
+```python
+import discord
+from discord.ext import commands
+import re
+import asyncio
+import json 
+from state_management import RedisState
+from canales.logs import registrar_log 
+from canales.faltas import registrar_falta, enviar_advertencia 
+from config import CANAL_OBJETIVO
+
+# Importar los textos de mensajes y notificaciones desde las nuevas rutas relativas
+from .mensajes.go_viral import WELCOME_MESSAGE_TITLE, WELCOME_MESSAGE_IMAGE_URL, WELCOME_MESSAGE_TEXT, FIRST_POST_WELCOME_MESSAGE_TEXT
+from .notificaciones.go_viral import (
+    URL_INVALIDA, INTERVALO_NO_RESPETADO, REACCIONES_PENDIENTES_CHANNEL, 
+    REACCIONES_PENDIENTES_DM, LINK_CORREGIDO_CHANNEL, NO_REACCION_THUMBS_UP, 
+    REACCION_FIRE_PROPIA_PUBLICACION, REACCION_NO_PERMITIDA
+)
+
+class GoViralCog(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.redis_state = RedisState()
+
+    async def go_viral_on_ready(self):
+        print(f"Lógica on_ready de GoViralCog iniciada para el canal {CANAL_OBJETIVO}...")
+
+        channel_go_viral = None
+        try:
+            # Usar fetch_channel para asegurar que se obtenga el canal de Discord API, no solo de la caché
+            channel_go_viral = await self.bot.fetch_channel(CANAL_OBJETIVO)
+        except discord.NotFound:
+            print(f"ERROR: El canal go-viral con la ID: {CANAL_OBJETIVO} no fue encontrado en Discord. Asegúrate de que la ID es correcta y el bot está en el servidor.")
+            return # Salir si el canal no se encuentra
+        except discord.Forbidden:
+            print(f"ERROR: No tengo permisos para acceder al canal go-viral con la ID: {CANAL_OBJETIVO}.")
+            return # Salir si no hay permisos
+        except Exception as e:
+            print(f"ERROR inesperado al buscar el canal go-viral: {e}")
+            return # Salir por cualquier otra excepción
+
+        if not channel_go_viral: 
+            # Esto es un doble chequeo, aunque las excepciones anteriores deberían capturarlo
+            print(f"ERROR: No se pudo obtener el objeto del canal go-viral con la ID: {CANAL_OBJETIVO} después de intentar buscarlo.")
+            return
+
+        # --- Borrar mensaje de bienvenida antiguo si existe (Punto 2 de la solicitud anterior) ---
+        existing_welcome_message_id = self.redis_state.redis_client.get(f"welcome_message_active:{CANAL_OBJETIVO}")
+        if existing_welcome_message_id:
+            try:
+                old_message = await channel_go_viral.fetch_message(int(existing_welcome_message_id))
+                await old_message.delete()
+                print(f"DEBUG: Mensaje de bienvenida antiguo (ID: {existing_welcome_message_id}) borrado.")
+                await registrar_log("Mensaje de bienvenida antiguo borrado para actualizar", self.bot.user, channel_go_viral, self.bot)
+            except discord.NotFound:
+                print(f"DEBUG: Mensaje de bienvenida antiguo (ID: {existing_welcome_message_id}) no encontrado. Posiblemente ya borrado.")
+                self.redis_state.redis_client.delete(f"welcome_message_active:{CANAL_OBJETIVO}") # Limpiar Redis si no existe
+            except discord.Forbidden:
+                print(f"ERROR: No tengo permisos para borrar el mensaje de bienvenida antiguo en el canal '{channel_go_viral.name}'.")
+            except Exception as e:
+                print(f"ERROR al intentar borrar mensaje de bienvenida antiguo: {e}")
+        else:
+            print("DEBUG: No se encontró mensaje de bienvenida antiguo en Redis.")
+
+        # --- Siempre enviar el nuevo mensaje de bienvenida después de la limpieza ---
+        print(f"DEBUG: Enviando nuevo mensaje de bienvenida para el canal {CANAL_OBJETIVO}.")
+        embed = discord.Embed(title=WELCOME_MESSAGE_TITLE, description=WELCOME_MESSAGE_TEXT, color=discord.Color.gold())
+        embed.set_image(url=WELCOME_MESSAGE_IMAGE_URL)
+        try:
+            sent_message = await channel_go_viral.send(embed=embed)
+            self.redis_state.set_welcome_message_id(sent_message.id, CANAL_OBJETIVO)
+            print("Mensaje de bienvenida al canal go-viral enviado exitosamente desde GoViralCog.")
+            await registrar_log("Mensaje de bienvenida enviado al canal go-viral", self.bot.user, channel_go_viral, self.bot)
+        except discord.Forbidden:
+            print(f"ERROR: No tengo permisos para enviar el embed en el canal '{channel_go_viral.name}'.")
+        except Exception as e:
+            print(f"ERROR al enviar el mensaje de bienvenida al canal '{channel_go_viral.name}': {e}")
+
+
+    @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.channel.id != CANAL_OBJETIVO or message.author.bot:
+            await self.bot.process_commands(message)
+            return
+
+        redis_state = self.redis_state
+        user_id_str = str(message.author.id)
+        original_author = message.author 
+        
+        # Verificar si es la primera publicación del usuario
+        is_first_post_ever = not redis_state.redis_client.exists(f"user_first_post:{user_id_str}")
+
+        # ------------------------------------------------------------------------------------------------
+        # Validación de formato de URL
+        url_pattern = r'^https://x\.com/\w+/status/\d+$'
+        content = message.content.strip()
+        corrected_url = None
+        if not re.match(url_pattern, content):
+            try:
+                base_url = re.match(r'(https://x\.com/\w+/status/\d+)', content).group(1)
+                corrected_url = base_url
+            except AttributeError:
+                await message.delete()
+                await enviar_notificacion_temporal(message.channel, original_author, URL_INVALIDA)
+                await registrar_falta(original_author, "URL inválida", message.channel)
+                await registrar_log("Mensaje eliminado: URL inválida", original_author, message.channel, self.bot)
+                return
+        
+        # ------------------------------------------------------------------------------------------------
+        # Validación de intervalo de publicaciones (esperar 2 válidas de otros)
+        last_post_time = redis_state.get_last_post_time(original_author.id)
+        recent_posts_count_others = len([p for p in redis_state.get_recent_posts(CANAL_OBJETIVO) if str(p['author_id']) != user_id_str])
+
+        if not is_first_post_ever:
+            if last_post_time and recent_posts_count_others < 2:
+                await message.delete()
+                await enviar_notificacion_temporal(message.channel, original_author, INTERVALO_NO_RESPETADO)
+                await registrar_falta(original_author, "Publicación antes de intervalo permitido", message.channel)
+                await registrar_log("Mensaje eliminado: Intervalo no respetado", original_author, message.channel, self.bot)
+                return
+
+        # ------------------------------------------------------------------------------------------------
+        # Validación de reacciones 🔥 en publicaciones previas
+        if not is_first_post_ever:
+            required_reactions_details = redis_state.get_required_reactions_details(original_author.id, CANAL_OBJETIVO)
+            missing_reactions = []
+            
+            for post_data in required_reactions_details:
+                if not redis_state.has_reaction(original_author.id, post_data['message_id']):
+                    missing_reactions.append(post_data)
+
+            if missing_reactions:
+                await message.delete()
+                
+                missing_info_list = []
+                for mr in missing_reactions:
+                    missing_info_list.append(f"- **{mr['author_name']}**: <{mr['url']}>")
+
+                missing_info_str = "\n".join(missing_info_list)
+
+                channel_msg = REACCIONES_PENDIENTES_CHANNEL.format(missing_info_str=missing_info_str)
+                dm_msg = REACCIONES_PENDIENTES_DM.format(channel_name=message.channel.name, missing_info_str=missing_info_str)
+
+                await enviar_notificacion_temporal(message.channel, original_author, channel_msg, dm_msg) # Pasa el dm_msg explícitamente
+                await registrar_falta(original_author, "Falta de reacciones 🔥 pendientes", message.channel)
+                await registrar_log(f"Mensaje eliminado: Sin reacciones 🔥 pendientes. Faltantes: {missing_info_str}", original_author, message.channel, self.bot)
+                return
+        
+        # ------------------------------------------------------------------------------------------------
+        # Corrección de URL automática (usando Webhook para mantener el autor original)
+        final_message_content = corrected_url if corrected_url else content
+        final_message = None
+
+        try:
+            webhook = await self.redis_state.get_or_create_webhook(message.channel)
+            await message.delete()
+            
+            webhook_message = await webhook.send(
+                content=final_message_content,
+                username=original_author.display_name,
+                avatar_url=original_author.display_avatar.url,
+                wait=True
+            )
+            
+            if corrected_url:
+                await enviar_notificacion_temporal(message.channel, original_author,
+                    f"{original_author.mention} {LINK_CORREGIDO_CHANNEL}")
+                await registrar_log(f"URL corregida (via webhook): {content} -> {corrected_url}", original_author, message.channel, self.bot)
+            
+            final_message = webhook_message 
+            
+        except discord.Forbidden:
+            print(f"ERROR: No tengo permisos para gestionar webhooks o enviar via webhook en el canal '{message.channel.name}'.")
+            final_message = await message.channel.send(f"{final_message_content} (Publicado por el bot debido a error de permisos/webhook)")
+            if corrected_url:
+                await enviar_notificacion_temporal(message.channel, original_author,
+                    f"{original_author.mention} {LINK_CORREGIDO_CHANNEL} Fue republicado por el bot.")
+                await registrar_log(f"URL corregida (fallback bot): {content} -> {corrected_url}", original_author, message.channel, self.bot)
+
+        except Exception as e:
+            print(f"ERROR al enviar mensaje via webhook o gestionar: {e}")
+            final_message = await message.channel.send(f"{final_message_content} (Publicado por el bot debido a un error)")
+            if corrected_url:
+                await enviar_notificacion_temporal(message.channel, original_author,
+                    f"{original_author.mention} {LINK_CORREGIDO_CHANNEL} Fue republicado por el bot debido a un error.")
+                await registrar_log(f"URL corregida (fallback bot): {content} -> {corrected_url}", original_author, message.channel, self.bot)
+
+        # ------------------------------------------------------------------------------------------------
+        # Guardar publicación en Redis
+        self.redis_state.save_post(final_message.id, original_author.id, CANAL_OBJETIVO, final_message.content, original_author.name)
+        await registrar_log("Nueva publicación válida registrada (pendiente de 👍)", original_author, final_message.channel, self.bot)
+
+        # ------------------------------------------------------------------------------------------------
+        # Mensaje de bienvenida para usuario nuevo
+        if is_first_post_ever:
+            # Marcamos al usuario como 'no nuevo' para futuras interacciones
+            self.redis_state.redis_client.set(f"user_first_post:{user_id_str}", "true") 
+            
+            personalized_welcome_content = FIRST_POST_WELCOME_MESSAGE_TEXT.format(user_mention=original_author.mention)
+            try:
+                first_post_welcome_message = await message.channel.send(personalized_welcome_content)
+                print(f"DEBUG: Mensaje de bienvenida personalizado enviado a {original_author.name} (ID: {first_post_welcome_message.id})")
+                await registrar_log(f"Mensaje de bienvenida personalizado enviado a usuario nuevo: {original_author.name}", self.bot.user, message.channel, self.bot)
+
+                # Programar su eliminación después de 1 hora (3600 segundos)
+                self.bot.loop.create_task(self.delete_message_after_delay(first_post_welcome_message, 3600)) 
+            except discord.Forbidden:
+                print(f"ERROR: No tengo permisos para enviar el mensaje de bienvenida personalizado en el canal '{message.channel.name}'.")
+            except Exception as e:
+                print(f"ERROR al enviar mensaje de bienvenida personalizado: {e}")
+
+        # ------------------------------------------------------------------------------------------------
+        # Esperar reacción 👍 del autor
+        def check_reaction(reaction, user_check):
+            print(f"DEBUG REACTION CHECK: Reaction emoji: {str(reaction.emoji)}, User ID: {user_check.id} ({user_check.name}), Message ID: {reaction.message.id}")
+            print(f"DEBUG REACTION CHECK: Expected original author ID: {original_author.id}, Expected final message ID: {final_message.id}")
+            
+            return user_check.id == original_author.id and str(reaction.emoji) == '👍' and reaction.message.id == final_message.id
+
+        try:
+            print(f"DEBUG: Esperando reacción 👍 para mensaje {final_message.id} por {original_author.name}...")
+            await self.bot.wait_for('reaction_add', timeout=120, check=check_reaction)
+            
+            print(f"Reacción 👍 del autor detectada y validada para el mensaje {final_message.id}")
+            await registrar_log(f"Reacción 👍 del autor validada para el mensaje: {final_message.content}", original_author, final_message.channel, self.bot)
+            
+        except asyncio.TimeoutError:
+            print(f"Timeout: No se detectó reacción 👍 para el mensaje {final_message.id}")
+            await final_message.delete()
+            await enviar_notificacion_temporal(final_message.channel, original_author, 
+                f"{original_author.mention} {NO_REACCION_THUMBS_UP}")
+            await registrar_falta(original_author, "Sin reacción 👍 en 120 segundos", final_message.channel)
+            await registrar_log("Mensaje eliminado: Sin reacción 👍", original_author, final_message.channel, self.bot)
+            
+        await self.bot.process_commands(message)
+
+    # Método para borrar mensajes después de un retraso
+    async def delete_message_after_delay(self, message: discord.Message, delay_seconds: int):
+        await asyncio.sleep(delay_seconds)
+        try:
+            await message.delete()
+            print(f"DEBUG: Mensaje temporal (ID: {message.id}) borrado después de {delay_seconds} segundos.")
+        except discord.NotFound:
+            print(f"DEBUG: Mensaje temporal (ID: {message.id}) ya borrado o no encontrado.")
+        except discord.Forbidden:
+            print(f"ERROR: No tengo permisos para borrar el mensaje temporal (ID: {message.id}).")
+        except Exception as e:
+            print(f"ERROR inesperado al borrar mensaje temporal (ID: {message.id}): {e}")
+
+    @commands.Cog.listener()
+    async def on_reaction_add(self, reaction, user):
+        if reaction.message.channel.id != CANAL_OBJETIVO or user.bot:
+            return
+
+        # ------------------------------------------------------------------------------------------------
+        # Restricción de reacciones: solo se permiten 👍 y 🔥
+        if str(reaction.emoji) not in ['👍', '🔥']:
+            try:
+                await reaction.remove(user)
+                print(f"DEBUG: Reacción no permitida '{str(reaction.emoji)}' de {user.name} eliminada.")
+            except discord.Forbidden:
+                print(f"ERROR: No tengo permisos para eliminar la reacción no permitida de {user.name} (permisos).")
+            
+            channel_msg = f"{user.mention} {REACCION_NO_PERMITIDA}"
+            await enviar_notificacion_temporal(reaction.message.channel, user, channel_msg)
+            await registrar_log(f"Reacción no permitida eliminada: '{str(reaction.emoji)}' por {user.name} en mensaje {reaction.message.id}", user, reaction.message.channel, self.bot)
+            return 
+
+        # ------------------------------------------------------------------------------------------------
+        # Obtener el ID del autor original del mensaje desde Redis para validaciones de reacciones
+        original_author_id_of_message = None
+        recent_posts_raw = self.redis_state.redis_client.lrange(f"recent_posts:{CANAL_OBJETIVO}", 0, -1)
+        author_name_for_log = "Desconocido" # Default para el log
+
+        for p_json in recent_posts_raw:
+            post_data = json.loads(p_json)
+            if str(post_data['message_id']) == str(reaction.message.id):
+                original_author_id_of_message = int(post_data['author_id'])
+                author_name_for_log = post_data['author_name']
+                break
+
+        if original_author_id_of_message is None:
+            print(f"WARNING: No se encontró información del post {reaction.message.id} en Redis para la reacción de {user.name}.")
+            pass 
+
+        # ------------------------------------------------------------------------------------------------
+        # Prohibir 🔥 en propia publicación
+        if str(reaction.emoji) == '🔥':
+            if original_author_id_of_message is not None and user.id == original_author_id_of_message:
+                try:
+                    await reaction.remove(user)
+                    print(f"Reacción 🔥 de {user.name} en su propia publicación (ID: {reaction.message.id}) eliminada.")
+                except discord.Forbidden:
+                    print(f"Error: No se pudo eliminar la reacción 🔥 de {user.name} (permisos).")
+                await enviar_notificacion_temporal(reaction.message.channel, user,
+                    f"{user.mention} {REACCION_FIRE_PROPIA_PUBLICACION}")
+                await registrar_falta(user, "Reacción 🔥 en propia publicación", reaction.message.channel)
+                await registrar_log("Reacción eliminada: 🔥 en propia publicación", user, reaction.message.channel, self.bot)
+                return 
+
+            # Registrar reacción 🔥 válida de otro usuario
+            elif original_author_id_of_message is not None and user.id != original_author_id_of_message:
+                self.redis_state.save_reaction(user.id, reaction.message.id)
+                print(f"Reacción 🔥 de {user.name} registrada para el mensaje {reaction.message.id}")
+                target_message_url = reaction.message.jump_url if reaction.message.guild else "No URL (DM/Unknown)"
+                await registrar_log(f"Usuario {user.name} reaccionó con 🔥 al mensaje de {author_name_for_log} (ID: {reaction.message.id}): {target_message_url}", user, reaction.message.channel, self.bot)
+
+
+async def setup(bot):
+    await bot.add_cog(GoViralCog(bot))
+
+# La función enviar_notificacion_temporal se mantiene, adaptada para recibir dm_content
+# y se asegura de registrar en logs y enviar al DM.
+async def enviar_notificacion_temporal(channel, user, channel_content, dm_content=None):
+    msg = await channel.send(channel_content)
+    await asyncio.sleep(15)
+    try:
+        await msg.delete()
+    except discord.NotFound:
+        print(f"DEBUG: Mensaje temporal (ID: {msg.id}) ya borrado o no encontrado.")
+    except discord.Forbidden:
+        print(f"ERROR: No tengo permisos para borrar el mensaje temporal (ID: {msg.id}).")
+    except Exception as e:
+        print(f"ERROR inesperado al borrar mensaje temporal (ID: {msg.id}): {e}")
+
+    # Enviar al DM del usuario como constancia y registrar en logs
+    if dm_content is None: # Si no se provee un contenido específico para DM, usa el del canal
+        # Eliminamos la mención del usuario en el DM si es la misma que en el canal para evitar duplicados en el DM
+        dm_content = f"⚠️ **Notificación de {channel.name}**: {channel_content.replace(user.mention, '').strip()}\n\n*Este es un mensaje automático del bot.*"
+
+    try:
+        if user.dm_channel is None:
+            await user.create_dm()
+        await user.send(dm_content)
+        print(f"DEBUG: Notificación enviada por DM a {user.name}.")
+    except discord.Forbidden:
+        print(f"Error: No se pudo enviar DM a {user.name}. Puede que tenga los DMs deshabilitados.")
+    except Exception as e:
+        print(f"Error inesperado al enviar DM a {user.name}: {e}")
+```
+
+#### **2.7. `canales/logs.py`**
+
+```python
+# canales/logs.py
+import discord
+from config import CANAL_LOGS # Asumiendo que CANAL_LOGS está definido en config.py
+
+async def registrar_log(description, user, channel, bot):
+    """
+    Registra un evento o acción en el canal de logs del bot.
+
+    Args:
+        description (str): Descripción del evento.
+        user (discord.User or discord.Member): Usuario relacionado con el evento (puede ser None para acciones del bot).
+        channel (discord.TextChannel): Canal donde ocurrió el evento (puede ser None).
+        bot (discord.Client): Instancia del bot para obtener el canal de logs.
+    """
+    if not bot:
+        print("ERROR: Instancia del bot no proporcionada a registrar_log. No se puede obtener el canal de logs.")
+        return
+
+    log_channel = bot.get_channel(CANAL_LOGS)
+    if not log_channel:
+        print(f"ADVERTENCIA: Canal de logs con ID {CANAL_LOGS} no encontrado. No se pudo registrar: '{description}'")
+        return
+
+    # Formato del mensaje de log
+    log_message = f"**[{discord.utils.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}]** "
+    if user:
+        log_message += f"**Usuario:** {user.name} (ID: {user.id}) "
+    if channel:
+        log_message += f"**Canal:** #{channel.name} (ID: {channel.id}) "
+    
+    log_message += f"**Acción:** {description}"
+
+    try:
+        await log_channel.send(log_message)
+        # print(f"Log registrado en canal {log_channel.name}: {description}") # Solo para depuración
+    except discord.Forbidden:
+        print(f"ERROR: No tengo permisos para enviar logs en el canal '{log_channel.name}'.")
+    except Exception as e:
+        print(f"ERROR inesperado al enviar log: {e}")
+
+# Este módulo no es un cog, por lo tanto, no necesita una función setup().
+```
+
+#### **2.8. `canales/faltas.py`**
+
+```python
+# canales/faltas.py
+import discord
+from config import CANAL_FALTAS
+from canales.logs import registrar_log # Importa la función de logs
+
+async def enviar_advertencia(user, reason, channel):
+    """
+    Envía una advertencia por DM al usuario y registra en el canal de faltas.
+    """
+    embed = discord.Embed(
+        title="⚠️ Advertencia de Infracción ⚠️",
+        description=f"Has recibido una advertencia en el canal {channel.mention} por la siguiente razón:",
+        color=discord.Color.red()
+    )
+    embed.add_field(name="Razón", value=reason, inline=False)
+    embed.add_field(name="Canal Afectado", value=f"#{channel.name}", inline=False)
+    embed.set_footer(text="Por favor, revisa las reglas para evitar futuras sanciones.")
+
+    try:
+        if user.dm_channel is None:
+            await user.create_dm()
+        await user.send(embed=embed)
+        print(f"Advertencia enviada por DM a {user.name} por '{reason}'.")
+    except discord.Forbidden:
+        print(f"Error: No se pudo enviar DM de advertencia a {user.name}. Puede que tenga los DMs deshabilitados.")
+    except Exception as e:
+        print(f"Error inesperado al enviar advertencia por DM a {user.name}: {e}")
+
+async def registrar_falta(user, reason, channel):
+    """
+    Registra una falta para un usuario en el canal de faltas y notifica al usuario.
+    """
+    # Usar CANAL_FALTAS del config.py
+    # Se pasa el objeto bot para registrar_log
+    bot_instance = channel.guild.me.client # Accede a la instancia del bot a través del cliente del gremio
+    if not bot_instance:
+        print("ERROR: No se pudo obtener la instancia del bot en registrar_falta.")
+        return
+
+    faltas_channel = bot_instance.get_channel(CANAL_FALTAS)
+    
+    if not faltas_channel:
+        print(f"ERROR: No se encontró el canal de faltas con ID {CANAL_FALTAS}.")
+        await registrar_log(f"ERROR: No se encontró el canal de faltas ID: {CANAL_FALTAS} para registrar falta de {user.name}.", user, channel, bot_instance)
+        return
+
+    falta_message = f"**Falta Registrada:** Usuario: {user.name} (ID: {user.id}) | Razón: {reason} | Canal: #{channel.name}"
+
+    try:
+        await faltas_channel.send(falta_message)
+        print(f"Falta de {user.name} registrada en #{faltas_channel.name}: {reason}")
+        await registrar_log(f"Falta registrada: {reason}", user, channel, bot_instance)
+    except discord.Forbidden:
+        print(f"ERROR: No tengo permisos para enviar mensajes en el canal de faltas '{faltas_channel.name}'.")
+    except Exception as e:
+        print(f"ERROR inesperado al registrar falta: {e}")
+    
+    await enviar_advertencia(user, reason, channel)
+
+# Este módulo no es un cog, por lo tanto, no necesita una función setup().
+```
+
+#### **2.9. `canales/presentate.py`**
+
+```python
+# canales/presentate.py
+import discord
+from discord.ext import commands
+from config import (
+    CANAL_PRESENTATE, CANAL_GUIAS_ID, CANAL_NORMAS_GENERALES_ID,
+    CANAL_VICTORIAS_ID, CANAL_ESTRATEGIAS_PROBADAS_ID, CANAL_ENTRENAMIENTO_ID
+)
+from canales.logs import registrar_log 
+
+# --- View con el menú desplegable ---
+class WelcomeMenuView(discord.ui.View):
+    def __init__(self, bot):
+        super().__init__(timeout=None) 
+        self.bot = bot
+        self.add_item(self.create_channel_select())
+
+    def create_channel_select(self):
+        options = [
+            discord.SelectOption(label="Lee las Guías", description="Información esencial para empezar.", value=str(CANAL_GUIAS_ID), emoji="📖"),
+            discord.SelectOption(label="Revisa las Normas Generales", description="Reglas del servidor.", value=str(CANAL_NORMAS_GENERALES_ID), emoji="✅"),
+            discord.SelectOption(label="Mira las Victorias", description="Inspírate con los éxitos de otros.", value=str(CANAL_VICTORIAS_ID), emoji="🏆"),
+            discord.SelectOption(label="Estudia las Estrategias Probadas", description="Tácticas para crecer en 𝕏.", value=str(CANAL_ESTRATEGIAS_PROBADAS_ID), emoji="♟️"),
+            discord.SelectOption(label="Solicita ayuda en Entrenamiento", description="Obtén soporte para tu primer post.", value=str(CANAL_ENTRENAMIENTO_ID), emoji="🏋️")
+        ]
+        return ChannelSelect(options=options, bot=self.bot)
+
+class ChannelSelect(discord.ui.Select):
+    def __init__(self, options, bot):
+        super().__init__(placeholder="Elige una sección para ir directamente...", min_values=1, max_values=1, options=options)
+        self.bot = bot
+
+    async def callback(self, interaction: discord.Interaction):
+        selected_channel_id = int(self.values[0])
+        
+        # Obtener el canal de la interacción para pasar a registrar_log
+        interaction_channel = interaction.channel
+
+        if selected_channel_id == 0:
+            await interaction.response.send_message(
+                "⚠️ **¡Ups!** Parece que este canal aún no ha sido configurado por los administradores. Por favor, informa a un mod.",
+                ephemeral=True 
+            )
+            await registrar_log(
+                f"Alerta: Usuario {interaction.user.name} intentó seleccionar un canal no configurado (ID: {selected_channel_id}) en el menú de bienvenida.",
+                interaction.user, interaction_channel, self.bot
+            )
+            return
+
+        channel = self.bot.get_channel(selected_channel_id)
+        if channel:
+            await interaction.response.send_message(
+                f"¡Genial! Dirígete a {channel.mention} para más información.",
+                ephemeral=True 
+            )
+            await registrar_log(
+                f"Usuario {interaction.user.name} seleccionó el canal {channel.name} (<#{selected_channel_id}>) del menú de bienvenida.",
+                interaction.user, interaction_channel, self.bot
+            )
+        else:
+            await interaction.response.send_message(
+                "Lo siento, no pude encontrar ese canal. Es posible que haya sido eliminado o no esté visible para ti.",
+                ephemeral=True 
+            )
+            await registrar_log(
+                f"Error: No se encontró el canal (ID: {selected_channel_id}) seleccionado por {interaction.user.name} en el menú de bienvenida. El canal podría no existir o no ser accesible.",
+                interaction.user, interaction_channel, self.bot
+            )
+
+
+# --- Cog Principal para el canal de Presentación ---
+class PresentateCog(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        if member.bot:
+            return
+
+        channel = self.bot.get_channel(CANAL_PRESENTATE)
+        if not channel:
+            print(f"ERROR: No se pudo encontrar el canal de presentación con la ID: {CANAL_PRESENTATE}")
+            await registrar_log(f"ERROR: No se pudo encontrar el canal de presentación ID: {CANAL_PRESENTATE} al unirse {member.name}.", self.bot.user, None, self.bot)
+            return
+
+        welcome_message_text = (
+            f"👋 ¡Bienvenid@ a VX {member.mention}!\n"
+            f"Sigue estos pasos:\n"
+            f"📖 Lee las 3 <#{CANAL_GUIAS_ID}>\n"
+            f"✅ Revisa las <#{CANAL_NORMAS_GENERALES_ID}>\n"
+            f"🏆 Mira las <#{CANAL_VICTORIAS_ID}>\n"
+            f"♟ Estudia las <#{CANAL_ESTRATEGIAS_PROBADAS_ID}>\n"
+            f"🏋️ Luego solicita ayuda para tu primer post en <#{CANAL_ENTRENAMIENTO_ID}>\n"
+            f"Juntos somos más 🚀\n\n"
+            f"Puedes usar el menú desplegable de abajo para ir directamente a cada sección."
+        )
+
+        try:
+            sent_message = await channel.send(welcome_message_text, view=WelcomeMenuView(self.bot))
+            print(f"Mensaje de bienvenida enviado a {member.name} en #{channel.name} (ID: {sent_message.id})")
+            await registrar_log(f"Mensaje de bienvenida a nuevo miembro {member.name} enviado en #{channel.name}", member, channel, self.bot)
+        except discord.Forbidden:
+            print(f"ERROR: No tengo permisos para enviar mensajes en el canal '{channel.name}'.")
+            await registrar_log(f"ERROR: Permisos insuficientes para enviar mensaje en {channel.name} para {member.name}", self.bot.user, channel, self.bot)
+        except Exception as e:
+            print(f"ERROR al enviar mensaje de bienvenida a {member.name}: {e}")
+            await registrar_log(f"ERROR inesperado al enviar mensaje de bienvenida a {member.name}: {e}", self.bot.user, channel, self.bot)
+
+async def setup(bot):
+    await bot.add_cog(PresentateCog(bot))
+```
+
+#### **2.10. `canales/mensajes/__init__.py`**
+
+```python
+# canales/mensajes/__init__.py
+# Este archivo debe estar vacío
+```
+
+#### **2.11. `canales/mensajes/go_viral.py`**
+
+```python
+# canales/mensajes/go_viral.py
+
+# Mensaje de bienvenida general del canal (el que carga al iniciar el bot)
+WELCOME_MESSAGE_TITLE = "🧵 REGLAS DEL CANAL GO-VIRAL 🧵"
+WELCOME_MESSAGE_IMAGE_URL = "https://drive.google.com/uc?export=download&id=1LGwse5dI_Q_PpQhhfpLBudteATKoy4Hj"
+WELCOME_MESSAGE_TEXT = """
+## 🎉 **¡BIENVENIDOS A GO-VIRAL!** 🎉
+¡Nos alegra tenerte aquí! Este es tu espacio para hacer crecer tu contenido de **𝕏 (Twitter)** junto a nuestra increíble comunidad.
+## 🎯 **OBJETIVO**
+Compartir contenido de calidad de **𝕏 (Twitter)** siguiendo un sistema organizado de apoyo mutuo.
+---
+## 📋 **REGLAS PRINCIPALES**
+### 🔗 **1. FORMATO DE PUBLICACIÓN**
+✅ **FORMATO CORRECTO:**
+https://x.com/miguelrperaltaf/status/1931928250735026238
+❌ **FORMATO INCORRECTO:**
+https://x.com/miguelrperaltaf/status/1931928250735026238?s=46&t=m7qBPHFiZFqks3K1jSaVJg
+
+**📝 NOTA:** El bot corregirá automáticamente los enlaces mal formateados, pero es mejor aprender el formato correcto.
+### 👍 **2. VALIDACIÓN DE TU POST**
+- Reacciona con **👍** a tu propia publicación
+- **⏱️ Tiempo límite:** 120 segundos
+- Sin reacción = eliminación automática
+### 🔥 **3. APOYO A LA COMUNIDAD**
+Antes de publicar nuevamente:
+- Reacciona con **🔥** a TODAS las publicaciones posteriores a tuya
+- **REQUISITO:** Apoya primero en **𝕏** con RT + LIKE + COMENTARIO
+- Luego reacciona con 🔥 en Discord
+### ⏳ **4. INTERVALO ENTRE PUBLICACIONES**
+- Espera mínimo **2 publicaciones válidas** de otros usuarios
+- No hay límite de tiempo, solo orden de turnos
+---
+## ⚠️ **SISTEMA DE FALTAS**
+### 🚨 **Infracciones que generan falta:**
+- Formato incorrecto de URL
+- No reaccionar con 👍 a tiempo
+- Publicar sin haber apoyado posts anteriores
+- Usar 🔥 en tu propia publicación
+- No respetar el intervalo de publicaciones
+### 📊 **Consecuencias:**
+- Registro en canal de faltas
+- Notificación por DM
+- Posibles sanciones según historial
+---
+## 🤖 **AUTOMATIZACIÓN DEL BOT**
+- ✅ Corrección automática de URLs mal formateadas
+- 🗑️ Eliminación de publicaciones inválidas
+- 📬 Notificaciones temporales (15 segundos)
+- 📝 Registro completo en logs
+- 💬 Mensajes privados informativos
+---
+## 🏆 **CONSEJOS PARA EL ÉXITO**
+1.  **Lee las reglas** antes de participar
+2.  **Apoya genuinamente** en 𝕏 antes de reaccionar
+3.  **Mantén el formato** exacto de URLs
+4.  **Sé constante** con las reacciones
+5.  **Respeta los turnos** de otros usuarios
+---
+## 📞 **¿DUDAS?**
+Revisa el historial del canal o consulta en el canal soporte.
+**¡Juntos hacemos crecer nuestra comunidad! 🚀**
+---
+*Bot actualizado • Sistema automatizado • Apoyo 24/7*
+"""
+
+# Mensaje de bienvenida para usuarios que publican por primera vez
+FIRST_POST_WELCOME_MESSAGE_TEXT = """
+¡Bienvenido, {user_mention}! 🎉
+
+¡Felicidades por tu primera publicación en **Go-Viral**! Has dado el primer paso para hacer crecer tu contenido de 𝕏 (Twitter) con nuestra comunidad.
+
+**Recuerda lo básico:**
+1.  **Valida tu post:** Reacciona con **👍** a tu propia publicación en los próximos 120 segundos.
+2.  **Apoya a otros:** Antes de volver a publicar, apoya con **RT + LIKE + COMENTARIO en 𝕏** y luego reacciona con **🔥 en Discord** a las publicaciones de los demás que estén después de la tuya.
+3.  **Respeta los turnos:** Espera al menos 2 publicaciones válidas de otros usuarios antes de volver a publicar.
+
+¡Disfruta de la comunidad y haz crecer tu cuenta! 🚀
+"""
+```
+
+#### **2.12. `canales/notificaciones/__init__.py`**
+
+```python
+# canales/notificaciones/__init__.py
+# Este archivo debe estar vacío
+```
+
+#### **2.13. `canales/notificaciones/go_viral.py`**
+
+```python
+# canales/notificaciones/go_viral.py
+
+URL_INVALIDA = "**Error:** La URL no es válida. Usa el formato: `https://x.com/usuario/status/123456...`"
+INTERVALO_NO_RESPETADO = "**Error:** Debes esperar al menos 2 publicaciones válidas de otros usuarios antes de publicar nuevamente."
+REACCIONES_PENDIENTES_CHANNEL = "**Error:** Debes reaccionar con 🔥 a las siguientes publicaciones antes de publicar:\n{missing_info_str}"
+REACCIONES_PENDIENTES_DM = "⚠️ **Tienes reacciones 🔥 pendientes en el canal {channel_name}**.\nDebes apoyar estas publicaciones en 𝕏 y reaccionar con 🔥 en Discord antes de volver a publicar:\n{missing_info_str}\n\n*Este es un mensaje automático del bot.*"
+LINK_CORREGIDO_CHANNEL = "**¡Link corregido!** Tu publicación se ha ajustado al formato correcto. Por favor, recuerda usar `https://x.com/usuario/status/ID` sin parámetros adicionales para futuras publicaciones."
+NO_REACCION_THUMBS_UP = "**Error:** No reaccionaste con 👍 a tu publicación en 120 segundos. Mensaje eliminado."
+REACCION_FIRE_PROPIA_PUBLICACION = "**Error:** No puedes reaccionar con 🔥 a tu propia publicación."
+REACCION_NO_PERMITIDA = "**Atención:** Solo se permiten reacciones 👍 y 🔥 en este canal. Tu reacción ha sido eliminada."
+```
+
+-----
+
+### **3. Variables de Entorno (en Railway):**
+
+Asegúrate de que en la configuración de Railway tengas definidas las siguientes variables de entorno:
+
+  * `DISCORD_TOKEN`: El token de tu bot de Discord.
+  * `REDIS_URL`: La URL de conexión a tu base de datos Redis. (Railway generalmente la proporciona automáticamente si añades el servicio Redis).
+  * Si estás ejecutando localmente y no tienes `REDIS_URL`, asegúrate de que `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `REDIS_PASSWORD` estén configuradas si tu Redis local lo requiere. Para Railway, `REDIS_URL` es la más importante.
+
+-----
+
