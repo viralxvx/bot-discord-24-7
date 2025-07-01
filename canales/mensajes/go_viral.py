@@ -1,4 +1,4 @@
-# mensajes/go_viral.py
+# canales/mensajes/go_viral.py
 
 # Mensaje de bienvenida general del canal (el que carga al iniciar el bot)
 WELCOME_MESSAGE_TITLE = "🧵 REGLAS DEL CANAL GO-VIRAL 🧵"
