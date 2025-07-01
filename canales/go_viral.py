@@ -49,46 +49,9 @@ async def enviar_reglas_canal(bot):
                     logger.error(f"Error al eliminar/desanclar mensaje {msg.id}: {e}")
 
         embed = discord.Embed(
-            title="🧵 REGLAS GO-VIRAL 🧵",
-            description="🎉 **¡BIENVENIDOS!** Espacio para hacer crecer tu contenido de **𝕏** con apoyo mutuo.",
+            title="Bienvenidos",
+            description="Esto es una prueba",
             color=discord.Color.green()
-        )
-        embed.add_field(name="📋 REGLAS PRINCIPALES", value="", inline=False)
-        embed.add_field(
-            name="🔗 FORMATO CORRECTO",
-            value="✅ `https://x.com/usuario/status/1931928250735026238`\n❌ `https://x.com/usuario/status/1931928250735026238?s=46&t=...`",
-            inline=False
-        )
-        embed.add_field(
-            name="👍 VALIDACIÓN",
-            value="• Reacciona con **👍** a tu post (120s máximo)\n• Sin reacción = eliminación automática",
-            inline=False
-        )
-        embed.add_field(
-            name="🔥 APOYO MUTUO",
-            value="• Reacciona con **🔥** a posts posteriores al tuyo\n• **REQUISITO:** Apoya en 𝕏 primero (RT + LIKE + COMENTARIO)\n• Espera 2 publicaciones válidas antes de tu próximo post",
-            inline=False
-        )
-        embed.add_field(
-            name="⚠️ FALTAS AUTOMÁTICAS",
-            value="• Formato incorrecto • No reaccionar a tiempo • Publicar sin apoyar\n• Usar 🔥 en tu propio post • No respetar intervalos",
-            inline=False
-        )
-        embed.add_field(
-            name="🤖 BOT AUTOMÁTICO",
-            value="✅ Corrige URLs automáticamente\n📬 Notificaciones temporales (15s)\n📝 Registro en logs y DM\n🗑️ Elimina publicaciones inválidas",
-            inline=False
-        )
-        embed.add_field(
-            name="🏆 CONSEJOS",
-            value=(
-                "1. Lee las reglas antes de participar\n"
-                "2. Apoya genuinamente en 𝕏 antes de reaccionar\n"
-                "3. Mantén formato exacto de URLs\n"
-                "4. Sé constante con reacciones\n"
-                "5. Respeta turnos de otros usuarios"
-            ),
-            inline=False
         )
         embed.set_footer(text=f"🟢 BOT ONLINE - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
@@ -97,7 +60,7 @@ async def enviar_reglas_canal(bot):
         logger.debug(f"Mensaje enviado con ID: {mensaje.id}")
         await mensaje.pin()
         logger.debug(f"Mensaje {mensaje.id} anclado.")
-        mensaje_reglas_actual = mensaje
+ mensaje_reglas_actual = mensaje
 
         try:
             RedisState().set_welcome_message_id(mensaje.id, CANAL_OBJETIVO)
@@ -106,12 +69,12 @@ async def enviar_reglas_canal(bot):
             logger.warning(f"Redis error: {e}")
 
         await registrar_log(
-            f"✅ Reglas go-viral publicadas y fijadas (embed)",
+            f"✅ Mensaje de bienvenida publicado y fijado (embed)",
             bot.user,
             canal
         )
 
-        logger.info("✅ Reglas enviadas correctamente como embed.")
+        logger.info("✅ Mensaje de bienvenida enviado correctamente como embed.")
         return True
 
     except Exception as e:
