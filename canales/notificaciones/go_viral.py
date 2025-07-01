@@ -1,4 +1,4 @@
-# notificaciones/go_viral.py
+# canales/notificaciones/go_viral.py
 
 URL_INVALIDA = "**Error:** La URL no es válida. Usa el formato: `https://x.com/usuario/status/123456...`"
 INTERVALO_NO_RESPETADO = "**Error:** Debes esperar al menos 2 publicaciones válidas de otros usuarios antes de publicar nuevamente."
