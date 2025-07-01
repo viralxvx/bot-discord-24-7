@@ -2,179 +2,130 @@ import discord
 from discord.ext import commands
 import re
 import asyncio
-import datetime
-import os
 from state_management import RedisState
 from canales.logs import registrar_log
-from canales.faltas import registrar_falta
-from config import CANAL_OBJETIVO, CANAL_LOGS
+from canales.faltas import registrar_falta, enviar_advertencia
+from config import CANAL_OBJETIVO # CANAL_LOGS no es necesario aquí, ya que registrar_log lo tiene
 
 def setup(bot):
-    @bot.event
-    async def on_ready():
-        print(f"Bot conectado como {bot.user} (ID: {bot.user.id})")
-        print("------")
-        
-        # Encontrar el canal objetivo por nombre
-        channel = None
-        for guild in bot.guilds:
-            for ch in guild.text_channels:
-                if ch.id == CANAL_OBJETIVO:
-                    channel = ch
-                    break
-            if channel:
-                break
-        
-        if not channel:
-            print(f"Error: No se encontró el canal con ID {CANAL_OBJETIVO}")
-            return
-
-        # Limpiar mensajes anteriores del bot
-        try:
-            deleted = await channel.purge(limit=50, check=lambda m: m.author == bot.user)
-            print(f"Se borraron {len(deleted)} mensajes antiguos del bot")
-        except Exception as e:
-            print(f"Error al limpiar mensajes: {e}")
-
-        # Mensaje de bienvenida (formato simple que funcionaba antes)
-        welcome_message = (
-            "🧵 **REGLAS DEL CANAL GO-VIRAL** 🧵\n\n"
-            "🎉 **¡BIENVENIDOS A GO-VIRAL!** 🎉\n"
-            "¡Nos alegra tenerte aquí! Este es tu espacio para hacer crecer tu contenido de **𝕏 (Twitter)**.\n\n"
-            "📋 **REGLAS PRINCIPALES:**\n"
-            "1. 🔗 **Formato correcto:** https://x.com/usuario/status/1234567890\n"
-            "2. 👍 **Reacciona con 👍 a tu propia publicación en 120 segundos**\n"
-            "3. 🔥 **Reacciona con 🔥 a TODAS las publicaciones posteriores a la tuya antes de publicar de nuevo**\n"
-            "4. ⏳ **Espera mínimo 2 publicaciones válidas de otros usuarios**\n\n"
-            "⚠️ **Infracciones generan faltas:** Formato incorrecto, sin reacción 👍, falta de 🔥, publicar fuera de turno\n"
-            "🤖 **El bot corregirá URLs, eliminará publicaciones inválidas y notificará faltas**\n\n"
-            "¡Juntos hacemos crecer nuestra comunidad! 🚀"
-        )
-
-        try:
-            msg = await channel.send(welcome_message)
-            await msg.pin()
-            print("Mensaje de bienvenida enviado y anclado exitosamente!")
-            await registrar_log("Mensaje de bienvenida enviado", bot.user, channel)
-        except Exception as e:
-            print(f"Error al enviar mensaje de bienvenida: {e}")
+    # --- ¡IMPORTANTE! ELIMINAR O COMENTAR LA SIGUIENTE SECCIÓN DE on_ready ---
+    # @bot.event
+    # async def on_ready():
+    #     # Toda esta lógica se ha movido al on_ready de main.py
+    #     pass # O puedes borrar todo este bloque si lo prefieres
 
     @bot.event
     async def on_message(message):
+        # Asegúrate de que bot.process_commands(message) solo se llame una vez y donde debe
         if message.channel.id != CANAL_OBJETIVO or message.author.bot:
-            await bot.process_commands(message)
+            await bot.process_commands(message) # Si no es el canal objetivo o es un bot, procesa comandos y sale
             return
 
-        content = message.content.strip()
-        redis_state = RedisState()
-
-        # 1. Validar formato de URL
+        # Validar formato de la URL
         url_pattern = r'^https://x\.com/\w+/status/\d+$'
+        content = message.content.strip()
+        corrected_url = None
+        # Intentar corregir URL si tiene parámetros adicionales
         if not re.match(url_pattern, content):
-            # Intentar corregir URL
-            match = re.search(r'(https://x\.com/\w+/status/\d+)', content)
-            if match:
-                corrected_url = match.group(1)
+            try:
+                base_url = re.match(r'(https://x\.com/\w+/status/\d+)', content).group(1)
+                corrected_url = base_url
+            except AttributeError:
                 await message.delete()
-                new_msg = await message.channel.send(f"{corrected_url} (Corregido por el bot)")
-                await registrar_log(f"URL corregida: {content} -> {corrected_url}", message.author, message.channel)
-                await enviar_notificacion(
-                    message.channel, 
-                    message.author, 
-                    f"**URL corregida:** Usa el formato correcto `https://x.com/usuario/status/123456...`"
-                )
-                message = new_msg
-            else:
-                await message.delete()
-                await enviar_notificacion(
-                    message.channel, 
-                    message.author, 
-                    f"**Error:** URL inválida. Formato requerido: `https://x.com/usuario/status/123456...`"
-                )
+                await enviar_notificacion_temporal(message.channel, message.author,
+                    f"{message.author.mention} **Error:** La URL no es válida. Usa el formato: `https://x.com/usuario/status/123456...`")
                 await registrar_falta(message.author, "URL inválida", message.channel)
+                await registrar_log("Mensaje eliminado: URL inválida", message.author, message.channel, bot) # Pasar el bot
                 return
 
-        # 2. Verificar intervalo de publicaciones
+        # Verificar intervalo de publicaciones
+        redis_state = RedisState()
         last_post = redis_state.get_last_post(message.author.id)
-        if last_post:
-            recent_posts = redis_state.get_recent_posts(CANAL_OBJETIVO)
-            others_posts = [p for p in recent_posts if p['author_id'] != message.author.id]
-            
-            if len(others_posts) < 2:
-                await message.delete()
-                await enviar_notificacion(
-                    message.channel, 
-                    message.author, 
-                    f"**Error:** Espera al menos 2 publicaciones de otros usuarios antes de publicar de nuevo"
-                )
-                await registrar_falta(message.author, "Publicación antes de intervalo", message.channel)
-                return
+        recent_posts = redis_state.get_recent_posts(CANAL_OBJETIVO)
+        # La lógica para 'len([p for p in recent_posts if p['author_id'] != message.author.id]) < 2' puede necesitar
+        # una revisión si RedisState.get_recent_posts no devuelve los IDs decodificados como int
+        # Asegúrate de que los IDs del author_id se comparen como int(message.author.id)
+        if last_post and len([p for p in recent_posts if p['author_id'] != message.author.id]) < 2:
+            await message.delete()
+            await enviar_notificacion_temporal(message.channel, message.author,
+                f"{message.author.mention} **Error:** Debes esperar al menos 2 publicaciones válidas de otros usuarios antes de publicar nuevamente.")
+            await registrar_falta(message.author, "Publicación antes de intervalo permitido", message.channel)
+            await registrar_log("Mensaje eliminado: Intervalo no respetado", message.author, message.channel, bot) # Pasar el bot
+            return
 
-        # 3. Verificar reacciones 🔥 en publicaciones previas
+        # Verificar reacciones 🔥 en publicaciones previas
+        # Aquí también, asegúrate de que has_reaction y get_required_reactions manejen los IDs correctamente (int vs bytes)
         required_reactions = redis_state.get_required_reactions(message.author.id, CANAL_OBJETIVO)
         if not all(redis_state.has_reaction(message.author.id, post_id) for post_id in required_reactions):
             await message.delete()
-            await enviar_notificacion(
-                message.channel, 
-                message.author, 
-                f"**Error:** Debes reaccionar con 🔥 a TODAS las publicaciones posteriores a tu última"
-            )
+            await enviar_notificacion_temporal(message.channel, message.author,
+                f"{message.author.mention} **Error:** Debes reaccionar con 🔥 a todas las publicaciones posteriores a tu última publicación.")
             await registrar_falta(message.author, "Falta de reacciones 🔥", message.channel)
+            await registrar_log("Mensaje eliminado: Sin reacciones 🔥", message.author, message.channel, bot) # Pasar el bot
             return
 
-        # Guardar publicación
-        redis_state.save_post(message.id, message.author.id, CANAL_OBJETIVO)
+        # Corregir URL si es necesario
+        if corrected_url:
+            await message.delete()
+            new_message = await message.channel.send(f"{corrected_url} (Corregido por el bot)")
+            await registrar_log(f"URL corregida: {content} -> {corrected_url}", message.author, message.channel, bot) # Pasar el bot
+            await enviar_notificacion_temporal(message.channel, message.author,
+                f"{message.author.mention} **URL corregida:** Usa el formato `https://x.com/usuario/status/123456...` sin parámetros adicionales.")
+            message = new_message # Actualiza la referencia del mensaje al nuevo mensaje corregido
 
-        # 4. Esperar reacción 👍 del autor
+        # Guardar publicación en Redis
+        redis_state.save_post(message.id, message.author.id, CANAL_OBJETIVO)
+        await registrar_log("Nueva publicación válida registrada", message.author, message.channel, bot) # Nuevo log
+
+        # Esperar reacción 👍 del autor
         def check_reaction(reaction, user):
-            return (
-                user == message.author and 
-                str(reaction.emoji) == '👍' and 
-                reaction.message.id == message.id
-            )
+            return user == message.author and str(reaction.emoji) == '👍' and reaction.message.id == message.id
 
         try:
             await bot.wait_for('reaction_add', timeout=120, check=check_reaction)
+            print(f"Reacción 👍 del autor detectada para el mensaje {message.id}")
         except asyncio.TimeoutError:
             await message.delete()
-            await enviar_notificacion(
-                message.channel, 
-                message.author, 
-                f"**Error:** No reaccionaste con 👍 a tu publicación en 120 segundos"
-            )
-            await registrar_falta(message.author, "Sin reacción 👍", message.channel)
+            await enviar_notificacion_temporal(message.channel, message.author,
+                f"{message.author.mention} **Error:** No reaccionaste con 👍 a tu publicación en 120 segundos.")
+            await registrar_falta(message.author, "Sin reacción 👍 en 120 segundos", message.channel)
+            await registrar_log("Mensaje eliminado: Sin reacción 👍", message.author, message.channel, bot) # Pasar el bot
+            return
+
+        # Al final de on_message, después de toda tu lógica
+        await bot.process_commands(message)
+
 
     @bot.event
     async def on_reaction_add(reaction, user):
         if reaction.message.channel.id != CANAL_OBJETIVO or user.bot:
             return
 
-        # 1. Prevenir 🔥 en propia publicación
+        # Prohibir 🔥 en propia publicación
         if str(reaction.emoji) == '🔥' and user == reaction.message.author:
-            await reaction.remove(user)
-            await enviar_notificacion(
-                reaction.message.channel, 
-                user, 
-                f"**Error:** No puedes reaccionar con 🔥 a tu propia publicación"
-            )
-            await registrar_falta(user, "🔥 en propia publicación", reaction.message.channel)
+            try:
+                await reaction.remove(user)
+                print(f"Reacción 🔥 eliminada de la propia publicación de {user.name}")
+            except discord.Forbidden:
+                print(f"Error: No se pudo eliminar la reacción 🔥 de {user.name} (permisos).")
+            await enviar_notificacion_temporal(reaction.message.channel, user,
+                f"{user.mention} **Error:** No puedes reaccionar con 🔥 a tu propia publicación.")
+            await registrar_falta(user, "Reacción 🔥 en propia publicación", reaction.message.channel)
+            await registrar_log("Reacción eliminada: 🔥 en propia publicación", user, reaction.message.channel, bot) # Pasar el bot
+            return
 
-        # 2. Registrar reacción 🔥 válida
+        # Registrar reacción 🔥 válida
         if str(reaction.emoji) == '🔥' and user != reaction.message.author:
             RedisState().save_reaction(user.id, reaction.message.id)
+            print(f"Reacción 🔥 de {user.name} registrada para el mensaje {reaction.message.id}")
 
-    async def enviar_notificacion(channel, user, content):
-        """Envía notificación temporal en el canal y DM al usuario"""
+
+    async def enviar_notificacion_temporal(channel, user, content):
+        msg = await channel.send(content)
+        await asyncio.sleep(15)
+        await msg.delete()
+        # Asegúrate de que el bot pueda enviar DMs. Los intents deberían cubrirlo.
         try:
-            # Notificación en el canal (se autodestruye)
-            msg = await channel.send(f"{user.mention} {content}")
-            await asyncio.sleep(15)
-            await msg.delete()
-        except:
-            pass
-        
-        try:
-            # Notificación por DM
-            await user.send(f"⚠️ **Notificación:** {content}")
-        except:
-            pass
+            await user.send(f"⚠️ **Notificación de {channel.name}**: {content.replace(user.mention, '')}\n\n*Este es un mensaje automático del bot.*")
+        except discord.Forbidden:
+            print(f"Error: No se pudo enviar DM a {user.name}. Puede que tenga los DMs deshabilitados.")
