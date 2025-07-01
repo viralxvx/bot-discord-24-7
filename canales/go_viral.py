@@ -37,14 +37,16 @@ async def enviar_reglas_canal(bot):
             logger.error("Faltan permisos para enviar mensajes o embeds.")
             return False
 
-        for msg in await canal.history(limit=50).flatten():
+        logger.debug("Buscando mensajes anteriores del bot para eliminar...")
+        async for msg in canal.history(limit=50):
             if msg.author == bot.user and msg.embeds:
                 try:
                     await msg.unpin()
                     await msg.delete()
+                    logger.debug(f"Mensaje {msg.id} eliminado y desanclado.")
                     await asyncio.sleep(1)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"Error al eliminar/desanclar mensaje {msg.id}: {e}")
 
         embed = discord.Embed(
             title="🧵 REGLAS GO-VIRAL 🧵",
@@ -90,12 +92,16 @@ async def enviar_reglas_canal(bot):
         )
         embed.set_footer(text=f"🟢 BOT ONLINE - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
 
+        logger.debug("Enviando mensaje de bienvenida...")
         mensaje = await canal.send(embed=embed)
+        logger.debug(f"Mensaje enviado con ID: {mensaje.id}")
         await mensaje.pin()
+        logger.debug(f"Mensaje {mensaje.id} anclado.")
         mensaje_reglas_actual = mensaje
 
         try:
             RedisState().set_welcome_message_id(mensaje.id, CANAL_OBJETIVO)
+            logger.debug("ID del mensaje guardado en Redis.")
         except Exception as e:
             logger.warning(f"Redis error: {e}")
 
