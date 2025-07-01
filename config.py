@@ -8,7 +8,7 @@ if BOT_TOKEN is None:
     print("ADVERTENCIA: La variable de entorno DISCORD_TOKEN no está configurada. Asegúrate de que esté en Railway.")
 
 # ID del canal objetivo para la función Go Viral (el canal donde se comparten los links)
-CANAL_OBJETIVO = 1198547228876527636 
+CANAL_OBJETIVO = 1353824447131418676 
 
 # ID del canal donde se registrarán las faltas
 CANAL_FALTAS = 1198906950383188048 
