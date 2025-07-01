@@ -2,13 +2,11 @@
 
 import datetime
 import discord
-from discord_bot import bot
 from config import CANAL_LOGS, MAX_LOG_LENGTH
-from state_management import save_state
 
-async def registrar_log(texto: str, categoria: str = "general"):
+async def registrar_log(bot, texto: str, categoria: str = "general"):
     """Registra una entrada en el canal de logs con categoría y timestamp."""
-    canal_log = discord.utils.get(bot.get_all_channels(), name=CANAL_LOGS)
+    canal_log = bot.get_channel(CANAL_LOGS)
     if not canal_log or not texto:
         return
 
@@ -23,24 +21,17 @@ async def registrar_log(texto: str, categoria: str = "general"):
     except Exception as e:
         print(f"Error al registrar log: {e}")
 
-async def log_error(contexto: str, error: Exception):
+async def log_error(bot, contexto: str, error: Exception):
     """Registra errores que ocurran durante eventos del bot."""
     mensaje = f"❗ Error en {contexto}: {str(error)}"
-    await registrar_log(mensaje, categoria="errores")
+    await registrar_log(bot, mensaje, categoria="errores")
 
-async def log_accion(usuario: discord.Member, accion: str, extra: str = "", categoria: str = "acciones"):
+async def log_accion(bot, usuario: discord.Member, accion: str, extra: str = "", categoria: str = "acciones"):
     """Registra una acción específica realizada por un usuario."""
     try:
         texto = f"{usuario.name}#{usuario.discriminator} → {accion}"
         if extra:
             texto += f" | {extra}"
-        await registrar_log(texto, categoria)
+        await registrar_log(bot, texto, categoria)
     except Exception as e:
-        await log_error("log_accion", e)
-
-def guardar_estado():
-    """Guarda el estado actual de datos persistentes."""
-    try:
-        save_state()
-    except Exception as e:
-        print(f"Error guardando estado: {e}")
+        await log_error(bot, "log_accion", e)
