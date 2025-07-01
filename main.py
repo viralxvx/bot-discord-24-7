@@ -1,57 +1,64 @@
+# main.py
 import discord
 from discord.ext import commands
-import asyncio
-from config import DISCORD_TOKEN, CANAL_LOGS, CANAL_OBJETIVO # Asegúrate de importar CANAL_OBJETIVO
-from canales.logs import registrar_log # Importa tu función de logs
-from state_management import RedisState # Necesitas esto para el estado del mensaje de bienvenida
+import os
+from config import BOT_TOKEN, REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASSWORD
+from state_management import RedisState # Importamos RedisState
 
+# Configuración de intents para el bot
 intents = discord.Intents.default()
-intents.message_content = True
-intents.reactions = True
-intents.messages = True
-intents.guilds = True
+intents.message_content = True # Permite al bot leer el contenido de los mensajes
+intents.members = True         # Necesario para el evento on_member_join
 
-bot = commands.Bot(command_prefix='!', intents=intents)
+# Inicializa el bot
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    await bot.wait_until_ready()
-    print(f'Bot conectado como {bot.user}')
+    print(f'Bot conectado como {bot.user.name} (ID: {bot.user.id})')
+    print('------')
 
-    # --- Cargar la Cog (extensión) aquí ---
-    try:
-        await bot.load_extension("canales.go_viral") # Esto llamará a async def setup(bot) en go_viral.py
-        print("Módulo 'canales.go_viral' cargado como extensión exitosamente.")
-    except commands.ExtensionAlreadyLoaded:
-        print("Módulo 'canales.go_viral' ya estaba cargado.")
-    except commands.ExtensionNotFound:
-        print("ERROR: Módulo 'canales.go_viral' no encontrado. Verifica la ruta.")
-    except Exception as e:
-        print(f"ERROR al cargar la extensión 'canales.go_viral': {e}")
+    # Inicializa RedisState para que esté disponible en la función on_ready
+    redis_state = RedisState() 
+    bot.redis_state = redis_state # Guarda una referencia en el bot si lo necesitas globalmente
 
+    # Cargar todos los cogs dinámicamente
+    await load_cogs()
 
-    # --- Lógica de envío al canal de logs ---
-    canal_logs = bot.get_channel(CANAL_LOGS)
-    if canal_logs:
-        try:
-            await canal_logs.send(f"🟢 **Bot conectado como `{bot.user.name}` y listo para funcionar.**")
-            print("Mensaje de conexión enviado al canal de logs desde main.py.")
-        except Exception as e:
-            print(f"Error al enviar mensaje al canal de logs desde main.py: {e}")
-    else:
-        print(f"Error: Canal de logs con ID {CANAL_LOGS} no encontrado en main.py.")
-
-    # --- Llama a la función de inicio específica del Cog ---
+    # Llamar a la lógica on_ready del cog GoViralCog
+    # Esto asegura que el mensaje de bienvenida se gestione al iniciar/reiniciar el bot
     go_viral_cog = bot.get_cog("GoViralCog")
     if go_viral_cog:
-        print("Iniciando funciones on_ready específicas de los módulos...")
         await go_viral_cog.go_viral_on_ready()
     else:
-        print("ERROR: No se pudo obtener la Cog 'GoViralCog'. ¿Fue cargada correctamente?")
+        print("ERROR: GoViralCog no encontrado. El mensaje de bienvenida no se gestionará.")
+
+    # Puedes agregar aquí lógica de estado o actividad del bot
+    await bot.change_presence(activity=discord.Game(name="Monitoreando el Go-Viral"))
 
 
-async def main():
-    await bot.start(DISCORD_TOKEN)
+# Cargar cogs (extensiones)
+async def load_cogs():
+    # Cogs existentes
+    await bot.load_extension("canales.go_viral")
+    await bot.load_extension("canales.logs")
+    await bot.load_extension("canales.faltas")
+    # Nuevo Cog para el canal de presentación
+    await bot.load_extension("canales.presentate") # <--- ESTA LÍNEA ES CLAVE PARA EL CANAL 'PRESENTATE'
 
-if __name__ == '__main__':
-    asyncio.run(main())
+    print("All cogs loaded.")
+
+# Ejecutar el bot
+if __name__ == "__main__":
+    # Inicializar el cliente Redis aquí si no se hace en RedisState directamente
+    # Esto asegura que Redis esté listo antes de que los cogs lo utilicen.
+    redis_state_instance = RedisState() 
+    # Puedes probar la conexión aquí si quieres
+    try:
+        redis_state_instance.redis_client.ping()
+        print("Conexión a Redis exitosa.")
+    except Exception as e:
+        print(f"Error al conectar a Redis: {e}")
+        # Considera cómo quieres manejar este error: salir, reintentar, etc.
+
+    bot.run(BOT_TOKEN)
