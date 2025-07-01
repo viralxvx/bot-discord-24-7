@@ -2,10 +2,8 @@ import discord
 from discord.ext import commands
 import asyncio
 from config import DISCORD_TOKEN, CANAL_LOGS, CANAL_OBJETIVO # Asegúrate de importar CANAL_OBJETIVO
-from canales.go_viral import setup as go_viral_setup # Importamos la función setup de go_viral
 from canales.logs import registrar_log # Importa tu función de logs
 from state_management import RedisState # Necesitas esto para el estado del mensaje de bienvenida
-
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -15,10 +13,6 @@ intents.guilds = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# La función setup de go_viral.py añade la Cog. No la necesitamos llamar aquí con await si el setup de go_viral.py usa bot.add_cog
-# Lo haremos de forma diferente para que se cargue correctamente como una extensión
-# En lugar de llamar go_viral_setup(bot) directamente aquí, cargaremos la extensión en on_ready.
-
 @bot.event
 async def on_ready():
     await bot.wait_until_ready()
@@ -26,9 +20,7 @@ async def on_ready():
 
     # --- Cargar la Cog (extensión) aquí ---
     try:
-        # Asegúrate de que 'canales.go_viral' sea la ruta correcta a tu archivo go_viral.py
-        # relative to your main.py. Si main.py y la carpeta canales están al mismo nivel, está bien.
-        await bot.load_extension("canales.go_viral")
+        await bot.load_extension("canales.go_viral") # Esto llamará a async def setup(bot) en go_viral.py
         print("Módulo 'canales.go_viral' cargado como extensión exitosamente.")
     except commands.ExtensionAlreadyLoaded:
         print("Módulo 'canales.go_viral' ya estaba cargado.")
@@ -50,11 +42,10 @@ async def on_ready():
         print(f"Error: Canal de logs con ID {CANAL_LOGS} no encontrado en main.py.")
 
     # --- Llama a la función de inicio específica del Cog ---
-    # Después de cargar la extensión, el Cog ya debería estar disponible
-    go_viral_cog = bot.get_cog("GoViralCog") # Obtener la instancia del Cog por su nombre
+    go_viral_cog = bot.get_cog("GoViralCog")
     if go_viral_cog:
         print("Iniciando funciones on_ready específicas de los módulos...")
-        await go_viral_cog.go_viral_on_ready() # Llamar al método específico de la Cog
+        await go_viral_cog.go_viral_on_ready()
     else:
         print("ERROR: No se pudo obtener la Cog 'GoViralCog'. ¿Fue cargada correctamente?")
 
