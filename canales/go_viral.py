@@ -4,13 +4,13 @@ import re
 import asyncio
 import json 
 from state_management import RedisState
-from canales.logs import registrar_log
-from canales.faltas import registrar_falta, enviar_advertencia
+from canales.logs import registrar_log # Esta importación está bien si 'logs.py' está en 'canales/'
+from canales.faltas import registrar_falta, enviar_advertencia # Esta importación está bien si 'faltas.py' está en 'canales/'
 from config import CANAL_OBJETIVO
 
-# Importar los textos de mensajes y notificaciones desde los nuevos archivos
-from mensajes.go_viral import WELCOME_MESSAGE_TITLE, WELCOME_MESSAGE_IMAGE_URL, WELCOME_MESSAGE_TEXT, FIRST_POST_WELCOME_MESSAGE_TEXT
-from notificaciones.go_viral import (
+# Importar los textos de mensajes y notificaciones desde las nuevas rutas relativas
+from .mensajes.go_viral import WELCOME_MESSAGE_TITLE, WELCOME_MESSAGE_IMAGE_URL, WELCOME_MESSAGE_TEXT, FIRST_POST_WELCOME_MESSAGE_TEXT
+from .notificaciones.go_viral import (
     URL_INVALIDA, INTERVALO_NO_RESPETADO, REACCIONES_PENDIENTES_CHANNEL, 
     REACCIONES_PENDIENTES_DM, LINK_CORREGIDO_CHANNEL, NO_REACCION_THUMBS_UP, 
     REACCION_FIRE_PROPIA_PUBLICACION, REACCION_NO_PERMITIDA
