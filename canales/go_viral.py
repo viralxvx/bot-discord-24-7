@@ -10,22 +10,37 @@ from config import CANAL_OBJETIVO, CANAL_LOGS
 def setup(bot):
     @bot.event
     async def on_ready():
-        print("Bot está listo, intentando enviar mensaje de prueba...")
-        # Enviar mensaje de prueba al canal go-viral al iniciar
+        print("Bot está listo, intentando enviar mensaje de bienvenida...")
         channel = bot.get_channel(CANAL_OBJETIVO)
         if channel:
             try:
-                await channel.send("Este mensaje es una prueba de que puedo publicar en este canal")
-                await registrar_log("Mensaje de prueba enviado", bot.user, channel)
-                print("Mensaje de prueba enviado exitosamente")
+                # Verificar si ya existe un mensaje de bienvenida fijado
+                pinned_messages = await channel.pins()
+                welcome_message_exists = any("Bienvenido a go-viral" in msg.content for msg in pinned_messages)
+                
+                if not welcome_message_exists:
+                    welcome_message = await channel.send(
+                        "📢 **Bienvenido a go-viral!** Por favor, sigue las reglas:\n"
+                        "1. Publica solo URLs en el formato `https://x.com/usuario/status/123456...`.\n"
+                        "2. Reacciona con 🔥 a las publicaciones de otros.\n"
+                        "3. Reacciona con 👍 a tu propia publicación en 120 segundos.\n"
+                        "¡Disfruta del canal!"
+                    )
+                    await welcome_message.pin()
+                    await registrar_log("Mensaje de bienvenida enviado y fijado", bot.user, channel)
+                    print("Mensaje de bienvenida enviado y fijado exitosamente")
+                else:
+                    print("El mensaje de bienvenida ya está fijado")
+            except discord.errors.Forbidden:
+                print("Error: El bot no tiene permisos para fijar mensajes")
             except Exception as e:
-                print(f"Error enviando mensaje de prueba: {e}")
+                print(f"Error enviando mensaje de bienvenida: {e}")
         else:
             print(f"No se encontró el canal con ID: {CANAL_OBJETIVO}")
 
     @bot.event
     async def on_message(message):
-        if message.channel.id != CANAL_OBJETIVO or message.author.bot:
+        if message.channel.id != CANAL_OBJETIVO or message.author.bot or message.pinned:
             await bot.process_commands(message)
             return
 
