@@ -50,11 +50,11 @@ Antes de publicar nuevamente:
 - 💬 Mensajes privados informativos
 ---
 ## 🏆 **CONSEJOS PARA EL ÉXITO**
-1. **Lee las reglas** antes de participar
-2. **Apoya genuinamente** en 𝕏 antes de reaccionar
-3. **Mantén el formato** exacto de URLs
-4. **Sé constante** con las reacciones
-5. **Respeta los turnos** de otros usuarios
+1.  **Lee las reglas** antes de participar
+2.  **Apoya genuinamente** en 𝕏 antes de reaccionar
+3.  **Mantén el formato** exacto de URLs
+4.  **Sé constante** con las reacciones
+5.  **Respeta los turnos** de otros usuarios
 ---
 ## 📞 **¿DUDAS?**
 Revisa el historial del canal o consulta en el canal soporte.
