@@ -4,8 +4,8 @@ import re
 import asyncio
 import json 
 from state_management import RedisState
-from canales.logs import registrar_log # Esta importación está bien si 'logs.py' está en 'canales/'
-from canales.faltas import registrar_falta, enviar_advertencia # Esta importación está bien si 'faltas.py' está en 'canales/'
+from canales.logs import registrar_log 
+from canales.faltas import registrar_falta, enviar_advertencia 
 from config import CANAL_OBJETIVO
 
 # Importar los textos de mensajes y notificaciones desde las nuevas rutas relativas
