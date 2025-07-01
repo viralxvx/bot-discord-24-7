@@ -108,8 +108,8 @@ async def on_reaction_add(reaction, user):
         if str(reaction.emoji) == '🔥' and user != reaction.message.author:
             RedisState().save_reaction(user.id, reaction.message.id)
 
-    async def enviar_notificacion_temporal(channel, user, content):
-        msg = await channel.send(content)
-        await asyncio.sleep(15)
-        await msg.delete()
-        await user.send(f"⚠️ Falta: {content.replace(user.mention, '')}")
+async def enviar_notificacion_temporal(channel, user, content):
+    msg = await channel.send(content)
+    await asyncio.sleep(15)
+    await msg.delete()
+    await user.send(f"⚠️ Falta: {content.replace(user.mention, '')}")
