@@ -8,18 +8,23 @@ from canales.faltas import registrar_falta, enviar_advertencia
 from config import CANAL_OBJETIVO, CANAL_LOGS
 
 def setup(bot):
-    pass
+    @bot.event
+    async def on_ready():
+        print("Bot está listo, intentando enviar mensaje de prueba...")
+        # Enviar mensaje de prueba al canal go-viral al iniciar
+        channel = bot.get_channel(CANAL_OBJETIVO)
+        if channel:
+            try:
+                await channel.send("Este mensaje es una prueba de que puedo publicar en este canal")
+                await registrar_log("Mensaje de prueba enviado", bot.user, channel)
+                print("Mensaje de prueba enviado exitosamente")
+            except Exception as e:
+                print(f"Error enviando mensaje de prueba: {e}")
+        else:
+            print(f"No se encontró el canal con ID: {CANAL_OBJETIVO}")
 
-@bot.event
-async def on_ready():
-    # Enviar mensaje de prueba al canal go-viral al iniciar
-    channel = bot.get_channel(CANAL_OBJETIVO)
-    if channel:
-        await channel.send("Este mensaje es una prueba de que puedo publicar en este canal")
-        await registrar_log("Mensaje de prueba enviado", bot.user, channel)
-
-@bot.event
-async def on_message(message):
+    @bot.event
+    async def on_message(message):
         if message.channel.id != CANAL_OBJETIVO or message.author.bot:
             await bot.process_commands(message)
             return
@@ -91,8 +96,8 @@ async def on_message(message):
 
         await bot.process_commands(message)
 
-@bot.event
-async def on_reaction_add(reaction, user):
+    @bot.event
+    async def on_reaction_add(reaction, user):
         if reaction.message.channel.id != CANAL_OBJETIVO or user.bot:
             return
 
@@ -108,8 +113,11 @@ async def on_reaction_add(reaction, user):
         if str(reaction.emoji) == '🔥' and user != reaction.message.author:
             RedisState().save_reaction(user.id, reaction.message.id)
 
-async def enviar_notificacion_temporal(channel, user, content):
-    msg = await channel.send(content)
-    await asyncio.sleep(15)
-    await msg.delete()
-    await user.send(f"⚠️ Falta: {content.replace(user.mention, '')}")
+    async def enviar_notificacion_temporal(channel, user, content):
+        msg = await channel.send(content)
+        await asyncio.sleep(15)
+        await msg.delete()
+        try:
+            await user.send(f"⚠️ Falta: {content.replace(user.mention, '')}")
+        except:
+            pass
