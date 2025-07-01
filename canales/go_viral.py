@@ -15,17 +15,13 @@ class GoViralCog(commands.Cog):
     async def go_viral_on_ready(self):
         print(f"Lógica on_ready de GoViralCog iniciada para el canal {CANAL_OBJETIVO}...")
 
-        # --- MODIFICACIÓN TEMPORAL AQUÍ (PARA PRUEBAS) ---
-        # Si quieres forzar el envío del mensaje de bienvenida para probar,
-        # cambia la siguiente línea a 'if True:' y luego despliega.
-        # ¡Recuerda volver a cambiarla a la original después de la prueba!
-        if not self.redis_state.is_welcome_message_active(CANAL_OBJETIVO): # Línea original
-        # if True: # <--- Descomenta esto y comenta la línea de arriba para forzar el envío
+        # --- AQUÍ ESTÁ LA CONDICIÓN RESTAURADA A SU ESTADO NORMAL ---
+        if not self.redis_state.is_welcome_message_active(CANAL_OBJETIVO):
             print(f"DEBUG: Revisando Redis para mensaje de bienvenida para el canal {CANAL_OBJETIVO}.")
             channel_go_viral = self.bot.get_channel(CANAL_OBJETIVO)
             if channel_go_viral:
+                # --- MENSAJE DE BIENVENIDA CON EL TÍTULO DUPLICADO ELIMINADO ---
                 welcome_message = """
-# 🧵 **REGLAS DEL CANAL GO-VIRAL** 🧵
 ## 🎉 **¡BIENVENIDOS A GO-VIRAL!** 🎉
 ¡Nos alegra tenerte aquí! Este es tu espacio para hacer crecer tu contenido de **𝕏 (Twitter)** junto a nuestra increíble comunidad.
 ## 🎯 **OBJETIVO**
@@ -100,7 +96,6 @@ Revisa el historial del canal o consulta en el canal soporte.
                 print(f"ERROR: No se pudo encontrar el canal go-viral con la ID: {CANAL_OBJETIVO}")
         else:
             print(f"Mensaje de bienvenida ya activo para el canal {CANAL_OBJETIVO} según Redis. No se envía de nuevo.")
-
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -194,9 +189,8 @@ Revisa el historial del canal o consulta en el canal soporte.
             print(f"Reacción 🔥 de {user.name} registrada para el mensaje {reaction.message.id}")
 
 
-# ¡Aquí está el CAMBIO CLAVE! async def setup(bot):
 async def setup(bot):
-    await bot.add_cog(GoViralCog(bot)) # ¡Ahora es awaited!
+    await bot.add_cog(GoViralCog(bot))
 
 
 async def enviar_notificacion_temporal(channel, user, content):
