@@ -5,27 +5,23 @@ import asyncio
 from state_management import RedisState
 from canales.logs import registrar_log
 from canales.faltas import registrar_falta, enviar_advertencia
-from config import CANAL_OBJETIVO # CANAL_OBJETIVO es esencial aquí
+from config import CANAL_OBJETIVO
 
-# Definimos una clase Cog para organizar las funciones del canal Go-Viral
 class GoViralCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.redis_state = RedisState() # Instancia de RedisState
+        self.redis_state = RedisState()
 
-    # Este será tu "on_ready" para este módulo, pero con un nombre diferente
-    # para evitar conflictos y llamarlo explícitamente desde main.py
     async def go_viral_on_ready(self):
         print(f"Lógica on_ready de GoViralCog iniciada para el canal {CANAL_OBJETIVO}...")
 
-        # --- MODIFICACIÓN TEMPORAL AQUÍ ---
-        # Comenta la siguiente línea para forzar el envío del mensaje de bienvenida
-        # if not self.redis_state.is_welcome_message_active(CANAL_OBJETIVO):
-        
-        # Deja la siguiente línea sin comentar para que el código dentro del if siempre se ejecute
-        # Esto es solo para probar. Luego, ¡recuerda descomentar la línea de arriba!
-        if True: # <--- CAMBIA ESTO TEMPORALMENTE A 'if True:'
-            print(f"DEBUG: Forzando el envío del mensaje de bienvenida (Redis check bypass).") # Mensaje de depuración
+        # --- MODIFICACIÓN TEMPORAL AQUÍ (PARA PRUEBAS) ---
+        # Si quieres forzar el envío del mensaje de bienvenida para probar,
+        # cambia la siguiente línea a 'if True:' y luego despliega.
+        # ¡Recuerda volver a cambiarla a la original después de la prueba!
+        if not self.redis_state.is_welcome_message_active(CANAL_OBJETIVO): # Línea original
+        # if True: # <--- Descomenta esto y comenta la línea de arriba para forzar el envío
+            print(f"DEBUG: Revisando Redis para mensaje de bienvenida para el canal {CANAL_OBJETIVO}.")
             channel_go_viral = self.bot.get_channel(CANAL_OBJETIVO)
             if channel_go_viral:
                 welcome_message = """
@@ -102,12 +98,10 @@ Revisa el historial del canal o consulta en el canal soporte.
                     print(f"ERROR al enviar el mensaje de bienvenida al canal '{channel_go_viral.name}': {e}")
             else:
                 print(f"ERROR: No se pudo encontrar el canal go-viral con la ID: {CANAL_OBJETIVO}")
-        # --- FIN DE LA MODIFICACIÓN TEMPORAL ---
-        else: # Este else se ejecutará si la línea comentada arriba no está comentada y Redis dice que ya está activo
+        else:
             print(f"Mensaje de bienvenida ya activo para el canal {CANAL_OBJETIVO} según Redis. No se envía de nuevo.")
 
 
-    # Ahora, tus eventos on_message y on_reaction_add se convierten en métodos de la Cog
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.channel.id != CANAL_OBJETIVO or message.author.bot:
@@ -116,7 +110,6 @@ Revisa el historial del canal o consulta en el canal soporte.
 
         redis_state = self.redis_state
 
-        # Validar formato de la URL
         url_pattern = r'^https://x\.com/\w+/status/\d+$'
         content = message.content.strip()
         corrected_url = None
@@ -132,7 +125,6 @@ Revisa el historial del canal o consulta en el canal soporte.
                 await registrar_log("Mensaje eliminado: URL inválida", message.author, message.channel, self.bot)
                 return
 
-        # Verificar intervalo de publicaciones
         last_post = redis_state.get_last_post(message.author.id)
         recent_posts = redis_state.get_recent_posts(CANAL_OBJETIVO)
         if last_post and len([p for p in recent_posts if p['author_id'] != message.author.id]) < 2:
@@ -143,7 +135,6 @@ Revisa el historial del canal o consulta en el canal soporte.
             await registrar_log("Mensaje eliminado: Intervalo no respetado", message.author, message.channel, self.bot)
             return
 
-        # Verificar reacciones 🔥 en publicaciones previas
         required_reactions = redis_state.get_required_reactions(message.author.id, CANAL_OBJETIVO)
         if not all(redis_state.has_reaction(message.author.id, post_id) for post_id in required_reactions):
             await message.delete()
@@ -153,7 +144,6 @@ Revisa el historial del canal o consulta en el canal soporte.
             await registrar_log("Mensaje eliminado: Sin reacciones 🔥", message.author, message.channel, self.bot)
             return
 
-        # Corregir URL si es necesario
         if corrected_url:
             await message.delete()
             new_message = await message.channel.send(f"{corrected_url} (Corregido por el bot)")
@@ -162,11 +152,9 @@ Revisa el historial del canal o consulta en el canal soporte.
                 f"{message.author.mention} **URL corregida:** Usa el formato `https://x.com/usuario/status/123456...` sin parámetros adicionales.")
             message = new_message
 
-        # Guardar publicación en Redis
         redis_state.save_post(message.id, message.author.id, CANAL_OBJETIVO)
         await registrar_log("Nueva publicación válida registrada", message.author, message.channel, self.bot)
 
-        # Esperar reacción 👍 del autor
         def check_reaction(reaction, user_check):
             return user_check == message.author and str(reaction.emoji) == '👍' and reaction.message.id == message.id
 
@@ -189,7 +177,6 @@ Revisa el historial del canal o consulta en el canal soporte.
         if reaction.message.channel.id != CANAL_OBJETIVO or user.bot:
             return
 
-        # Prohibir 🔥 en propia publicación
         if str(reaction.emoji) == '🔥' and user == reaction.message.author:
             try:
                 await reaction.remove(user)
@@ -202,18 +189,16 @@ Revisa el historial del canal o consulta en el canal soporte.
             await registrar_log("Reacción eliminada: 🔥 en propia publicación", user, reaction.message.channel, self.bot)
             return
 
-        # Registrar reacción 🔥 válida
         if str(reaction.emoji) == '🔥' and user != reaction.message.author:
             self.redis_state.save_reaction(user.id, reaction.message.id)
             print(f"Reacción 🔥 de {user.name} registrada para el mensaje {reaction.message.id}")
 
 
-# La función setup ahora añade la Cog al bot
-def setup(bot):
-    bot.add_cog(GoViralCog(bot))
+# ¡Aquí está el CAMBIO CLAVE! async def setup(bot):
+async def setup(bot):
+    await bot.add_cog(GoViralCog(bot)) # ¡Ahora es awaited!
 
-# Las funciones auxiliares pueden ir aquí, ya que no son parte de la Cog directamente
-# o podrían ser métodos estáticos de la Cog si no necesitan 'self'
+
 async def enviar_notificacion_temporal(channel, user, content):
     msg = await channel.send(content)
     await asyncio.sleep(15)
