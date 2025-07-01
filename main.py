@@ -11,10 +11,18 @@ intents.messages = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# ✅ Registrar eventos antes de iniciar el bot
+go_viral_setup(bot)
+
 @bot.event
 async def on_ready():
+    await bot.wait_until_ready()
     print(f'Bot conectado como {bot.user}')
-    go_viral_setup(bot)  # Configura el canal go-viral
+    
+    # ✅ Enviar estado al canal de logs
+    canal_logs = bot.get_channel(1388347584061374514)
+    if canal_logs:
+        await canal_logs.send(f"🟢 **Bot conectado como `{bot.user.name}` y listo.**")
 
 async def main():
     await bot.start(DISCORD_TOKEN)
