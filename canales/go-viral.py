@@ -1,18 +1,17 @@
-import re
+# canales/go-viral.py
+
 import discord
+import re
+import asyncio
 from discord.ext import commands
 from discord_bot import bot
 from config import CANAL_OBJETIVO, CANAL_FALTAS
 from state_management import ultima_publicacion_dict, faltas_dict, save_state
-from utils import registrar_log
+from canales.logs import registrar_log
+from utils import actualizar_mensaje_faltas
 
-URL_REGEX = r"https:\/\/x\.com\/[\w\d_]+\/status\/(\d+)"
-URL_CORRECCION_REGEX = r"(https:\/\/x\.com\/[\w\d_]+\/status\/\d+)"
-
-# Corrección automática de enlaces
-def corregir_url(contenido):
-    match = re.search(URL_CORRECCION_REGEX, contenido)
-    return match.group(1) if match else None
+URL_REGEX = re.compile(r"https://x\.com/\w+/status/(\d+)")
+URL_CORRECCION_REGEX = re.compile(r"(https://x\.com/\w+/status/\d+)(\?.*)?")
 
 @bot.event
 async def on_message(message):
@@ -21,60 +20,67 @@ async def on_message(message):
 
     autor = message.author
     contenido = message.content.strip()
-    canal = message.channel
+    urls = re.findall(URL_REGEX, contenido)
+    canal_faltas = discord.utils.get(message.guild.text_channels, name=CANAL_FALTAS)
 
-    # Corregir el formato del link si es necesario
-    url_corregida = corregir_url(contenido)
-
-    if not url_corregida:
-        await mensaje_temporal(canal, autor, "❌ El enlace no tiene el formato correcto. Usa `https://x.com/usuario/status/ID`.")
-        await aplicar_falta(autor, motivo="Enlace inválido")
-        await message.delete()
-        return
-
-    if url_corregida != contenido:
-        try:
+    # Solo se permite una URL válida y sin texto adicional
+    if not URL_REGEX.fullmatch(contenido):
+        # Intentar corregir el formato del link automáticamente
+        corregido = re.sub(URL_CORRECCION_REGEX, r"\1", contenido)
+        if URL_REGEX.fullmatch(corregido):
             await message.delete()
-            nuevo_mensaje = await canal.send(url_corregida)
-            await registrar_log(f"{autor.name} publicó URL corregida automáticamente.")
-            await mensaje_temporal(canal, autor, f"✏️ Tu link fue corregido automáticamente.\nFormato correcto: `{url_corregida}`", segundos=15)
-        except Exception:
-            await registrar_log(f"Error al corregir y reenviar mensaje de {autor.name}")
+            nuevo_mensaje = await message.channel.send(corregido)
+            await nuevo_mensaje.add_reaction("👍")
+            await registrar_log(f"🔧 Link corregido automáticamente para {autor.name}", categoria="go-viral")
+            await notificar_temp(message.channel, autor, "🔧 Tu enlace fue corregido automáticamente. Por favor usa el formato limpio en el futuro.")
+            try:
+                await autor.send("🧼 Tu enlace fue corregido automáticamente por el bot. Asegúrate de usar el formato limpio: `https://x.com/usuario/status/ID`.")
+            except:
+                pass
+            return
+        else:
+            await sancionar(autor, message, "El mensaje no contiene una URL válida de X.", canal_faltas)
+            return
+
+    # Verifica que hayan al menos 2 publicaciones de otros desde su último post
+    historial = [msg async for msg in message.channel.history(limit=50)]
+    publicaciones_despues = [
+        m for m in historial
+        if m.author != autor and URL_REGEX.fullmatch(m.content)
+        and m.created_at > ultima_publicacion_dict.get(autor.id, message.created_at)
+    ]
+
+    if len(publicaciones_despues) < 2:
+        await sancionar(autor, message, "Debes esperar al menos 2 publicaciones de otros usuarios antes de volver a publicar.", canal_faltas)
         return
 
-    # Reglas: verificar si puede publicar
-    historial = await canal.history(limit=50).flatten()
-    publicaciones_anteriores = [
-        msg for msg in historial
-        if msg.author != autor and not msg.author.bot and re.search(URL_REGEX, msg.content)
-    ]
-    
-    if autor.id in ultima_publicacion_dict:
-        ult_idx = next((i for i, msg in enumerate(historial) if msg.author == autor), None)
-        if ult_idx is not None:
-            posteriores = publicaciones_anteriores[:ult_idx]
-            if len(posteriores) < 2:
-                await mensaje_temporal(canal, autor, "⛔ Debes esperar al menos 2 publicaciones válidas de otros usuarios antes de volver a publicar.")
-                await aplicar_falta(autor, motivo="Publicó sin esperar 2 posts de otros")
-                await message.delete()
-                return
-
-    # Registrar última publicación
+    # Registra última publicación válida
     ultima_publicacion_dict[autor.id] = message.created_at
+    faltas_dict.setdefault(autor.id, {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None})
+    faltas_dict[autor.id]["aciertos"] += 1
+    await actualizar_mensaje_faltas(canal_faltas, autor, faltas_dict[autor.id]["faltas"], faltas_dict[autor.id]["aciertos"], "OK")
+    await registrar_log(f"✅ Publicación válida de {autor.name}", categoria="go-viral")
     save_state()
 
-async def mensaje_temporal(canal, usuario, contenido, segundos=15):
+async def sancionar(usuario, mensaje, motivo, canal_faltas):
+    await mensaje.delete()
+    faltas_dict.setdefault(usuario.id, {"faltas": 0, "aciertos": 0, "estado": "OK", "mensaje_id": None})
+    faltas_dict[usuario.id]["faltas"] += 1
+    await actualizar_mensaje_faltas(canal_faltas, usuario, faltas_dict[usuario.id]["faltas"], faltas_dict[usuario.id]["aciertos"], "OK")
+    await registrar_log(f"⚠️ Falta por {usuario.name}: {motivo}", categoria="go-viral")
+
+    # Mensaje temporal en el canal
+    await notificar_temp(mensaje.channel, usuario, f"⚠️ {motivo}")
+
+    # Mensaje privado
     try:
-        mensaje = await canal.send(f"{usuario.mention} {contenido}")
-        await usuario.send(f"⚠️ {contenido}")
-        await registrar_log(f"Notificación a {usuario.name}: {contenido}")
-        await mensaje.delete(delay=segundos)
+        await usuario.send(f"⚠️ Tu mensaje fue eliminado por: {motivo}\nCorrígelo para evitar más sanciones en #🧵go-viral.")
     except:
         pass
 
-async def aplicar_falta(usuario, motivo="Falta"):
-    if usuario.id not in faltas_dict:
-        faltas_dict[usuario.id] = {"faltas": 0, "estado": "OK", "aciertos": 0, "mensaje_id": None}
-    faltas_dict[usuario.id]["faltas"] += 1
     save_state()
-    await registrar_log(f"❌ Falta aplicada a {usuario.name}: {motivo}", categoria="faltas")
+
+async def notificar_temp(canal, usuario, texto, duracion=15):
+    aviso = await canal.send(f"{usuario.mention} {texto}")
+    await asyncio.sleep(duracion)
+    await aviso.delete()
