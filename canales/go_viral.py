@@ -18,9 +18,14 @@ class GoViralCog(commands.Cog):
     async def go_viral_on_ready(self):
         print(f"Lógica on_ready de GoViralCog iniciada para el canal {CANAL_OBJETIVO}...")
 
-        # Usaremos Redis para saber si el mensaje ya fue enviado en las últimas 24 horas
-        if not self.redis_state.is_welcome_message_active(CANAL_OBJETIVO):
-            print(f"No hay un mensaje de bienvenida activo en Redis para el canal {CANAL_OBJETIVO}. Procediendo a enviar.")
+        # --- MODIFICACIÓN TEMPORAL AQUÍ ---
+        # Comenta la siguiente línea para forzar el envío del mensaje de bienvenida
+        # if not self.redis_state.is_welcome_message_active(CANAL_OBJETIVO):
+        
+        # Deja la siguiente línea sin comentar para que el código dentro del if siempre se ejecute
+        # Esto es solo para probar. Luego, ¡recuerda descomentar la línea de arriba!
+        if True: # <--- CAMBIA ESTO TEMPORALMENTE A 'if True:'
+            print(f"DEBUG: Forzando el envío del mensaje de bienvenida (Redis check bypass).") # Mensaje de depuración
             channel_go_viral = self.bot.get_channel(CANAL_OBJETIVO)
             if channel_go_viral:
                 welcome_message = """
@@ -97,8 +102,10 @@ Revisa el historial del canal o consulta en el canal soporte.
                     print(f"ERROR al enviar el mensaje de bienvenida al canal '{channel_go_viral.name}': {e}")
             else:
                 print(f"ERROR: No se pudo encontrar el canal go-viral con la ID: {CANAL_OBJETIVO}")
-        else:
+        # --- FIN DE LA MODIFICACIÓN TEMPORAL ---
+        else: # Este else se ejecutará si la línea comentada arriba no está comentada y Redis dice que ya está activo
             print(f"Mensaje de bienvenida ya activo para el canal {CANAL_OBJETIVO} según Redis. No se envía de nuevo.")
+
 
     # Ahora, tus eventos on_message y on_reaction_add se convierten en métodos de la Cog
     @commands.Cog.listener()
@@ -107,16 +114,12 @@ Revisa el historial del canal o consulta en el canal soporte.
             await self.bot.process_commands(message)
             return
 
-        # ... (Mantén toda tu lógica on_message aquí) ...
-        # Asegúrate de usar self.redis_state donde necesites el cliente Redis
-        # Y pasa self.bot a registrar_log si es necesario
-        redis_state = self.redis_state # Usa la instancia de la Cog
+        redis_state = self.redis_state
 
         # Validar formato de la URL
         url_pattern = r'^https://x\.com/\w+/status/\d+$'
         content = message.content.strip()
         corrected_url = None
-        # Intentar corregir URL si tiene parámetros adicionales
         if not re.match(url_pattern, content):
             try:
                 base_url = re.match(r'(https://x\.com/\w+/status/\d+)', content).group(1)
@@ -164,7 +167,7 @@ Revisa el historial del canal o consulta en el canal soporte.
         await registrar_log("Nueva publicación válida registrada", message.author, message.channel, self.bot)
 
         # Esperar reacción 👍 del autor
-        def check_reaction(reaction, user_check): # Renombrado user para evitar conflicto con self.user
+        def check_reaction(reaction, user_check):
             return user_check == message.author and str(reaction.emoji) == '👍' and reaction.message.id == message.id
 
         try:
