@@ -1,5 +1,5 @@
 # config.py
-import os # ¡NUEVO! Importa el módulo os para leer variables de entorno
+import os # Importa el módulo os para leer variables de entorno
 
 # ID del token de tu bot de Discord
 # ¡IMPORTANTE! Ahora lee el token de la variable de entorno de Railway
@@ -18,6 +18,9 @@ CANAL_OBJETIVO = 1198547228876527636 # Ejemplo de ID, usa el ID real de tu canal
 
 # ID del canal donde se registrarán las faltas
 CANAL_FALTAS = 1198906950383188048 # Ejemplo de ID, usa el ID real de tu canal de faltas
+
+# ID del canal donde se registrarán los logs del bot (¡NUEVO!)
+CANAL_LOGS = 1234567890123456789 # **REEMPLAZA ESTE CON EL ID REAL DE TU CANAL DE LOGS**
 
 # Canal de presentacion para nuevos miembros (ID proporcionado por ti)
 CANAL_PRESENTATE = 1346959710519038006 
