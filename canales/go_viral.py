@@ -8,16 +8,18 @@ from canales.faltas import registrar_falta, enviar_advertencia
 from config import CANAL_OBJETIVO, CANAL_LOGS
 
 def setup(bot):
-    @bot.event
-    async def on_ready():
-        # Enviar mensaje de prueba al canal go-viral al iniciar
-        channel = bot.get_channel(CANAL_OBJETIVO)
-        if channel:
-            await channel.send("Este mensaje es una prueba de que puedo publicar en este canal")
-            await registrar_log("Mensaje de prueba enviado", bot.user, channel)
+    pass
 
-    @bot.event
-    async def on_message(message):
+@bot.event
+async def on_ready():
+    # Enviar mensaje de prueba al canal go-viral al iniciar
+    channel = bot.get_channel(CANAL_OBJETIVO)
+    if channel:
+        await channel.send("Este mensaje es una prueba de que puedo publicar en este canal")
+        await registrar_log("Mensaje de prueba enviado", bot.user, channel)
+
+@bot.event
+async def on_message(message):
         if message.channel.id != CANAL_OBJETIVO or message.author.bot:
             await bot.process_commands(message)
             return
@@ -89,8 +91,8 @@ def setup(bot):
 
         await bot.process_commands(message)
 
-    @bot.event
-    async def on_reaction_add(reaction, user):
+@bot.event
+async def on_reaction_add(reaction, user):
         if reaction.message.channel.id != CANAL_OBJETIVO or user.bot:
             return
 
