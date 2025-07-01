@@ -4,6 +4,7 @@ from discord.ext import commands
 import os
 from config import BOT_TOKEN, REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_PASSWORD
 from state_management import RedisState 
+from canales.logs import registrar_log # Importamos registrar_log aquí también
 
 # Configuración de intents para el bot
 intents = discord.Intents.default()
@@ -15,7 +16,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f'Bot conectado como {bot.user.name} (ID: {bot.user.id})')
+    # Mensaje de conexión deseado
+    print(f'🟢Bot conectado como {bot.user.name} (ID: {bot.user.id}) y listo para funcionar..')
     print('------')
 
     redis_state = RedisState() 
@@ -32,14 +34,27 @@ async def on_ready():
         print("ERROR: GoViralCog no encontrado. El mensaje de bienvenida no se gestionará.")
 
     await bot.change_presence(activity=discord.Game(name="Monitoreando el Go-Viral"))
+    
+    # Registrar en el canal de logs que el bot está en línea
+    await registrar_log("Bot se ha conectado y está en línea.", bot.user, None, bot)
+
+
+@bot.event
+async def on_disconnect():
+    # Este evento se dispara cuando el bot se desconecta de Discord
+    print(f'🔴Bot desconectado. Última conexión: {discord.utils.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")}')
+    # Intentar registrar en el canal de logs, aunque la conexión podría estar perdida
+    # Es posible que este log no siempre llegue si la desconexión es abrupta
+    try:
+        await registrar_log("Bot se ha desconectado.", bot.user, None, bot)
+    except Exception as e:
+        print(f"Error al intentar registrar desconexión en logs: {e}")
 
 
 # Cargar cogs (extensiones)
 async def load_cogs():
     # Solo cargamos los módulos que son cogs reales con una función setup()
     await bot.load_extension("canales.go_viral")
-    # await bot.load_extension("canales.logs")   <-- Esta línea está comentada/eliminada
-    # await bot.load_extension("canales.faltas") <-- Esta línea está comentada/eliminada
     await bot.load_extension("canales.presentate") 
 
     print("All cogs loaded.")
