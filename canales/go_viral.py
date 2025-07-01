@@ -60,7 +60,7 @@ async def enviar_reglas_canal(bot):
         logger.debug(f"Mensaje enviado con ID: {mensaje.id}")
         await mensaje.pin()
         logger.debug(f"Mensaje {mensaje.id} anclado.")
- mensaje_reglas_actual = mensaje
+        mensaje_reglas_actual = mensaje
 
         try:
             RedisState().set_welcome_message_id(mensaje.id, CANAL_OBJETIVO)
