@@ -102,7 +102,8 @@ Revisa el historial del canal o consulta en el canal soporte.
 ---
 *Bot actualizado • Sistema automatizado • Apoyo 24/7*
 """
-            image_url = "https://i.imgur.com/gK1S1e5.png" # Asegúrate de que esta URL sea real y válida
+            # ¡NUEVO ENLACE DE GOOGLE DRIVE AQUÍ!
+            image_url = "https://drive.google.com/uc?export=download&id=1LGwse5dI_Q_PpQhhfpLBudteATKoy4Hj" 
             embed = discord.Embed(title="🧵 REGLAS DEL CANAL GO-VIRAL 🧵", description=welcome_message, color=discord.Color.gold())
             embed.set_image(url=image_url)
             try:
