@@ -9,6 +9,104 @@ from config import CANAL_OBJETIVO, CANAL_LOGS
 
 def setup(bot):
     @bot.event
+    async def on_ready():
+        # Enviar mensaje de bienvenida al canal go-viral al iniciar
+        channel = bot.get_channel(CANAL_OBJETIVO)
+        if channel:
+            welcome_message = """
+# 🧵 **REGLAS DEL CANAL GO-VIRAL** 🧵
+
+## 🎉 **¡BIENVENIDOS A GO-VIRAL!** 🎉
+¡Nos alegra tenerte aquí! Este es tu espacio para hacer crecer tu contenido de **𝕏 (Twitter)** junto a nuestra increíble comunidad.
+
+## 🎯 **OBJETIVO**
+Compartir contenido de calidad de **𝕏 (Twitter)** siguiendo un sistema organizado de apoyo mutuo.
+
+---
+
+## 📋 **REGLAS PRINCIPALES**
+
+### 🔗 **1. FORMATO DE PUBLICACIÓN**
+
+✅ **FORMATO CORRECTO:**
+https://x.com/miguelrperaltaf/status/1931928250735026238
+
+❌ **FORMATO INCORRECTO:**
+https://x.com/miguelrperaltaf/status/1931928250735026238?s=46&t=m7qBPHFiZFqks3K1jSaVJg
+
+
+**📝 NOTA:** El bot corregirá automáticamente los enlaces mal formateados, pero es mejor aprender el formato correcto.
+
+### 👍 **2. VALIDACIÓN DE TU POST**
+- Reacciona con **👍** a tu propia publicación
+- **⏱️ Tiempo límite:** 120 segundos
+- Sin reacción = eliminación automática
+
+### 🔥 **3. APOYO A LA COMUNIDAD**
+Antes de publicar nuevamente:
+- Reacciona con **🔥** a TODAS las publicaciones posteriores a la tuya
+- **REQUISITO:** Apoya primero en **𝕏** con RT + LIKE + COMENTARIO
+- Luego reacciona con 🔥 en Discord
+
+### ⏳ **4. INTERVALO ENTRE PUBLICACIONES**
+- Espera mínimo **2 publicaciones válidas** de otros usuarios
+- No hay límite de tiempo, solo orden de turnos
+
+---
+
+## ⚠️ **SISTEMA DE FALTAS**
+
+### 🚨 **Infracciones que generan falta:**
+- Formato incorrecto de URL
+- No reaccionar con 👍 a tiempo
+- Publicar sin haber apoyado posts anteriores
+- Usar 🔥 en tu propia publicación
+- No respetar el intervalo de publicaciones
+
+### 📊 **Consecuencias:**
+- Registro en canal de faltas
+- Notificación por DM
+- Posibles sanciones según historial
+
+---
+
+## 🤖 **AUTOMATIZACIÓN DEL BOT**
+
+- ✅ Corrección automática de URLs mal formateadas
+- 🗑️ Eliminación de publicaciones inválidas
+- 📬 Notificaciones temporales (15 segundos)
+- 📝 Registro completo en logs
+- 💬 Mensajes privados informativos
+
+---
+
+## 🏆 **CONSEJOS PARA EL ÉXITO**
+
+1. **Lee las reglas** antes de participar
+2. **Apoya genuinamente** en 𝕏 antes de reaccionar
+3. **Mantén el formato** exacto de URLs
+4. **Sé constante** con las reacciones
+5. **Respeta los turnos** de otros usuarios
+
+---
+
+## 📞 **¿DUDAS?**
+Revisa el historial del canal o consulta en el canal soporte.
+
+**¡Juntos hacemos crecer nuestra comunidad! 🚀**
+
+---
+
+*Bot actualizado • Sistema automatizado • Apoyo 24/7*
+"""
+            # Reemplaza con el enlace real de la imagen
+            image_url = "https://i.imgur.com/EXAMPLE.jpg"
+            embed = discord.Embed(title="🧵 REGLAS DEL CANAL GO-VIRAL 🧵", description=welcome_message, color=discord.Color.gold())
+            embed.set_image(url=image_url)
+            await channel.send(embed=embed)
+            await registrar_log("Mensaje de bienvenida enviado", bot.user, channel)
+
+    @bot.event
     async def on_message(message):
         if message.channel.id != CANAL_OBJETIVO or message.author.bot:
             await bot.process_commands(message)
@@ -32,7 +130,7 @@ def setup(bot):
                 await registrar_log("Mensaje eliminado: URL inválida", message.author, message.channel)
                 return
 
-        # Verificar intervalo de publicaciones (mínimo 2 publicaciones válidas de otros)
+        # Verificar intervalo de publicaciones
         redis_state = RedisState()
         last_post = redis_state.get_last_post(message.author.id)
         recent_posts = redis_state.get_recent_posts(CANAL_OBJETIVO)
