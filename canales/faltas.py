@@ -13,5 +13,4 @@ async def enviar_advertencia(user, motivo, channel):
 async def actualizar_estado_usuario(user):
     redis_state = RedisState()
     faltas = redis_state.get_faltas(user.id)
-    # Aquí puedes agregar lógica para sanciones (ej. expulsión tras X faltas)
     return faltas
