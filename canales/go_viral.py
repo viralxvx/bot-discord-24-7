@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import re
 import asyncio
-import json 
+import json # Aunque se usa en state_management, es buena práctica tenerlo si se planea usar JSON aquí.
 from state_management import RedisState
 from canales.logs import registrar_log 
 from canales.faltas import registrar_falta, enviar_advertencia 
@@ -24,12 +24,23 @@ class GoViralCog(commands.Cog):
     async def go_viral_on_ready(self):
         print(f"Lógica on_ready de GoViralCog iniciada para el canal {CANAL_OBJETIVO}...")
 
-        channel_go_viral = self.bot.get_channel(CANAL_OBJETIVO)
-        if not channel_go_viral:
-            print(f"ERROR: No se pudo encontrar el canal go-viral con la ID: {CANAL_OBJETIVO}")
+        channel_go_viral = None
+        try:
+            channel_go_viral = await self.bot.fetch_channel(CANAL_OBJETIVO)
+        except discord.NotFound:
+            print(f"ERROR: El canal go-viral con la ID: {CANAL_OBJETIVO} no fue encontrado en Discord. Asegúrate de que la ID es correcta y el bot está en el servidor.")
+            return
+        except discord.Forbidden:
+            print(f"ERROR: No tengo permisos para acceder al canal go-viral con la ID: {CANAL_OBJETIVO}.")
+            return
+        except Exception as e:
+            print(f"ERROR inesperado al buscar el canal go-viral: {e}")
             return
 
-        # --- Borrar mensaje de bienvenida antiguo si existe (Punto 2 de la solicitud anterior) ---
+        if not channel_go_viral: 
+            print(f"ERROR: No se pudo obtener el objeto del canal go-viral con la ID: {CANAL_OBJETIVO} después de intentar buscarlo.")
+            return
+
         existing_welcome_message_id = self.redis_state.redis_client.get(f"welcome_message_active:{CANAL_OBJETIVO}")
         if existing_welcome_message_id:
             try:
@@ -39,7 +50,7 @@ class GoViralCog(commands.Cog):
                 await registrar_log("Mensaje de bienvenida antiguo borrado para actualizar", self.bot.user, channel_go_viral, self.bot)
             except discord.NotFound:
                 print(f"DEBUG: Mensaje de bienvenida antiguo (ID: {existing_welcome_message_id}) no encontrado. Posiblemente ya borrado.")
-                self.redis_state.redis_client.delete(f"welcome_message_active:{CANAL_OBJETIVO}") # Limpiar Redis si no existe
+                self.redis_state.redis_client.delete(f"welcome_message_active:{CANAL_OBJETIVO}")
             except discord.Forbidden:
                 print(f"ERROR: No tengo permisos para borrar el mensaje de bienvenida antiguo en el canal '{channel_go_viral.name}'.")
             except Exception as e:
@@ -47,7 +58,6 @@ class GoViralCog(commands.Cog):
         else:
             print("DEBUG: No se encontró mensaje de bienvenida antiguo en Redis.")
 
-        # --- Siempre enviar el nuevo mensaje de bienvenida después de la limpieza ---
         print(f"DEBUG: Enviando nuevo mensaje de bienvenida para el canal {CANAL_OBJETIVO}.")
         embed = discord.Embed(title=WELCOME_MESSAGE_TITLE, description=WELCOME_MESSAGE_TEXT, color=discord.Color.gold())
         embed.set_image(url=WELCOME_MESSAGE_IMAGE_URL)
@@ -72,22 +82,27 @@ class GoViralCog(commands.Cog):
         user_id_str = str(message.author.id)
         original_author = message.author 
         
-        # Verificar si es la primera publicación del usuario
         is_first_post_ever = not redis_state.redis_client.exists(f"user_first_post:{user_id_str}")
 
         # ------------------------------------------------------------------------------------------------
-        # Validación de formato de URL
-        url_pattern = r'^https://x\.com/\w+/status/\d+$'
+        # Validación de formato de URL - ¡AJUSTE CRÍTICO AQUÍ!
+        url_pattern_strict = r'^https://x\.com/\w+/status/\d+$' # Para la validación estricta
+        url_pattern_base = r'(https://x\.com/\w+/status/\d+)' # Para extraer la URL base
         content = message.content.strip()
         corrected_url = None
-        if not re.match(url_pattern, content):
+
+        if not re.match(url_pattern_strict, content): # Si no cumple el formato estricto
             try:
-                base_url = re.match(r'(https://x\.com/\w+/status/\d+)', content).group(1)
-                corrected_url = base_url
-            except AttributeError:
+                base_url_match = re.match(url_pattern_base, content)
+                if base_url_match: # Si se encuentra el patrón base
+                    corrected_url = base_url_match.group(1)
+                else: # Si no se encuentra ni el patrón estricto ni el base
+                    raise ValueError("URL no coincide con el patrón base.") # Forzar el error para ir al except
+            except (AttributeError, ValueError): # Capturamos si .group(1) falla en None o si forzamos ValueError
                 await message.delete()
                 await enviar_notificacion_temporal(message.channel, original_author, URL_INVALIDA)
-                await registrar_falta(original_author, "URL inválida", message.channel)
+                # Pasa self.bot para registrar_falta y registrar_log
+                await registrar_falta(original_author, "URL inválida", message.channel, self.bot) 
                 await registrar_log("Mensaje eliminado: URL inválida", original_author, message.channel, self.bot)
                 return
         
@@ -100,7 +115,7 @@ class GoViralCog(commands.Cog):
             if last_post_time and recent_posts_count_others < 2:
                 await message.delete()
                 await enviar_notificacion_temporal(message.channel, original_author, INTERVALO_NO_RESPETADO)
-                await registrar_falta(original_author, "Publicación antes de intervalo permitido", message.channel)
+                await registrar_falta(original_author, "Publicación antes de intervalo permitido", message.channel, self.bot) 
                 await registrar_log("Mensaje eliminado: Intervalo no respetado", original_author, message.channel, self.bot)
                 return
 
@@ -126,8 +141,8 @@ class GoViralCog(commands.Cog):
                 channel_msg = REACCIONES_PENDIENTES_CHANNEL.format(missing_info_str=missing_info_str)
                 dm_msg = REACCIONES_PENDIENTES_DM.format(channel_name=message.channel.name, missing_info_str=missing_info_str)
 
-                await enviar_notificacion_temporal(message.channel, original_author, channel_msg, dm_msg) # Pasa el dm_msg explícitamente
-                await registrar_falta(original_author, "Falta de reacciones 🔥 pendientes", message.channel)
+                await enviar_notificacion_temporal(message.channel, original_author, channel_msg, dm_msg)
+                await registrar_falta(original_author, "Falta de reacciones 🔥 pendientes", message.channel, self.bot) 
                 await registrar_log(f"Mensaje eliminado: Sin reacciones 🔥 pendientes. Faltantes: {missing_info_str}", original_author, message.channel, self.bot)
                 return
         
@@ -178,7 +193,6 @@ class GoViralCog(commands.Cog):
         # ------------------------------------------------------------------------------------------------
         # Mensaje de bienvenida para usuario nuevo
         if is_first_post_ever:
-            # Marcamos al usuario como 'no nuevo' para futuras interacciones
             self.redis_state.redis_client.set(f"user_first_post:{user_id_str}", "true") 
             
             personalized_welcome_content = FIRST_POST_WELCOME_MESSAGE_TEXT.format(user_mention=original_author.mention)
@@ -187,7 +201,6 @@ class GoViralCog(commands.Cog):
                 print(f"DEBUG: Mensaje de bienvenida personalizado enviado a {original_author.name} (ID: {first_post_welcome_message.id})")
                 await registrar_log(f"Mensaje de bienvenida personalizado enviado a usuario nuevo: {original_author.name}", self.bot.user, message.channel, self.bot)
 
-                # Programar su eliminación después de 1 hora (3600 segundos)
                 self.bot.loop.create_task(self.delete_message_after_delay(first_post_welcome_message, 3600)) 
             except discord.Forbidden:
                 print(f"ERROR: No tengo permisos para enviar el mensaje de bienvenida personalizado en el canal '{message.channel.name}'.")
@@ -214,31 +227,28 @@ class GoViralCog(commands.Cog):
             await final_message.delete()
             await enviar_notificacion_temporal(final_message.channel, original_author, 
                 f"{original_author.mention} {NO_REACCION_THUMBS_UP}")
-            await registrar_falta(original_author, "Sin reacción 👍 en 120 segundos", final_message.channel)
+            await registrar_falta(original_author, "Sin reacción 👍 en 120 segundos", final_message.channel, self.bot) 
             await registrar_log("Mensaje eliminado: Sin reacción 👍", original_author, final_message.channel, self.bot)
             
         await self.bot.process_commands(message)
 
-    # Método para borrar mensajes después de un retraso
     async def delete_message_after_delay(self, message: discord.Message, delay_seconds: int):
         await asyncio.sleep(delay_seconds)
         try:
             await message.delete()
-            print(f"DEBUG: Mensaje temporal (ID: {message.id}) borrado después de {delay_seconds} segundos.")
+            print(f"Mensaje (ID: {message.id}) borrado después de {delay_seconds} segundos.")
         except discord.NotFound:
-            print(f"DEBUG: Mensaje temporal (ID: {message.id}) ya borrado o no encontrado.")
+            print(f"DEBUG: Mensaje (ID: {message.id}) ya borrado o no encontrado.")
         except discord.Forbidden:
-            print(f"ERROR: No tengo permisos para borrar el mensaje temporal (ID: {message.id}).")
+            print(f"ERROR: No tengo permisos para borrar el mensaje (ID: {message.id}).")
         except Exception as e:
-            print(f"ERROR inesperado al borrar mensaje temporal (ID: {message.id}): {e}")
+            print(f"ERROR inesperado al borrar mensaje (ID: {message.id}): {e}")
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
         if reaction.message.channel.id != CANAL_OBJETIVO or user.bot:
             return
 
-        # ------------------------------------------------------------------------------------------------
-        # Restricción de reacciones: solo se permiten 👍 y 🔥
         if str(reaction.emoji) not in ['👍', '🔥']:
             try:
                 await reaction.remove(user)
@@ -251,11 +261,9 @@ class GoViralCog(commands.Cog):
             await registrar_log(f"Reacción no permitida eliminada: '{str(reaction.emoji)}' por {user.name} en mensaje {reaction.message.id}", user, reaction.message.channel, self.bot)
             return 
 
-        # ------------------------------------------------------------------------------------------------
-        # Obtener el ID del autor original del mensaje desde Redis para validaciones de reacciones
         original_author_id_of_message = None
         recent_posts_raw = self.redis_state.redis_client.lrange(f"recent_posts:{CANAL_OBJETIVO}", 0, -1)
-        author_name_for_log = "Desconocido" # Default para el log
+        author_name_for_log = "Desconocido"
 
         for p_json in recent_posts_raw:
             post_data = json.loads(p_json)
@@ -268,8 +276,6 @@ class GoViralCog(commands.Cog):
             print(f"WARNING: No se encontró información del post {reaction.message.id} en Redis para la reacción de {user.name}.")
             pass 
 
-        # ------------------------------------------------------------------------------------------------
-        # Prohibir 🔥 en propia publicación
         if str(reaction.emoji) == '🔥':
             if original_author_id_of_message is not None and user.id == original_author_id_of_message:
                 try:
@@ -279,11 +285,10 @@ class GoViralCog(commands.Cog):
                     print(f"Error: No se pudo eliminar la reacción 🔥 de {user.name} (permisos).")
                 await enviar_notificacion_temporal(reaction.message.channel, user,
                     f"{user.mention} {REACCION_FIRE_PROPIA_PUBLICACION}")
-                await registrar_falta(user, "Reacción 🔥 en propia publicación", reaction.message.channel)
+                await registrar_falta(user, "Reacción 🔥 en propia publicación", reaction.message.channel, self.bot) 
                 await registrar_log("Reacción eliminada: 🔥 en propia publicación", user, reaction.message.channel, self.bot)
                 return 
 
-            # Registrar reacción 🔥 válida de otro usuario
             elif original_author_id_of_message is not None and user.id != original_author_id_of_message:
                 self.redis_state.save_reaction(user.id, reaction.message.id)
                 print(f"Reacción 🔥 de {user.name} registrada para el mensaje {reaction.message.id}")
@@ -294,8 +299,6 @@ class GoViralCog(commands.Cog):
 async def setup(bot):
     await bot.add_cog(GoViralCog(bot))
 
-# La función enviar_notificacion_temporal se mantiene, adaptada para recibir dm_content
-# y se asegura de registrar en logs y enviar al DM.
 async def enviar_notificacion_temporal(channel, user, channel_content, dm_content=None):
     msg = await channel.send(channel_content)
     await asyncio.sleep(15)
@@ -308,9 +311,7 @@ async def enviar_notificacion_temporal(channel, user, channel_content, dm_conten
     except Exception as e:
         print(f"ERROR inesperado al borrar mensaje temporal (ID: {msg.id}): {e}")
 
-    # Enviar al DM del usuario como constancia y registrar en logs
-    if dm_content is None: # Si no se provee un contenido específico para DM, usa el del canal
-        # Eliminamos la mención del usuario en el DM si es la misma que en el canal para evitar duplicados en el DM
+    if dm_content is None: 
         dm_content = f"⚠️ **Notificación de {channel.name}**: {channel_content.replace(user.mention, '').strip()}\n\n*Este es un mensaje automático del bot.*"
 
     try:
