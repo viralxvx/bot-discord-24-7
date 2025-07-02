@@ -1,37 +1,55 @@
-# canales/logs.py
 import discord
-from config import CANAL_LOGS_ID # Asumiendo que CANAL_LOGS está definido en config.py
+# --- ¡CORRECCIÓN CLAVE AQUÍ! ---
+# Asegúrate de importar CANAL_LOGS_ID, NO CANAL_LOGS
+from config import CANAL_LOGS_ID 
 
 async def registrar_log(description, user, channel, bot):
-    """
-    Registra un evento o acción en el canal de logs del bot.
-
-    Args:
-        description (str): Descripción del evento.
-        user (discord.User or discord.Member): Usuario relacionado con el evento.
-        channel (discord.TextChannel): Canal donde ocurrió el evento (puede ser None).
-        bot (discord.Client): Instancia del bot para obtener el canal de logs.
-    """
-    log_channel = bot.get_channel(CANAL_LOGS)
-    if not log_channel:
-        print(f"ADVERTENCIA: Canal de logs con ID {CANAL_LOGS} no encontrado.")
+    # Asegúrate de que el bot tenga el atributo 'guilds' inicializado
+    if not bot.guilds:
+        print("Advertencia: El bot aún no ha cargado los guilds. No se puede registrar el log.")
         return
 
-    # Formato del mensaje de log
-    log_message = f"**[{discord.utils.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}]** "
-    if user:
-        log_message += f"**Usuario:** {user.name} (ID: {user.id}) "
-    if channel:
-        log_message += f"**Canal:** #{channel.name} (ID: {channel.id}) "
+    # Buscar el servidor usando la ID del gremio desde config (si es necesario)
+    # Aquí estamos asumiendo que el bot está en un solo servidor principal o que el guild_id
+    # del canal es suficiente para encontrar el guild.
+    target_guild = None
+    if channel and channel.guild:
+        target_guild = channel.guild
+    elif bot.guilds:
+        # Si no hay canal o guild en el canal, intentar obtener el primer guild del bot
+        target_guild = bot.guilds[0] 
+        print(f"DEBUG: Usando el primer guild del bot para el log: {target_guild.name}")
     
-    log_message += f"**Acción:** {description}"
+    if not target_guild:
+        print("ERROR: No se pudo determinar el guild para registrar el log.")
+        return
+
+    # Obtener el canal de logs usando la ID de config
+    # --- Asegúrate de usar CANAL_LOGS_ID aquí también ---
+    log_channel = discord.utils.get(target_guild.channels, id=CANAL_LOGS_ID)
+    
+    if not log_channel:
+        print(f"ERROR: No se pudo encontrar el canal de logs con ID {CANAL_LOGS_ID} en el servidor {target_guild.name}.")
+        return
+
+    embed = discord.Embed(
+        title="Registro del Bot",
+        description=description,
+        color=discord.Color.blue()
+    )
+
+    if user:
+        embed.add_field(name="Usuario", value=f"{user.display_name} (ID: {user.id})", inline=False)
+    
+    if channel:
+        embed.add_field(name="Canal", value=f"#{channel.name} (ID: {channel.id})", inline=False)
+    
+    embed.set_footer(text=f"Timestamp: {discord.utils.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
 
     try:
-        await log_channel.send(log_message)
-        # print(f"Log registrado en canal {log_channel.name}: {description}") # Solo para depuración
+        await log_channel.send(embed=embed)
+        print(f"Log registrado en Discord: '{description}'")
     except discord.Forbidden:
-        print(f"ERROR: No tengo permisos para enviar logs en el canal '{log_channel.name}'.")
+        print(f"ERROR: No tengo permisos para enviar mensajes en el canal de logs (ID: {CANAL_LOGS_ID}).")
     except Exception as e:
-        print(f"ERROR inesperado al enviar log: {e}")
-
-# Este módulo no es un cog, por lo tanto, no necesita una función setup().
+        print(f"ERROR inesperado al enviar log a Discord: {e}")
