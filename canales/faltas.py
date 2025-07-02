@@ -11,26 +11,39 @@ class Faltas(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("⚙️ Módulo de faltas activo.")
+        print("⚙️ Iniciando módulo de faltas...")
+        canal = self.bot.get_channel(CANAL_FALTAS_ID)
+        if not canal:
+            print(f"❌ No se encontró el canal con ID {CANAL_FALTAS_ID}")
+            return
+
+        # Limpiar canal completo
+        try:
+            print("🧹 Borrando todos los mensajes en #📤faltas...")
+            async for mensaje in canal.history(limit=None):
+                await mensaje.delete()
+            print("✅ Canal #📤faltas limpiado completamente.")
+        except Exception as e:
+            print(f"❌ Error al limpiar el canal de faltas: {e}")
 
     async def registrar_falta(self, user: discord.Member, motivo: str):
         user_id = str(user.id)
         key = f"faltas:{user_id}"
 
-        # Incrementar contador en Redis
+        # Incrementar en Redis
         faltas_actuales = await self.redis.incr(key)
         await self.redis.expire(key, 60 * 60 * 24 * 365 * 10)  # 10 años
 
-        # Enviar DM elegante
+        # Mensaje directo
         try:
             embed_dm = discord.Embed(
                 title="⚠️ Has recibido una falta en Viral 𝕏 | V𝕏",
                 description=(
                     f"**Motivo:** {motivo}\n"
                     f"**Cantidad actual de faltas:** {faltas_actuales}\n\n"
-                    "Por favor, repasa las normas del canal 🧵go-viral en **#✅normas-generales** para evitar futuras sanciones.\n\n"
-                    "Recuerda: este sistema está automatizado, y busca educar, no castigar.\n\n"
-                    "Estamos aquí para ayudarte a crecer. 🚀"
+                    "Por favor, revisa las reglas del canal 🧵go-viral en **#✅normas-generales** "
+                    "para evitar futuras sanciones. Esto no es un castigo, sino una oportunidad para aprender.\n\n"
+                    "💡 Estamos aquí para ayudarte a crecer. 🚀"
                 ),
                 color=discord.Color.red(),
                 timestamp=datetime.datetime.utcnow()
@@ -42,7 +55,7 @@ class Faltas(commands.Cog):
         except Exception as e:
             print(f"❌ No se pudo enviar DM a {user.display_name}: {e}")
 
-        # Publicar en canal #📤faltas
+        # Publicación pública
         canal_faltas = self.bot.get_channel(CANAL_FALTAS_ID)
         if canal_faltas:
             embed_publico = discord.Embed(
@@ -60,7 +73,7 @@ class Faltas(commands.Cog):
                 await canal_faltas.send(embed=embed_publico)
                 print(f"✅ Falta publicada en canal de faltas")
             except Exception as e:
-                print(f"❌ No se pudo publicar en #📤faltas: {e}")
+                print(f"❌ Error al publicar la falta: {e}")
 
     async def contar_faltas(self, user: discord.Member) -> int:
         key = f"faltas:{user.id}"
@@ -74,7 +87,7 @@ class Faltas(commands.Cog):
                 await message.delete()
                 print(f"🗑️ Mensaje de {message.author} eliminado en #📤faltas")
             except Exception as e:
-                print(f"❌ No se pudo borrar mensaje en faltas: {e}")
+                print(f"❌ No se pudo borrar mensaje no autorizado en faltas: {e}")
 
 async def setup(bot):
     await bot.add_cog(Faltas(bot))
