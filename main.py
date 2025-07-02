@@ -4,10 +4,10 @@ import os
 import asyncio
 from state_management import RedisState
 from canales.go_viral import GoViralCog
-from canales.logs import registrar_log # Asegúrate de que esta importación esté aquí
+from canales.logs import registrar_log
 
 # --- Configuración del Bot ---
-TOKEN = os.getenv('DISCORD_BOT_TOKEN')
+TOKEN = os.getenv('DISCORD_TOKEN') # ¡CORRECCIÓN CLAVE AQUÍ! Ahora es DISCORD_TOKEN
 REDIS_URL = os.getenv('REDIS_URL')
 GUILD_ID = os.getenv('GUILD_ID') # Asegúrate de que esta variable de entorno esté configurada
 
@@ -24,7 +24,7 @@ async def on_ready():
     print(f'🟢Bot conectado como {bot.user} (ID: {bot.user.id})')
     print('------')
 
-    # ¡AÑADE ESTA LÍNEA AQUÍ PARA REGISTRAR LA CONEXIÓN EN EL CANAL DE LOGS!
+    # Registra la conexión en el canal de logs
     await registrar_log(f"El bot se ha conectado y está en línea.", bot.user, None, bot) 
 
     # 1. Conectar a Redis y adjuntarlo al bot
@@ -78,8 +78,8 @@ async def main():
 
 if __name__ == "__main__":
     # Asegurarse de que el TOKEN y REDIS_URL estén configurados
-    if TOKEN is None:
-        print("Error: La variable de entorno DISCORD_BOT_TOKEN no está configurada.")
+    if TOKEN is None: # ¡CORRECCIÓN CLAVE AQUÍ!
+        print("Error: La variable de entorno DISCORD_TOKEN no está configurada.")
         exit(1)
     if REDIS_URL is None:
         print("Error: La variable de entorno REDIS_URL no está configurada.")
