@@ -62,3 +62,49 @@ Para que el apoyo sea efectivo y justo:
 * 3er aviso: aislamiento 1 semana
 * Luego reinicia el ciclo
 """
+
+DESCRIPCION_BLOQUE_2 = """
+---
+
+### 🤖 AUTOMATIZACIÓN DEL BOT
+
+* ✅ Corrige URLs mal formateadas
+* 🗑️ Elimina publicaciones inválidas
+* 📝 Registra faltas
+* 💬 Envía mensajes privados informativos
+* 📬 Mensajes temporales de 15 segundos
+* 🔥 Verifica apoyo a los 9 anteriores
+* 🧩 Reposición de publicaciones eliminadas
+
+---
+
+### 🕒 SISTEMA DE INACTIVIDAD / OTRAS VIOLACIONES
+
+* Si pasas 3 días sin publicar: baneo automático de 7 días
+* Si reincides: expulsión permanente
+* Puedes pedir prórroga de hasta 7 días en soporte
+* Violaciones graves: expulsión directa
+* Las faltas en 🧵go-viral no provocan expulsión directa
+
+---
+
+### 🧠 CONSEJOS PARA EL ÉXITO
+
+1. Lee estas reglas con atención y entiéndelas
+2. Respeta los turnos y formatos
+3. Apoya genuinamente a 9 compañeros
+4. Sé constante y activo
+5. Usa el canal de soporte; el bot te guiará
+
+---
+
+### 📞 SOPORTE
+
+¿Dudas? Escribe en #👨🔧soporte.
+
+---
+
+*¡Que se prepare X! ¡Esto será un ejército de Gladiadores que no fallan! 🧡🚀*
+
+*Bot actualizado • Sistema automatizado • Comunidad en crecimiento 🚀*
+"""
