@@ -4,12 +4,13 @@ import os
 import asyncio
 from state_management import RedisState
 from canales.go_viral import GoViralCog
-from canales.logs import registrar_log # Asegúrate de que esta importación esté aquí
+from canales.logs import registrar_log
 
 # --- Configuración del Bot ---
 TOKEN = os.getenv('DISCORD_TOKEN') # ¡CONFIRMADO: DISCORD_TOKEN!
 REDIS_URL = os.getenv('REDIS_URL')
-GUILD_ID = os.getenv('GUILD_ID') # Asegúrate de que esta variable de entorno esté configurada en Railway
+# No intentamos convertir GUILD_ID a int aquí, lo hacemos más abajo si existe
+GUILD_ID_STR = os.getenv('GUILD_ID') 
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -46,13 +47,11 @@ async def on_ready():
     except Exception as e:
         print(f"ERROR FATAL: No se pudo conectar a Redis al inicio: {e}")
         await registrar_log(f"ERROR FATAL: Fallo al conectar a Redis: {e}. El bot se desconectará.", bot.user, None, bot)
-        # Si Redis es crítico para tu bot, es mejor cerrar el bot aquí
         await bot.close() 
-        return # Salir de on_ready para evitar más errores
+        return 
 
     # 2. Cargar Cogs
     try:
-        # Cargar el cog de GoViral
         await bot.load_extension('canales.go_viral') # Usar load_extension con string
         print("Cog 'canales.go_viral' cargado.")
         await registrar_log("Cog 'canales.go_viral' cargado.", bot.user, None, bot)
@@ -67,23 +66,29 @@ async def on_ready():
         print('Todos los cogs cargados y listos.')
         await registrar_log("Todos los cogs cargados y listos.", bot.user, None, bot)
 
-
     except Exception as e:
         print(f"ERROR FATAL: Al cargar o inicializar cogs: {e}")
         await registrar_log(f"ERROR FATAL: Fallo al cargar cogs: {e}. El bot se desconectará.", bot.user, None, bot)
-        await bot.close() # Cerrar el bot si los cogs no cargan
+        await bot.close() 
         return
 
     # Lógica para sincronizar comandos de barra (slash commands)
     try:
-        if GUILD_ID:
-            guild = discord.Object(id=int(GUILD_ID))
-            bot.tree.copy_global_commands()
-            await bot.tree.sync(guild=guild)
-            print(f"Comandos de barra sincronizados para el gremio {GUILD_ID}.")
-            await registrar_log(f"Comandos de barra sincronizados para el gremio {GUILD_ID}.", bot.user, None, bot)
-        else:
-            print("ADVERTENCIA: GUILD_ID no configurado. Los comandos de barra globales no se sincronizarán con un gremio específico.")
+        if GUILD_ID_STR: # Solo si la variable de entorno GUILD_ID existe
+            try:
+                guild_id_int = int(GUILD_ID_STR) # Intentar convertir a int
+                guild = discord.Object(id=guild_id_int)
+                bot.tree.copy_global_commands()
+                await bot.tree.sync(guild=guild)
+                print(f"Comandos de barra sincronizados para el gremio {GUILD_ID_STR}.")
+                await registrar_log(f"Comandos de barra sincronizados para el gremio {GUILD_ID_STR}.", bot.user, None, bot)
+            except ValueError:
+                print(f"ADVERTENCIA: GUILD_ID '{GUILD_ID_STR}' no es un número válido. Sincronizando comandos de barra globalmente.")
+                await registrar_log(f"ADVERTENCIA: GUILD_ID no válido. Sincronizando comandos de barra globalmente.", bot.user, None, bot)
+                await bot.tree.sync() # Sincronizar globalmente si GUILD_ID no es válido
+                print("Comandos de barra globales sincronizados.")
+        else: # Si GUILD_ID_STR es None (no configurado)
+            print("ADVERTENCIA: GUILD_ID no configurado. Sincronizando comandos de barra globalmente.")
             await bot.tree.sync() # Sincronizar globalmente si no hay GUILD_ID
             print("Comandos de barra globales sincronizados.")
             await registrar_log("ADVERTENCIA: GUILD_ID no configurado. Comandos de barra globales sincronizados.", bot.user, None, bot)
@@ -102,25 +107,21 @@ async def on_message(message):
     if message.author == bot.user:
         return # Ignorar mensajes del propio bot
 
-    # Procesar comandos del bot
     await bot.process_commands(message)
 
 # --- Ejecutar el Bot ---
 async def main():
     async with bot:
-        # Usar os.getenv directamente en el check de TOKEN y REDIS_URL
         discord_token = os.getenv('DISCORD_TOKEN')
         redis_url = os.getenv('REDIS_URL')
 
         if not discord_token:
             print("Error: La variable de entorno DISCORD_TOKEN no está configurada. El bot no puede iniciar.")
-            return # Salir si el token no está
+            return
 
         if not redis_url:
             print("Error: La variable de entorno REDIS_URL no está configurada. El bot no puede operar sin Redis.")
-            # No es un exit(1) directo si el bot podría funcionar con funcionalidad limitada sin Redis.
-            # Pero en este caso, nuestro RedisState requiere REDIS_URL.
-            return # Salir si Redis URL no está
+            return
 
         try:
             await bot.start(discord_token)
