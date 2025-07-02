@@ -3,7 +3,7 @@
 import os
 
 # --- Configuración del Bot ---
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 
 # --- IDs de Canales (¡REEMPLAZA ESTOS VALORES CON LAS IDs REALES DE TU SERVIDOR!) ---
 CANAL_GO_VIRAL_ID = 1353824447131418676 # El canal donde los usuarios publican (GoViral)
