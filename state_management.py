@@ -1,148 +1,109 @@
+# state_management.py
+
 import redis
-import os
-import discord # Importar discord para WebhookType
-import json # Importar json para manejar datos de posts
+import json
+import asyncio
+from datetime import datetime, timedelta
 
 class RedisState:
-    def __init__(self):
-        self.redis_client = self._get_redis_client()
+    def __init__(self, host, port, db, password=None):
+        self.r = redis.StrictRedis(host=host, port=port, db=db, password=password, decode_responses=True)
+        print("Conectado a Redis:", self.r.ping()) # Verifica la conexión
 
-    def _get_redis_client(self):
-        redis_url = os.getenv('REDIS_URL')
-        if not redis_url:
-            raise ValueError("REDIS_URL no está configurada en las variables de entorno.")
-        
-        try:
-            client = redis.from_url(redis_url, decode_responses=True)
-            # Prueba la conexión
-            client.ping()
-            print("Conectado a Redis exitosamente.")
-            return client
-        except redis.exceptions.ConnectionError as e:
-            print(f"Error al conectar a Redis: {e}")
-            raise
+    async def get_last_post_time(self, user_id: int) -> float:
+        """Obtiene el timestamp de la última publicación del usuario."""
+        timestamp = await asyncio.to_thread(self.r.get, f"last_post_time:{user_id}")
+        return float(timestamp) if timestamp else 0.0
 
-    def get_last_post_time(self, user_id):
-        """
-        Obtiene la última marca de tiempo de publicación de un usuario.
-        """
-        last_time = self.redis_client.get(f"last_post_time:{user_id}")
-        return float(last_time) if last_time else None
+    async def set_last_post_time(self, user_id: int, timestamp: float):
+        """Establece el timestamp de la última publicación del usuario."""
+        await asyncio.to_thread(self.r.set, f"last_post_time:{user_id}", timestamp)
 
-    def set_last_post_time(self, user_id, timestamp):
-        """
-        Establece la última marca de tiempo de publicación para un usuario.
-        """
-        self.redis_client.set(f"last_post_time:{user_id}", timestamp)
+    async def get_inactivity_status(self, user_id: int) -> str:
+        """Obtiene el estado de inactividad del usuario (none, first_ban, kicked)."""
+        return await asyncio.to_thread(self.r.get, f"inactivity_status:{user_id}") or "none"
 
-    def save_post(self, message_id, author_id, channel_id, content, author_name):
-        """
-        Guarda una publicación en Redis y la añade a la lista de posts recientes del canal.
-        """
-        post_data = {
-            'message_id': str(message_id),
-            'author_id': str(author_id),
-            'channel_id': str(channel_id),
-            'content': content,
-            'timestamp': discord.utils.utcnow().timestamp(),
-            'author_name': author_name # Guardar el nombre del autor
-        }
-        post_json = json.dumps(post_data)
-        
-        # Guardar post individualmente
-        self.redis_client.set(f"post:{message_id}", post_json)
-        
-        # Añadir a la lista de posts recientes del canal (limitado a los últimos 50 para no crecer indefinidamente)
-        # Usamos LTRIM para mantener solo los últimos N elementos
-        list_key = f"recent_posts:{channel_id}"
-        self.redis_client.lpush(list_key, post_json)
-        self.redis_client.ltrim(list_key, 0, 49) # Mantener solo los últimos 50 posts
+    async def set_inactivity_status(self, user_id: int, status: str):
+        """Establece el estado de inactividad del usuario."""
+        await asyncio.to_thread(self.r.set, f"inactivity_status:{user_id}", status)
 
-    def get_recent_posts(self, channel_id):
-        """
-        Obtiene los posts recientes de un canal.
-        """
-        posts = self.redis_client.lrange(f"recent_posts:{channel_id}", 0, -1)
-        return [json.loads(p) for p in posts]
+    async def get_inactivity_ban_start(self, user_id: int) -> float:
+        """Obtiene el timestamp del inicio del baneo por inactividad."""
+        timestamp = await asyncio.to_thread(self.r.get, f"inactivity_ban_start:{user_id}")
+        return float(timestamp) if timestamp else 0.0
 
-    def save_reaction(self, user_id, message_id):
-        """
-        Marca que un usuario ha reaccionado a un mensaje con 🔥.
-        """
-        self.redis_client.sadd(f"reacted_users:{message_id}", str(user_id))
+    async def set_inactivity_ban_start(self, user_id: int, timestamp: float):
+        """Establece el timestamp del inicio del baneo por inactividad."""
+        await asyncio.to_thread(self.r.set, f"inactivity_ban_start:{user_id}", timestamp)
 
-    def has_reaction(self, user_id, message_id):
-        """
-        Verifica si un usuario ha reaccionado a un mensaje con 🔥.
-        """
-        return self.redis_client.sismember(f"reacted_users:{message_id}", str(user_id))
-    
-    def get_posts_by_author(self, author_id, channel_id):
-        """
-        Obtiene las publicaciones de un autor específico en un canal.
-        """
-        all_recent_posts = self.get_recent_posts(channel_id)
-        return [p for p in all_recent_posts if str(p['author_id']) == str(author_id)]
+    async def delete_inactivity_ban_start(self, user_id: int):
+        """Elimina el registro de inicio de baneo por inactividad."""
+        await asyncio.to_thread(self.r.delete, f"inactivity_ban_start:{user_id}")
 
-    def get_required_reactions_details(self, author_id, channel_id):
-        """
-        Obtiene detalles de los posts de otros usuarios a los que el autor actual debe reaccionar.
-        Excluye posts del propio autor.
-        """
-        # Obtenemos los 10 posts más recientes del canal
-        recent_posts = self.get_recent_posts(channel_id)
-        
-        # Filtramos para obtener solo los posts de otros usuarios, no los del autor_id actual
-        # Y que el post haya sido publicado antes del post actual del autor (implícito por el orden de get_recent_posts)
-        # y que el autor NO haya reaccionado ya
-        
-        required_reactions = []
-        for post in recent_posts:
-            if str(post['author_id']) != str(author_id) and not self.has_reaction(author_id, post['message_id']):
-                # Construir una URL de salto para el mensaje si es posible
-                guild_id = os.getenv('GUILD_ID') # Asumiendo que GUILD_ID está en tus variables de entorno
-                if guild_id:
-                    jump_url = f"https://discord.com/channels/{guild_id}/{post['channel_id']}/{post['message_id']}"
-                else:
-                    jump_url = "URL no disponible"
+    # --- NUEVOS MÉTODOS PARA PRÓRROGAS ---
+    async def get_inactivity_extension_end(self, user_id: int) -> float:
+        """Obtiene el timestamp del fin de la prórroga de inactividad."""
+        timestamp = await asyncio.to_thread(self.r.get, f"inactivity_extension_end:{user_id}")
+        return float(timestamp) if timestamp else 0.0
 
-                required_reactions.append({
-                    'message_id': post['message_id'],
-                    'author_id': post['author_id'],
-                    'author_name': post['author_name'],
-                    'url': jump_url
-                })
-        # Devolver solo los últimos 2 posts a los que se debe reaccionar
-        return required_reactions[:2]
+    async def set_inactivity_extension_end(self, user_id: int, timestamp: float):
+        """Establece el timestamp del fin de la prórroga de inactividad."""
+        await asyncio.to_thread(self.r.set, f"inactivity_extension_end:{user_id}", timestamp)
 
-    def set_welcome_message_id(self, message_id, channel_id):
-        """
-        Guarda el ID del mensaje de bienvenida activo en Redis.
-        """
-        self.redis_client.set(f"welcome_message_active:{channel_id}", str(message_id))
+    async def delete_inactivity_extension_end(self, user_id: int):
+        """Elimina el registro de fin de prórroga."""
+        await asyncio.to_thread(self.r.delete, f"inactivity_extension_end:{user_id}")
 
-    def get_welcome_message_id(self, channel_id):
-        """
-        Obtiene el ID del mensaje de bienvenida activo de Redis.
-        """
-        message_id = self.redis_client.get(f"welcome_message_active:{channel_id}")
-        return int(message_id) if message_id else None
+    async def get_last_proroga_reason(self, user_id: int) -> str:
+        """Obtiene la última razón de prórroga del usuario."""
+        return await asyncio.to_thread(self.r.get, f"last_proroga_reason:{user_id}") or "No especificada"
 
-    async def get_or_create_webhook(self, channel):
-        webhook_key = f"webhook:{channel.id}"
-        webhook_url = self.redis_client.get(webhook_key)
+    async def set_last_proroga_reason(self, user_id: int, reason: str):
+        """Establece la última razón de prórroga del usuario."""
+        await asyncio.to_thread(self.r.set, f"last_proroga_reason:{user_id}", reason)
 
-        if webhook_url:
-            try:
-                webhook = discord.Webhook.from_url(webhook_url, client=channel.guild.client) # Asegurarse de usar client del bot
-                await webhook.fetch() # Intenta obtener para verificar si es válido
-                return webhook
-            except (discord.NotFound, discord.HTTPException):
-                print(f"Webhook en Redis para el canal {channel.name} no válido o no encontrado. Creando uno nuevo...")
-                self.redis_client.delete(webhook_key) # Eliminar webhook inválido
+    # --- NUEVOS MÉTODOS PARA TARJETAS DE FALTAS DINÁMICAS ---
+    async def get_user_fault_card_message_id(self, user_id: int) -> int:
+        """Obtiene el ID del mensaje de la tarjeta de faltas del usuario en #faltas."""
+        msg_id = await asyncio.to_thread(self.r.get, f"faltas:user_card_message_id:{user_id}")
+        return int(msg_id) if msg_id else None
 
-        # Si no existe o no es válido, crear uno nuevo
-        new_webhook = await channel.create_webhook(name=f"{channel.name}-go-viral-bot")
-        self.redis_client.set(webhook_key, new_webhook.url)
-        print(f"Nuevo webhook creado para el canal {channel.name}")
-        return new_webhook
+    async def set_user_fault_card_message_id(self, user_id: int, message_id: int):
+        """Establece el ID del mensaje de la tarjeta de faltas del usuario."""
+        await asyncio.to_thread(self.r.set, f"faltas:user_card_message_id:{user_id}", message_id)
+
+    async def delete_user_fault_card_message_id(self, user_id: int):
+        """Elimina el ID del mensaje de la tarjeta de faltas del usuario."""
+        await asyncio.to_thread(self.r.delete, f"faltas:user_card_message_id:{user_id}")
+
+    async def get_all_fault_card_message_ids(self) -> dict[str, str]:
+        """Obtiene todos los mapeos de user_id a message_id de las tarjetas de faltas."""
+        keys = await asyncio.to_thread(self.r.keys, "faltas:user_card_message_id:*")
+        # Extract user_id from keys, e.g., "faltas:user_card_message_id:123" -> "123"
+        return {k.split(':')[-1]: await asyncio.to_thread(self.r.get, k) for k in keys}
+
+    async def clear_all_fault_card_message_ids(self):
+        """Elimina todas las entradas de tarjetas de faltas de Redis."""
+        keys = await asyncio.to_thread(self.r.keys, "faltas:user_card_message_id:*")
+        if keys:
+            await asyncio.to_thread(self.r.delete, *keys)
+
+    # --- NUEVO MÉTODO PARA MENSAJE PRINCIPAL DE SOPORTE ---
+    async def get_soporte_menu_message_id(self) -> int:
+        """Obtiene el ID del mensaje del menú de soporte en #soporte."""
+        msg_id = await asyncio.to_thread(self.r.get, "soporte:menu_message_id")
+        return int(msg_id) if msg_id else None
+
+    async def set_soporte_menu_message_id(self, message_id: int):
+        """Establece el ID del mensaje del menú de soporte en #soporte."""
+        await asyncio.to_thread(self.r.set, "soporte:menu_message_id", message_id)
+
+    # --- NUEVO MÉTODO PARA MENSAJE PRINCIPAL DE FALTAS ---
+    async def get_faltas_panel_message_id(self) -> int:
+        """Obtiene el ID del mensaje del panel de faltas en #faltas."""
+        msg_id = await asyncio.to_thread(self.r.get, "faltas:panel_message_id")
+        return int(msg_id) if msg_id else None
+
+    async def set_faltas_panel_message_id(self, message_id: int):
+        """Establece el ID del mensaje del panel de faltas en #faltas."""
+        await asyncio.to_thread(self.r.set, "faltas:panel_message_id", message_id)
