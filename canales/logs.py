@@ -1,6 +1,6 @@
 # canales/logs.py
 import discord
-from config import CANAL_LOGS # Asumiendo que CANAL_LOGS está definido en config.py
+from config import CANAL_LOGS_ID # Asumiendo que CANAL_LOGS está definido en config.py
 
 async def registrar_log(description, user, channel, bot):
     """
