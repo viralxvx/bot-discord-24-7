@@ -5,14 +5,12 @@ import asyncio
 from state_management import RedisState
 from canales.go_viral import GoViralCog
 from canales.logs import registrar_log
-import config # <--- ¡AÑADE ESTA LÍNEA CLAVE AQUÍ!
-from config import CANAL_LOGS_ID # <--- TAMBIÉN AÑADE ESTA PARA EL REGISTRAR_LOG INICIAL
-
+import config # Ya estaba aquí, ¡bien!
 
 # --- Configuración del Bot ---
 TOKEN = os.getenv('DISCORD_TOKEN') 
 REDIS_URL = os.getenv('REDIS_URL')
-GUILD_ID_STR = os.getenv('GUILD_ID') 
+GUILD_ID_STR = os.getenv('GUILD_ID') # No intentamos convertir a int aquí
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -30,17 +28,11 @@ async def on_ready():
 
     # Intentar registrar la conexión en el canal de logs de Discord
     try:
-        # Asegúrate de que CANAL_LOGS_ID esté disponible para registrar_log
-        # En el código de registrar_log, ya se importa CANAL_LOGS_ID
-        # Sin embargo, si la importación en logs.py falla por alguna razón antes,
-        # o si hay algún problema con el bot.guilds en el momento de la llamada,
-        # la línea siguiente puede fallar.
         await registrar_log(f"El bot se ha conectado y está en línea.", bot.user, None, bot)
         print("Log de conexión enviado a Discord.")
     except Exception as e:
         print(f"ERROR CRÍTICO: No se pudo enviar el log de conexión a Discord: {e}")
         print(f"Detalle del error: {e}")
-        # Este error es el que estamos intentando diagnosticar. No debe cerrar el bot aquí.
 
     # 1. Conectar a Redis y adjuntarlo al bot
     try:
@@ -84,7 +76,8 @@ async def on_ready():
             try:
                 guild_id_int = int(GUILD_ID_STR) 
                 guild = discord.Object(id=guild_id_int)
-                bot.tree.copy_global_commands()
+                # --- ¡LÍNEA ELIMINADA AQUÍ! ---
+                # bot.tree.copy_global_commands() # Esto ya no es necesario
                 await bot.tree.sync(guild=guild)
                 print(f"Comandos de barra sincronizados para el gremio {GUILD_ID_STR}.")
                 await registrar_log(f"Comandos de barra sincronizados para el gremio {GUILD_ID_STR}.", bot.user, None, bot)
