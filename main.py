@@ -26,7 +26,7 @@ async def on_ready():
 async def load_extensions():
     await bot.load_extension("canales.presentate")
     await bot.load_extension("canales.normas_generales")
-
+    await bot.load_extension("canales.faltas")
 # Iniciar el bot
 async def main():
     await load_extensions()
