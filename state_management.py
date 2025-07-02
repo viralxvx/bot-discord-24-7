@@ -1,25 +1,20 @@
-import redis.asyncio as redis # Importante: usar redis.asyncio para async
+import redis.asyncio as redis
 import os
-import discord # Importar discord para discord.utils.utcnow()
-import json # Importar json para manejar datos de posts
+import discord
+import json
 
 class RedisState:
-    def __init__(self, redis_url: str): # ¡CORRECCIÓN CLAVE AQUÍ! Ahora espera redis_url
+    def __init__(self, redis_url: str):
         self.redis_client = None
-        self.redis_url = redis_url # Guarda la URL pasada
+        self.redis_url = redis_url
         
         try:
-            # Aquí se inicializa el cliente asíncrono
             self.redis_client = redis.from_url(self.redis_url, decode_responses=True)
-            # No se puede hacer ping síncrono aquí si redis_client es async.
-            # La prueba de conexión se hará en el primer uso de un comando async,
-            # o si se añade un método 'connect' aparte que sea async.
             print("Cliente Redis asíncrono inicializado.")
         except Exception as e:
             print(f"Error al inicializar cliente Redis con URL '{self.redis_url}': {e}")
-            raise # Lanza el error para que el bot no inicie si Redis falla
+            raise
 
-    # Todos los métodos que interactúan con Redis deben ser async
     async def get_last_post_time(self, user_id):
         last_time = await self.redis_client.get(f"last_post_time:{user_id}")
         return float(last_time) if last_time else None
@@ -60,8 +55,6 @@ class RedisState:
         recent_posts = await self.get_recent_posts(channel_id)
         required_reactions = []
         for post in recent_posts:
-            # Asegurarse de que GUILD_ID esté disponible, quizás pasarlo en el constructor del bot o RedisState si es muy crítico.
-            # Por ahora, se sigue obteniendo de os.getenv.
             guild_id = os.getenv('GUILD_ID') 
             if str(post['author_id']) != str(author_id) and not await self.has_reaction(author_id, post['message_id']):
                 if guild_id:
@@ -89,8 +82,6 @@ class RedisState:
 
         if webhook_url:
             try:
-                # Asegúrate de pasar el cliente del bot al webhook
-                # channel.guild.client es una forma, si no, puedes pasar self.bot al webhook desde GoViralCog
                 webhook = discord.Webhook.from_url(webhook_url, client=channel.guild.client) 
                 await webhook.fetch()
                 return webhook
@@ -102,6 +93,18 @@ class RedisState:
         await self.redis_client.set(webhook_key, new_webhook.url)
         print(f"Nuevo webhook creado para el canal {channel.name}")
         return new_webhook
+
+    # --- NUEVOS MÉTODOS PARA MENSAJES DE BIENVENIDA ---
+    async def set_user_welcomed(self, user_id: int):
+        """Marca a un usuario como 'ya bienvenido'."""
+        await self.redis_client.set(f"user_welcomed:{user_id}", "true")
+        print(f"Usuario {user_id} marcado como bienvenido en Redis.")
+
+    async def is_user_welcomed(self, user_id: int) -> bool:
+        """Verifica si un usuario ya ha sido marcado como 'bienvenido'."""
+        status = await self.redis_client.get(f"user_welcomed:{user_id}")
+        return status == "true"
+    # --- FIN NUEVOS MÉTODOS ---
 
     async def close(self):
         if self.redis_client:
