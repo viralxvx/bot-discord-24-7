@@ -1,17 +1,18 @@
 import discord
 from discord.ext import commands
 import os
-from config import TOKEN, GUILD_ID
 import asyncio
+from config import TOKEN, GUILD_ID
 
 intents = discord.Intents.default()
 intents.members = True
 intents.guilds = True
 intents.messages = True
+intents.message_content = True  # Requerido para borrar mensajes no bot en normas-generales
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Cargar los cogs
+# Al estar listo, muestra conexión y sincroniza comandos slash (si los agregas más adelante)
 @bot.event
 async def on_ready():
     print(f"✅ Bot conectado como {bot.user}")
@@ -21,15 +22,12 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Error al sincronizar comandos: {e}")
 
-@bot.event
-async def on_member_join(member):
-    from canales.presentate import enviar_bienvenida
-    await enviar_bienvenida(member, bot)
-
-# Cargar extensiones manualmente
+# Cargar todos los módulos aquí
 async def load_extensions():
     await bot.load_extension("canales.presentate")
+    await bot.load_extension("canales.normas_generales")
 
+# Iniciar el bot
 async def main():
     await load_extensions()
     await bot.start(TOKEN)
