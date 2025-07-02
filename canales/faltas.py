@@ -17,14 +17,22 @@ class Faltas(commands.Cog):
             print(f"❌ No se encontró el canal con ID {CANAL_FALTAS_ID}")
             return
 
-        # Limpiar canal completo
+        # Limpieza con detalle y logs
+        borrados = 0
+        errores = 0
+        print("🧹 Iniciando limpieza del canal #📤faltas...")
+
         try:
-            print("🧹 Borrando todos los mensajes en #📤faltas...")
             async for mensaje in canal.history(limit=None):
-                await mensaje.delete()
-            print("✅ Canal #📤faltas limpiado completamente.")
+                try:
+                    await mensaje.delete()
+                    borrados += 1
+                except Exception as e:
+                    errores += 1
+                    print(f"❌ No se pudo borrar mensaje ID {mensaje.id} de {mensaje.author}: {e}")
+            print(f"✅ Limpieza completa: {borrados} mensajes borrados. {errores} errores.")
         except Exception as e:
-            print(f"❌ Error al limpiar el canal de faltas: {e}")
+            print(f"❌ Error grave al intentar acceder al historial: {e}")
 
     async def registrar_falta(self, user: discord.Member, motivo: str):
         user_id = str(user.id)
