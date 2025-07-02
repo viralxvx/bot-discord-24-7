@@ -3,9 +3,12 @@ from discord.ext import commands
 import asyncio
 from datetime import datetime, timedelta, timezone
 import os
-from config import CANAL_GO_VIRAL_ID, CANAL_LOGS_ID, MIN_REACCIONES_GO_VIRAL, TIEMPO_ESPERA_POST_MINUTOS
+from config import (
+    CANAL_GO_VIRAL_ID, CANAL_LOGS_ID, MIN_REACCIONES_GO_VIRAL, TIEMPO_ESPERA_POST_MINUTOS,
+    WELCOME_MESSAGE_TITLE, WELCOME_MESSAGE_IMAGE_URL, WELCOME_MESSAGE_TEXT # ¡NUEVO!
+)
 from canales.logs import registrar_log
-from canales.faltas import registrar_falta # Asegúrate de que esta importación esté aquí
+from canales.faltas import registrar_falta 
 
 class GoViralCog(commands.Cog):
     def __init__(self, bot):
@@ -13,9 +16,8 @@ class GoViralCog(commands.Cog):
         self.go_viral_channel = None
         self.log_channel = None
         self.welcome_message_task = None
-        self.webhook_cache = {} # Cache para webhooks
+        self.webhook_cache = {} 
 
-    # Este método se llama después de que el cog se carga y el bot está listo
     async def go_viral_on_ready(self):
         print(f"Lógica on_ready de GoViralCog iniciada para el canal {CANAL_GO_VIRAL_ID}...")
         try:
@@ -47,7 +49,6 @@ class GoViralCog(commands.Cog):
             print(f"ERROR inesperado al obtener el canal de Logs: {e}")
             self.log_channel = None
 
-        # Iniciar la tarea de mensaje de bienvenida si el canal Go Viral existe
         if self.go_viral_channel:
             self.welcome_message_task = self.bot.loop.create_task(self.send_welcome_message())
         else:
@@ -60,7 +61,6 @@ class GoViralCog(commands.Cog):
                 self.webhook_cache[channel.id] = webhook
             else:
                 print("Advertencia: RedisState no está disponible. No se puede obtener/crear webhook persistente.")
-                # Fallback: crear un webhook temporal si Redis no está disponible
                 try:
                     new_webhook = await channel.create_webhook(name=f"{channel.name}-go-viral-bot-temp")
                     self.webhook_cache[channel.id] = new_webhook
@@ -75,7 +75,6 @@ class GoViralCog(commands.Cog):
             print("No se puede enviar el mensaje de bienvenida: canal Go Viral no disponible.")
             return
 
-        # Obtener el ID del mensaje de bienvenida activo desde Redis
         welcome_message_id = await self.bot.redis_state.get_welcome_message_id(self.go_viral_channel.id)
         existing_message = None
 
@@ -93,22 +92,15 @@ class GoViralCog(commands.Cog):
                 print(f"Error al buscar mensaje de bienvenida existente: {e}")
                 existing_message = None
 
+        # --- AQUI ES DONDE SE USA EL NUEVO CONTENIDO DE config.py ---
         embed = discord.Embed(
-            title="¡Bienvenido al Canal Go Viral! 🎉",
-            description=(
-                "¡Este es el lugar para compartir tu contenido más increíble! "
-                "Para que tu post se considere 'viral' y sea promocionado, necesita alcanzar **5 reacciones únicas** (no del mismo usuario).\n\n"
-                "**Reglas importantes:**\n"
-                "1.  **Un post por usuario cada 24 horas.**\n"
-                "2.  **No reacciones a tus propios posts.**\n"
-                "3.  **No reacciones a posts del mismo autor repetidamente.**\n"
-                "4.  **No pidas reacciones explícitamente.**\n"
-                "5.  **Contenido apropiado para todas las edades.**\n\n"
-                "¡Diviértete y haz que tu contenido se vuelva viral!"
-            ),
+            title=WELCOME_MESSAGE_TITLE,
+            description=WELCOME_MESSAGE_TEXT,
             color=discord.Color.gold()
         )
-        embed.set_footer(text="¡A por esas reacciones! ✨")
+        if WELCOME_MESSAGE_IMAGE_URL:
+            embed.set_image(url=WELCOME_MESSAGE_IMAGE_URL)
+        embed.set_footer(text="Bot actualizado • Sistema automatizado • Apoyo 24/7") # Pie de página fijo
 
         if existing_message:
             try:
@@ -116,7 +108,6 @@ class GoViralCog(commands.Cog):
                 print("Mensaje de bienvenida existente actualizado.")
             except Exception as e:
                 print(f"Error al editar mensaje de bienvenida existente: {e}")
-                # Si falla la edición, intentamos enviar uno nuevo
                 existing_message = None
         
         if not existing_message:
@@ -130,42 +121,34 @@ class GoViralCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member):
-        # --- LÓGICA DE VERIFICACIÓN DE USUARIO YA BIENVENIDO ---
+        # Esta lógica de bienvenida a nuevos miembros es diferente al mensaje fijo del canal
         if hasattr(self.bot, 'redis_state') and self.bot.redis_state:
             if await self.bot.redis_state.is_user_welcomed(member.id):
                 print(f"Usuario {member.display_name} (ID: {member.id}) ya había sido bienvenido. Saltando mensaje.")
                 await registrar_log(f"Usuario {member.display_name} (ID: {member.id}) intentó unirse de nuevo, ya bienvenido.", member, None, self.bot)
-                return # Salir si el usuario ya fue bienvenido
+                return 
             else:
-                # Si es un usuario nuevo o no marcado, continuar y marcarlo después de enviar el mensaje
                 print(f"Usuario {member.display_name} (ID: {member.id}) es nuevo o no marcado. Enviando mensaje de bienvenida.")
         else:
             print("Advertencia: RedisState no está disponible. No se puede verificar si el usuario ya fue bienvenido.")
             await registrar_log("Advertencia: RedisState no disponible para verificar usuario bienvenido.", self.bot.user, None, self.bot)
-            # Si Redis no está disponible, el bot enviará el mensaje de bienvenida a todos los que se unan.
-            # Puedes decidir si quieres salir aquí o continuar sin la verificación.
-            # Por ahora, continuaremos para asegurar que al menos se envíe el mensaje.
-
-        # --- FIN LÓGICA DE VERIFICACIÓN ---
 
         if self.go_viral_channel:
-            welcome_embed = discord.Embed(
+            welcome_embed_member = discord.Embed( # Embed diferente para miembros nuevos
                 title=f"¡Bienvenido, {member.display_name}! 👋",
                 description=f"¡Nos alegra tenerte en nuestro servidor! Asegúrate de revisar las reglas en {self.go_viral_channel.mention} y diviértete.",
                 color=discord.Color.green()
             )
-            welcome_embed.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
-            welcome_embed.set_footer(text="¡Disfruta tu estancia!")
+            welcome_embed_member.set_thumbnail(url=member.avatar.url if member.avatar else member.default_avatar.url)
+            welcome_embed_member.set_footer(text="¡Disfruta tu estancia!")
 
             try:
-                await self.go_viral_channel.send(embed=welcome_embed)
+                await self.go_viral_channel.send(embed=welcome_embed_member)
                 print(f"Mensaje de bienvenida enviado a {member.display_name} en {self.go_viral_channel.name}.")
                 await registrar_log(f"Mensaje de bienvenida enviado a {member.display_name}.", member, self.go_viral_channel, self.bot)
                 
-                # --- MARCAR AL USUARIO COMO BIENVENIDO DESPUÉS DE ENVIAR EL MENSAJE ---
                 if hasattr(self.bot, 'redis_state') and self.bot.redis_state:
                     await self.bot.redis_state.set_user_welcomed(member.id)
-                # --- FIN MARCAR USUARIO ---
 
             except discord.Forbidden:
                 print(f"ERROR: No tengo permisos para enviar mensajes en {self.go_viral_channel.name}.")
@@ -183,9 +166,7 @@ class GoViralCog(commands.Cog):
         if message.author.bot:
             return
 
-        # Solo procesar mensajes en el canal Go Viral
         if message.channel.id == CANAL_GO_VIRAL_ID:
-            # Guardar el post en Redis
             if hasattr(self.bot, 'redis_state') and self.bot.redis_state:
                 await self.bot.redis_state.save_post(message.id, message.author.id, message.channel.id, message.content, message.author.display_name)
                 print(f"Post de {message.author.display_name} guardado en Redis.")
@@ -193,13 +174,12 @@ class GoViralCog(commands.Cog):
                 print("Advertencia: RedisState no está disponible. No se guardará el post.")
                 await registrar_log("Advertencia: RedisState no disponible para guardar posts.", self.bot.user, message.channel, self.bot)
 
-            # Verificar el tiempo del último post del usuario
             if hasattr(self.bot, 'redis_state') and self.bot.redis_state:
                 last_post_time = await self.bot.redis_state.get_last_post_time(message.author.id)
                 current_time = datetime.now(timezone.utc).timestamp()
                 
                 if last_post_time:
-                    time_since_last_post = (current_time - last_post_time) / 60 # en minutos
+                    time_since_last_post = (current_time - last_post_time) / 60 
                     if time_since_last_post < TIEMPO_ESPERA_POST_MINUTOS:
                         remaining_time = TIEMPO_ESPERA_POST_MINUTOS - time_since_last_post
                         await message.delete()
@@ -216,7 +196,6 @@ class GoViralCog(commands.Cog):
                 print("Advertencia: RedisState no está disponible. No se aplicará el límite de tiempo de posts.")
                 await registrar_log("Advertencia: RedisState no disponible para límite de tiempo de posts.", self.bot.user, message.channel, self.bot)
 
-            # Verificar posts recientes que requieren reacciones
             if hasattr(self.bot, 'redis_state') and self.bot.redis_state:
                 required_reactions = await self.bot.redis_state.get_required_reactions_details(message.author.id, message.channel.id)
                 if required_reactions:
@@ -250,7 +229,7 @@ class GoViralCog(commands.Cog):
         if payload.channel_id == CANAL_GO_VIRAL_ID:
             channel = self.bot.get_channel(payload.channel_id)
             if not channel:
-                channel = await self.bot.fetch_channel(payload.channel_id) # En caso de que no esté en caché
+                channel = await self.bot.fetch_channel(payload.channel_id)
 
             try:
                 message = await channel.fetch_message(payload.message_id)
@@ -264,7 +243,6 @@ class GoViralCog(commands.Cog):
                 print(f"Error al buscar mensaje para la reacción: {e}")
                 return
 
-            # Ignorar reacciones del propio autor del mensaje
             if message.author.id == payload.member.id:
                 print(f"Reacción de {payload.member.display_name} en su propio post. Ignorando.")
                 await registrar_falta(payload.member, "Reaccionó a su propio post en Go Viral", channel, self.bot)
@@ -274,9 +252,7 @@ class GoViralCog(commands.Cog):
                     print(f"Error al remover reacción propia: {e}")
                 return
 
-            # Guardar la reacción en Redis
             if hasattr(self.bot, 'redis_state') and self.bot.redis_state:
-                # Verificar si el usuario ya reaccionó a este mensaje
                 if await self.bot.redis_state.has_reaction(payload.member.id, payload.message_id):
                     print(f"Usuario {payload.member.display_name} ya reaccionó a este post. Ignorando.")
                     await registrar_falta(payload.member, "Reaccionó múltiples veces al mismo post en Go Viral", channel, self.bot)
@@ -286,7 +262,6 @@ class GoViralCog(commands.Cog):
                         print(f"Error al remover reacción duplicada: {e}")
                     return
                 
-                # Verificar si el usuario ya reaccionó a posts del mismo autor
                 posts_by_same_author = await self.bot.redis_state.get_posts_by_author(message.author.id, channel.id)
                 reacted_to_same_author = False
                 for post in posts_by_same_author:
@@ -308,13 +283,12 @@ class GoViralCog(commands.Cog):
             else:
                 print("Advertencia: RedisState no está disponible. No se guardará la reacción ni se validarán reglas.")
                 await registrar_log("Advertencia: RedisState no disponible para reacciones.", self.bot.user, channel, self.bot)
-                return # Salir si Redis no está disponible, ya que no podemos validar las reglas
+                return 
 
-            # Contar reacciones únicas
             unique_reactions = set()
             for reaction in message.reactions:
                 async for user in reaction.users():
-                    if not user.bot: # Solo contar reacciones de usuarios no bots
+                    if not user.bot: 
                         unique_reactions.add(user.id)
             
             print(f"Post {message.id} ahora tiene {len(unique_reactions)} reacciones únicas.")
@@ -339,8 +313,6 @@ class GoViralCog(commands.Cog):
                         print(f"Post de {message.author.display_name} promocionado via webhook.")
                         await registrar_log(f"Post de {message.author.display_name} promocionado.", message.author, channel, self.bot)
                         
-                        # Opcional: Eliminar el mensaje original o marcarlo como promocionado en Redis
-                        # await message.delete() 
                     except Exception as e:
                         print(f"ERROR: Fallo al promocionar post via webhook: {e}")
                         await registrar_log(f"ERROR: Fallo al promocionar post via webhook: {e}", self.bot.user, channel, self.bot)
