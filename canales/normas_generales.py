@@ -11,35 +11,45 @@ class NormasGenerales(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
+        print("🔧 Iniciando módulo de normas generales...")
         canal = self.bot.get_channel(CANAL_NORMAS_ID)
+
         if not canal:
-            print(f"❌ No se encontró el canal de normas: {CANAL_NORMAS_ID}")
+            print(f"❌ No se encontró el canal con ID: {CANAL_NORMAS_ID}")
             return
 
-        # Borrar TODOS los mensajes (fijados, bot y usuarios)
         try:
+            print("🧹 Borrando mensajes existentes en el canal...")
             async for msg in canal.history(limit=None):
                 await msg.delete()
+            print("✅ Canal limpiado con éxito.")
         except Exception as e:
-            print(f"❌ Error al borrar mensajes en {canal.name}: {e}")
+            print(f"❌ Error al borrar mensajes en el canal: {e}")
+            return
 
-        # Crear embed
-        embed = discord.Embed(
-            title=texto.TITULO,
-            description=texto.DESCRIPCION,
-            color=discord.Color.orange()
-        )
-        if texto.IMAGEN_URL:
-            embed.set_image(url=texto.IMAGEN_URL)
+        # Crear el embed
+        try:
+            embed = discord.Embed(
+                title=texto.TITULO,
+                description=texto.DESCRIPCION,
+                color=discord.Color.orange()
+            )
+            if texto.IMAGEN_URL:
+                embed.set_image(url=texto.IMAGEN_URL)
 
-        # Enviar mensaje nuevo y guardar
-        self.mensaje_normas = await canal.send(embed=embed)
-        print("✅ Normas publicadas correctamente")
+            self.mensaje_normas = await canal.send(embed=embed)
+            print("✅ Normas publicadas correctamente en el canal.")
+        except Exception as e:
+            print(f"❌ Error al enviar el mensaje de normas: {e}")
 
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.channel.id == CANAL_NORMAS_ID and not message.author.bot:
-            await message.delete()
+            try:
+                await message.delete()
+                print(f"🗑️ Mensaje de {message.author} eliminado en #normas-generales")
+            except Exception as e:
+                print(f"❌ No se pudo borrar un mensaje no autorizado: {e}")
 
 async def setup(bot):
     await bot.add_cog(NormasGenerales(bot))
