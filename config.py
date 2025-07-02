@@ -9,9 +9,9 @@ DISCORD_BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 
 # --- IDs de Canales ---
 CANAL_GO_VIRAL_ID = 1353824447131418676 # El canal donde los usuarios publican contenido (GoViral)
-CANAL_FALTAS_ID = 1388891883551326298   # El canal donde se mostrarán las tarjetas de faltas de los usuarios
+CANAL_FALTAS_ID = 1388891883551326298  # El canal donde se mostrarán las tarjetas de faltas de los usuarios
 CANAL_SOPORTE_ID = 1376744723665911894  # El canal donde se solicitarán las prórrogas (soporte)
-CANAL_LOGS_ID = 1388347584061374514     # Canal para registros (logs) internos del bot y notificaciones importantes
+CANAL_LOGS_ID = 1388347584061374514    # Canal para registros (logs) internos del bot y notificaciones importantes
 
 # --- IDs de Roles ---
 ROLE_MODERADOR_ID = 1389761947062505502 # ID del rol de Moderador/Administrador para aprobar/denegar solicitudes de prórrogas
@@ -20,6 +20,11 @@ ROLE_MODERADOR_ID = 1389761947062505502 # ID del rol de Moderador/Administrador 
 # La URL de conexión a tu base de datos Redis. Se obtiene de las variables de entorno de Railway
 # (donde la tienes configurada como "REDIS_URL").
 REDIS_URL = os.getenv("REDIS_URL")
+
+# --- Configuración del Sistema Go Viral ---
+# ¡ESTAS SON LAS LÍNEAS QUE FALTABAN O ESTABAN MAL!
+MIN_REACCIONES_GO_VIRAL = 5           # Número de reacciones únicas necesarias para volverse viral (puedes ajustar este valor)
+TIEMPO_ESPERA_POST_MINUTOS = 24 * 60  # 24 horas en minutos (tiempo de espera entre posts del mismo usuario)
 
 # --- Reglas de Inactividad ---
 DIAS_INACTIVIDAD_PARA_BAN = 3      # Número de días sin publicar para que un usuario reciba su primer baneo temporal
