@@ -1,114 +1,109 @@
-# state_management.py
-import redis.asyncio as redis
-import json
-import asyncio
+import redis.asyncio as redis # Importante: usar redis.asyncio para async
+import os
+import discord # Importar discord para discord.utils.utcnow()
+import json # Importar json para manejar datos de posts
 
 class RedisState:
-    def __init__(self, redis_url: str): # Cambiamos los parámetros a solo redis_url
-        self.redis_url = redis_url
+    def __init__(self, redis_url: str): # ¡CORRECCIÓN CLAVE AQUÍ! Ahora espera redis_url
         self.redis_client = None
-
-    async def connect(self):
-        """Establece la conexión con Redis."""
+        self.redis_url = redis_url # Guarda la URL pasada
+        
         try:
-            # Usar redis.from_url para parsear la URL completa
+            # Aquí se inicializa el cliente asíncrono
             self.redis_client = redis.from_url(self.redis_url, decode_responses=True)
-            await self.redis_client.ping()
-            print("Conexión a Redis establecida con éxito.")
-        except redis.ConnectionError as e:
-            print(f"Error al conectar a Redis: {e}")
-            raise # Re-lanza la excepción para que el bot no inicie si Redis falla
+            # No se puede hacer ping síncrono aquí si redis_client es async.
+            # La prueba de conexión se hará en el primer uso de un comando async,
+            # o si se añade un método 'connect' aparte que sea async.
+            print("Cliente Redis asíncrono inicializado.")
+        except Exception as e:
+            print(f"Error al inicializar cliente Redis con URL '{self.redis_url}': {e}")
+            raise # Lanza el error para que el bot no inicie si Redis falla
+
+    # Todos los métodos que interactúan con Redis deben ser async
+    async def get_last_post_time(self, user_id):
+        last_time = await self.redis_client.get(f"last_post_time:{user_id}")
+        return float(last_time) if last_time else None
+
+    async def set_last_post_time(self, user_id, timestamp):
+        await self.redis_client.set(f"last_post_time:{user_id}", timestamp)
+
+    async def save_post(self, message_id, author_id, channel_id, content, author_name):
+        post_data = {
+            'message_id': str(message_id),
+            'author_id': str(author_id),
+            'channel_id': str(channel_id),
+            'content': content,
+            'timestamp': discord.utils.utcnow().timestamp(),
+            'author_name': author_name
+        }
+        post_json = json.dumps(post_data)
+        await self.redis_client.set(f"post:{message_id}", post_json)
+        list_key = f"recent_posts:{channel_id}"
+        await self.redis_client.lpush(list_key, post_json)
+        await self.redis_client.ltrim(list_key, 0, 49)
+
+    async def get_recent_posts(self, channel_id):
+        posts = await self.redis_client.lrange(f"recent_posts:{channel_id}", 0, -1)
+        return [json.loads(p) for p in posts]
+
+    async def save_reaction(self, user_id, message_id):
+        await self.redis_client.sadd(f"reacted_users:{message_id}", str(user_id))
+
+    async def has_reaction(self, user_id, message_id):
+        return await self.redis_client.sismember(f"reacted_users:{message_id}", str(user_id))
+    
+    async def get_posts_by_author(self, author_id, channel_id):
+        all_recent_posts = await self.get_recent_posts(channel_id)
+        return [p for p in all_recent_posts if str(p['author_id']) == str(author_id)]
+
+    async def get_required_reactions_details(self, author_id, channel_id):
+        recent_posts = await self.get_recent_posts(channel_id)
+        required_reactions = []
+        for post in recent_posts:
+            # Asegurarse de que GUILD_ID esté disponible, quizás pasarlo en el constructor del bot o RedisState si es muy crítico.
+            # Por ahora, se sigue obteniendo de os.getenv.
+            guild_id = os.getenv('GUILD_ID') 
+            if str(post['author_id']) != str(author_id) and not await self.has_reaction(author_id, post['message_id']):
+                if guild_id:
+                    jump_url = f"https://discord.com/channels/{guild_id}/{post['channel_id']}/{post['message_id']}"
+                else:
+                    jump_url = "URL no disponible"
+                required_reactions.append({
+                    'message_id': post['message_id'],
+                    'author_id': post['author_id'],
+                    'author_name': post['author_name'],
+                    'url': jump_url
+                })
+        return required_reactions[:2]
+
+    async def set_welcome_message_id(self, message_id, channel_id):
+        await self.redis_client.set(f"welcome_message_active:{channel_id}", str(message_id))
+
+    async def get_welcome_message_id(self, channel_id):
+        message_id = await self.redis_client.get(f"welcome_message_active:{channel_id}")
+        return int(message_id) if message_id else None
+
+    async def get_or_create_webhook(self, channel):
+        webhook_key = f"webhook:{channel.id}"
+        webhook_url = await self.redis_client.get(webhook_key)
+
+        if webhook_url:
+            try:
+                # Asegúrate de pasar el cliente del bot al webhook
+                # channel.guild.client es una forma, si no, puedes pasar self.bot al webhook desde GoViralCog
+                webhook = discord.Webhook.from_url(webhook_url, client=channel.guild.client) 
+                await webhook.fetch()
+                return webhook
+            except (discord.NotFound, discord.HTTPException):
+                print(f"Webhook en Redis para el canal {channel.name} no válido o no encontrado. Creando uno nuevo...")
+                await self.redis_client.delete(webhook_key)
+
+        new_webhook = await channel.create_webhook(name=f"{channel.name}-go-viral-bot")
+        await self.redis_client.set(webhook_key, new_webhook.url)
+        print(f"Nuevo webhook creado para el canal {channel.name}")
+        return new_webhook
 
     async def close(self):
-        """Cierra la conexión con Redis."""
         if self.redis_client:
             await self.redis_client.close()
             print("Conexión a Redis cerrada.")
-
-    async def set_user_data(self, user_id: int, data: dict):
-        """Guarda los datos de un usuario."""
-        await self.redis_client.set(f"user_data:{user_id}", json.dumps(data))
-
-    async def get_user_data(self, user_id: int) -> dict:
-        """Obtiene los datos de un usuario."""
-        data = await self.redis_client.get(f"user_data:{user_id}")
-        return json.loads(data) if data else {}
-
-    async def delete_user_data(self, user_id: int):
-        """Elimina los datos de un usuario."""
-        await self.redis_client.delete(f"user_data:{user_id}")
-
-    # Métodos para la gestión de inactividad
-    async def set_last_post_time(self, user_id: int, timestamp: int):
-        await self.redis_client.hset("last_post_times", str(user_id), str(timestamp))
-
-    async def get_last_post_time(self, user_id: int) -> int | None:
-        timestamp = await self.redis_client.hget("last_post_times", str(user_id))
-        return int(timestamp) if timestamp else None
-
-    async def get_all_last_post_times(self) -> dict:
-        data = await self.redis_client.hgetall("last_post_times")
-        return {int(uid): int(ts) for uid, ts in data.items()}
-
-    async def remove_last_post_time(self, user_id: int):
-        await self.redis_client.hdel("last_post_times", str(user_id))
-
-    # Métodos para la gestión de faltas
-    async def get_fault_card_message_id(self, user_id: int) -> int | None:
-        """Obtiene el ID del mensaje de la tarjeta de faltas de un usuario."""
-        message_id = await self.redis_client.hget("fault_card_messages", str(user_id))
-        return int(message_id) if message_id else None
-
-    async def set_fault_card_message_id(self, user_id: int, message_id: int):
-        """Guarda el ID del mensaje de la tarjeta de faltas de un usuario."""
-        await self.redis_client.hset("fault_card_messages", str(user_id), str(message_id))
-
-    async def remove_fault_card_message_id(self, user_id: int):
-        """Elimina el ID del mensaje de la tarjeta de faltas de un usuario."""
-        await self.redis_client.hdel("fault_card_messages", str(user_id))
-
-    async def get_all_fault_card_message_ids(self) -> dict:
-        """Obtiene todos los IDs de mensajes de tarjetas de faltas."""
-        data = await self.redis_client.hgetall("fault_card_messages")
-        return {int(uid): int(mid) for uid, mid in data.items()}
-
-    # Métodos para la gestión de prórrogas
-    async def set_proroga_info(self, user_id: int, end_timestamp: int, reason: str, aproved_by_id: int, message_id: int):
-        """Guarda la información de una prórroga para un usuario."""
-        proroga_data = {
-            "end_timestamp": end_timestamp,
-            "reason": reason,
-            "aproved_by_id": aproved_by_id,
-            "message_id": message_id # ID del mensaje de solicitud de prórroga
-        }
-        await self.redis_client.set(f"proroga:{user_id}", json.dumps(proroga_data))
-
-    async def get_proroga_info(self, user_id: int) -> dict | None:
-        """Obtiene la información de la prórroga de un usuario."""
-        data = await self.redis_client.get(f"proroga:{user_id}")
-        return json.loads(data) if data else None
-
-    async def delete_proroga_info(self, user_id: int):
-        """Elimina la información de la prórroga de un usuario."""
-        await self.redis_client.delete(f"proroga:{user_id}")
-
-    async def get_all_proroga_infos(self) -> dict:
-        """Obtiene la información de todas las prórrogas activas."""
-        # Esto requiere escanear claves, lo cual puede ser costoso en bases de datos grandes
-        # Para Railway, que gestiona claves por prefijo, esto es común.
-        prorogas = {}
-        async for key in self.redis_client.scan_iter("proroga:*"):
-            user_id = int(key.split(":")[1])
-            data = await self.redis_client.get(key)
-            if data:
-                prorogas[user_id] = json.loads(data)
-        return prorogas
-
-    async def set_last_panel_update_time(self, timestamp: int):
-        """Guarda el último timestamp de actualización del panel de faltas."""
-        await self.redis_client.set("last_panel_update_time", str(timestamp))
-
-    async def get_last_panel_update_time(self) -> int | None:
-        """Obtiene el último timestamp de actualización del panel de faltas."""
-        timestamp = await self.redis_client.get("last_panel_update_time")
-        return int(timestamp) if timestamp else None
