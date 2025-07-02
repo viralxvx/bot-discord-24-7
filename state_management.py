@@ -1,109 +1,114 @@
 # state_management.py
-
-import redis
+import redis.asyncio as redis
 import json
 import asyncio
-from datetime import datetime, timedelta
 
 class RedisState:
-    def __init__(self, host, port, db, password=None):
-        self.r = redis.StrictRedis(host=host, port=port, db=db, password=password, decode_responses=True)
-        print("Conectado a Redis:", self.r.ping()) # Verifica la conexión
+    def __init__(self, redis_url: str): # Cambiamos los parámetros a solo redis_url
+        self.redis_url = redis_url
+        self.redis_client = None
 
-    async def get_last_post_time(self, user_id: int) -> float:
-        """Obtiene el timestamp de la última publicación del usuario."""
-        timestamp = await asyncio.to_thread(self.r.get, f"last_post_time:{user_id}")
-        return float(timestamp) if timestamp else 0.0
+    async def connect(self):
+        """Establece la conexión con Redis."""
+        try:
+            # Usar redis.from_url para parsear la URL completa
+            self.redis_client = redis.from_url(self.redis_url, decode_responses=True)
+            await self.redis_client.ping()
+            print("Conexión a Redis establecida con éxito.")
+        except redis.ConnectionError as e:
+            print(f"Error al conectar a Redis: {e}")
+            raise # Re-lanza la excepción para que el bot no inicie si Redis falla
 
-    async def set_last_post_time(self, user_id: int, timestamp: float):
-        """Establece el timestamp de la última publicación del usuario."""
-        await asyncio.to_thread(self.r.set, f"last_post_time:{user_id}", timestamp)
+    async def close(self):
+        """Cierra la conexión con Redis."""
+        if self.redis_client:
+            await self.redis_client.close()
+            print("Conexión a Redis cerrada.")
 
-    async def get_inactivity_status(self, user_id: int) -> str:
-        """Obtiene el estado de inactividad del usuario (none, first_ban, kicked)."""
-        return await asyncio.to_thread(self.r.get, f"inactivity_status:{user_id}") or "none"
+    async def set_user_data(self, user_id: int, data: dict):
+        """Guarda los datos de un usuario."""
+        await self.redis_client.set(f"user_data:{user_id}", json.dumps(data))
 
-    async def set_inactivity_status(self, user_id: int, status: str):
-        """Establece el estado de inactividad del usuario."""
-        await asyncio.to_thread(self.r.set, f"inactivity_status:{user_id}", status)
+    async def get_user_data(self, user_id: int) -> dict:
+        """Obtiene los datos de un usuario."""
+        data = await self.redis_client.get(f"user_data:{user_id}")
+        return json.loads(data) if data else {}
 
-    async def get_inactivity_ban_start(self, user_id: int) -> float:
-        """Obtiene el timestamp del inicio del baneo por inactividad."""
-        timestamp = await asyncio.to_thread(self.r.get, f"inactivity_ban_start:{user_id}")
-        return float(timestamp) if timestamp else 0.0
+    async def delete_user_data(self, user_id: int):
+        """Elimina los datos de un usuario."""
+        await self.redis_client.delete(f"user_data:{user_id}")
 
-    async def set_inactivity_ban_start(self, user_id: int, timestamp: float):
-        """Establece el timestamp del inicio del baneo por inactividad."""
-        await asyncio.to_thread(self.r.set, f"inactivity_ban_start:{user_id}", timestamp)
+    # Métodos para la gestión de inactividad
+    async def set_last_post_time(self, user_id: int, timestamp: int):
+        await self.redis_client.hset("last_post_times", str(user_id), str(timestamp))
 
-    async def delete_inactivity_ban_start(self, user_id: int):
-        """Elimina el registro de inicio de baneo por inactividad."""
-        await asyncio.to_thread(self.r.delete, f"inactivity_ban_start:{user_id}")
+    async def get_last_post_time(self, user_id: int) -> int | None:
+        timestamp = await self.redis_client.hget("last_post_times", str(user_id))
+        return int(timestamp) if timestamp else None
 
-    # --- NUEVOS MÉTODOS PARA PRÓRROGAS ---
-    async def get_inactivity_extension_end(self, user_id: int) -> float:
-        """Obtiene el timestamp del fin de la prórroga de inactividad."""
-        timestamp = await asyncio.to_thread(self.r.get, f"inactivity_extension_end:{user_id}")
-        return float(timestamp) if timestamp else 0.0
+    async def get_all_last_post_times(self) -> dict:
+        data = await self.redis_client.hgetall("last_post_times")
+        return {int(uid): int(ts) for uid, ts in data.items()}
 
-    async def set_inactivity_extension_end(self, user_id: int, timestamp: float):
-        """Establece el timestamp del fin de la prórroga de inactividad."""
-        await asyncio.to_thread(self.r.set, f"inactivity_extension_end:{user_id}", timestamp)
+    async def remove_last_post_time(self, user_id: int):
+        await self.redis_client.hdel("last_post_times", str(user_id))
 
-    async def delete_inactivity_extension_end(self, user_id: int):
-        """Elimina el registro de fin de prórroga."""
-        await asyncio.to_thread(self.r.delete, f"inactivity_extension_end:{user_id}")
+    # Métodos para la gestión de faltas
+    async def get_fault_card_message_id(self, user_id: int) -> int | None:
+        """Obtiene el ID del mensaje de la tarjeta de faltas de un usuario."""
+        message_id = await self.redis_client.hget("fault_card_messages", str(user_id))
+        return int(message_id) if message_id else None
 
-    async def get_last_proroga_reason(self, user_id: int) -> str:
-        """Obtiene la última razón de prórroga del usuario."""
-        return await asyncio.to_thread(self.r.get, f"last_proroga_reason:{user_id}") or "No especificada"
+    async def set_fault_card_message_id(self, user_id: int, message_id: int):
+        """Guarda el ID del mensaje de la tarjeta de faltas de un usuario."""
+        await self.redis_client.hset("fault_card_messages", str(user_id), str(message_id))
 
-    async def set_last_proroga_reason(self, user_id: int, reason: str):
-        """Establece la última razón de prórroga del usuario."""
-        await asyncio.to_thread(self.r.set, f"last_proroga_reason:{user_id}", reason)
+    async def remove_fault_card_message_id(self, user_id: int):
+        """Elimina el ID del mensaje de la tarjeta de faltas de un usuario."""
+        await self.redis_client.hdel("fault_card_messages", str(user_id))
 
-    # --- NUEVOS MÉTODOS PARA TARJETAS DE FALTAS DINÁMICAS ---
-    async def get_user_fault_card_message_id(self, user_id: int) -> int:
-        """Obtiene el ID del mensaje de la tarjeta de faltas del usuario en #faltas."""
-        msg_id = await asyncio.to_thread(self.r.get, f"faltas:user_card_message_id:{user_id}")
-        return int(msg_id) if msg_id else None
+    async def get_all_fault_card_message_ids(self) -> dict:
+        """Obtiene todos los IDs de mensajes de tarjetas de faltas."""
+        data = await self.redis_client.hgetall("fault_card_messages")
+        return {int(uid): int(mid) for uid, mid in data.items()}
 
-    async def set_user_fault_card_message_id(self, user_id: int, message_id: int):
-        """Establece el ID del mensaje de la tarjeta de faltas del usuario."""
-        await asyncio.to_thread(self.r.set, f"faltas:user_card_message_id:{user_id}", message_id)
+    # Métodos para la gestión de prórrogas
+    async def set_proroga_info(self, user_id: int, end_timestamp: int, reason: str, aproved_by_id: int, message_id: int):
+        """Guarda la información de una prórroga para un usuario."""
+        proroga_data = {
+            "end_timestamp": end_timestamp,
+            "reason": reason,
+            "aproved_by_id": aproved_by_id,
+            "message_id": message_id # ID del mensaje de solicitud de prórroga
+        }
+        await self.redis_client.set(f"proroga:{user_id}", json.dumps(proroga_data))
 
-    async def delete_user_fault_card_message_id(self, user_id: int):
-        """Elimina el ID del mensaje de la tarjeta de faltas del usuario."""
-        await asyncio.to_thread(self.r.delete, f"faltas:user_card_message_id:{user_id}")
+    async def get_proroga_info(self, user_id: int) -> dict | None:
+        """Obtiene la información de la prórroga de un usuario."""
+        data = await self.redis_client.get(f"proroga:{user_id}")
+        return json.loads(data) if data else None
 
-    async def get_all_fault_card_message_ids(self) -> dict[str, str]:
-        """Obtiene todos los mapeos de user_id a message_id de las tarjetas de faltas."""
-        keys = await asyncio.to_thread(self.r.keys, "faltas:user_card_message_id:*")
-        # Extract user_id from keys, e.g., "faltas:user_card_message_id:123" -> "123"
-        return {k.split(':')[-1]: await asyncio.to_thread(self.r.get, k) for k in keys}
+    async def delete_proroga_info(self, user_id: int):
+        """Elimina la información de la prórroga de un usuario."""
+        await self.redis_client.delete(f"proroga:{user_id}")
 
-    async def clear_all_fault_card_message_ids(self):
-        """Elimina todas las entradas de tarjetas de faltas de Redis."""
-        keys = await asyncio.to_thread(self.r.keys, "faltas:user_card_message_id:*")
-        if keys:
-            await asyncio.to_thread(self.r.delete, *keys)
+    async def get_all_proroga_infos(self) -> dict:
+        """Obtiene la información de todas las prórrogas activas."""
+        # Esto requiere escanear claves, lo cual puede ser costoso en bases de datos grandes
+        # Para Railway, que gestiona claves por prefijo, esto es común.
+        prorogas = {}
+        async for key in self.redis_client.scan_iter("proroga:*"):
+            user_id = int(key.split(":")[1])
+            data = await self.redis_client.get(key)
+            if data:
+                prorogas[user_id] = json.loads(data)
+        return prorogas
 
-    # --- NUEVO MÉTODO PARA MENSAJE PRINCIPAL DE SOPORTE ---
-    async def get_soporte_menu_message_id(self) -> int:
-        """Obtiene el ID del mensaje del menú de soporte en #soporte."""
-        msg_id = await asyncio.to_thread(self.r.get, "soporte:menu_message_id")
-        return int(msg_id) if msg_id else None
+    async def set_last_panel_update_time(self, timestamp: int):
+        """Guarda el último timestamp de actualización del panel de faltas."""
+        await self.redis_client.set("last_panel_update_time", str(timestamp))
 
-    async def set_soporte_menu_message_id(self, message_id: int):
-        """Establece el ID del mensaje del menú de soporte en #soporte."""
-        await asyncio.to_thread(self.r.set, "soporte:menu_message_id", message_id)
-
-    # --- NUEVO MÉTODO PARA MENSAJE PRINCIPAL DE FALTAS ---
-    async def get_faltas_panel_message_id(self) -> int:
-        """Obtiene el ID del mensaje del panel de faltas en #faltas."""
-        msg_id = await asyncio.to_thread(self.r.get, "faltas:panel_message_id")
-        return int(msg_id) if msg_id else None
-
-    async def set_faltas_panel_message_id(self, message_id: int):
-        """Establece el ID del mensaje del panel de faltas en #faltas."""
-        await asyncio.to_thread(self.r.set, "faltas:panel_message_id", message_id)
+    async def get_last_panel_update_time(self) -> int | None:
+        """Obtiene el último timestamp de actualización del panel de faltas."""
+        timestamp = await self.redis_client.get("last_panel_update_time")
+        return int(timestamp) if timestamp else None
