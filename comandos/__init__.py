@@ -1,12 +1,13 @@
-async def setup(bot):
-    extensiones = [
-        "comandos.estado",
-        "comandos.estadisticas"
-    ]
+# comandos/__init__.py
 
-    for ext in extensiones:
-        try:
-            await bot.load_extension(ext)
-            print(f"✅ Comando cargado: {ext}")
-        except Exception as e:
-            print(f"❌ Error al cargar {ext}: {type(e).__name__}: {e}")
+import os
+from discord.ext import commands
+
+async def setup(bot: commands.Bot):
+    from .estado import setup as setup_estado
+    from .estadisticas import setup as setup_estadisticas
+
+    await setup_estado(bot)
+    await setup_estadisticas(bot)
+
+    print("✅ Comandos /estado y /estadisticas registrados.")
