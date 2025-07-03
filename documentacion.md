@@ -1,6 +1,6 @@
 # 📘 DOCUMENTACIÓN TÉCNICA — VXbot
 
-Este documento resume las funcionalidades implementadas en **VXbot**, infraestructura, automatizaciones, comandos activos y memoria técnica para moderadores/desarrolladores.
+Este documento resume las funcionalidades implementadas en **VXbot**, la infraestructura utilizada, automatizaciones, comandos activos y memoria técnica para moderadores/desarrolladores.
 
 ---
 
@@ -9,17 +9,17 @@ Este documento resume las funcionalidades implementadas en **VXbot**, infraestru
 - **Lenguaje**: Python 3.10+
 - **Librería principal**: `discord.py v2.3.2`
 - **Base de datos**: Redis (`redis==5.0.1`)
-- **Deploy**: Railway (plan pago, siempre activo)
-- **Gestión de secretos**: Variables de entorno (Railway)
+- **Deploy**: Railway (plan pago, always-on)
+- **Gestión de secretos**: Variables de entorno en Railway
 - **Estructura**: Modular (`canales/`, `comandos/`, `mensajes/`)
-- **Persistencia total**: Redis, nunca se pierde historial ni estado
+- **Persistencia total**: Redis (historial y estado nunca se pierden)
 
 ---
 
 ## 🧩 Funciones implementadas
 
 ### ✅ Canal `#👋preséntate`
-- Mensaje de bienvenida visual, profesional y educativo
+- Mensaje de bienvenida profesional y educativo (embed)
 - Menú con enlaces directos a:
   - 📖 `#guías`
   - ✅ `#normas-generales`
@@ -40,7 +40,7 @@ Este documento resume las funcionalidades implementadas en **VXbot**, infraestru
 
 ### ✅ Canal `#📤faltas` (Panel público de reputación)
 - Un mensaje profesional por miembro (foto de perfil, estado, faltas, fecha/hora)
-- No hay duplicados: si ya existe, se edita; si no, se crea; si expulsado, se borra
+- Sin duplicados: si ya existe, se edita; si no, se crea; si expulsado, se borra
 - Panel 100% sincronizado con el servidor al iniciar o reiniciar el bot
 
 ---
@@ -58,13 +58,13 @@ Este documento resume las funcionalidades implementadas en **VXbot**, infraestru
 ### ✅ Sistema de Faltas y Consultas
 - Comandos `/estado` y `/estadisticas`:
   - **/estado**: cualquier usuario, muestra sus faltas, estado y advertencias
-  - **/estadisticas**: solo admins, muestra totales de miembros, baneados, expulsados
+  - **/estadisticas**: solo admins/mods, muestra totales de miembros, baneados, expulsados
 
 ---
 
 ### ✅ Sistema de Baneo y Expulsión por Inactividad (100% automático)
 - Si un usuario pasa **3 días sin publicar** en `#🧵go-viral`:
-  - Recibe **baneo automático** por 7 días (DM y log)
+  - **Baneo automático** por 7 días (DM y log)
 - Si reincide después del baneo:
   - **Expulsión permanente** (DM y log)
 - Todos los eventos quedan en logs y se publican avisos en los canales correspondientes
@@ -72,10 +72,25 @@ Este documento resume las funcionalidades implementadas en **VXbot**, infraestru
 ---
 
 ### ✅ Sistema de Prórrogas de Inactividad
-- **Usuarios normales**: Pueden pedir prórroga de hasta 7 días enviando un mensaje en `#👨🔧soporte`
+- **Usuarios normales**: pueden pedir prórroga de hasta 7 días enviando un mensaje en `#👨🔧soporte`
   - El bot concede prórroga automáticamente, borra el mensaje y envía confirmación por DM/canal
-- **Admins/Mods**: Pueden dar prórrogas ilimitadas vía comando `/prorroga` en `#💻comandos`
+- **Admins/Mods**: pueden dar prórrogas ilimitadas vía comando `/prorroga` en `#💻comandos`
   - Mensaje de confirmación en canal y por DM
+
+---
+
+### ✅ Canal `#🧵go-viral` (automatizado y educativo)
+- **Embed informativo fijo**: explica todas las reglas y funcionamiento, con imagen/logo y pie profesional
+- **Mensaje de bienvenida personalizado** (embed, solo la 1ª vez)
+- **Validaciones automáticas en cada publicación:**
+  - Corrige automáticamente enlaces mal formateados y publica como el usuario
+  - Notifica por DM y en canal (educativo, embed)
+  - Verifica que se reaccione con 👍 en 2 minutos o elimina y notifica
+  - Bloquea publicar si no hay 2 posts válidos de otros miembros tras la última publicación del usuario
+  - Requiere haber apoyado (🔥) a los 9 anteriores antes de permitir una nueva publicación
+  - Notificaciones educativas siempre en embed (profesional) y por DM
+- **Todos los textos y embeds** se editan centralizados desde `/mensajes/viral_texto.py`
+- Memoria persistente de quién ya recibió bienvenida
 
 ---
 
@@ -99,9 +114,10 @@ Este documento resume las funcionalidades implementadas en **VXbot**, infraestru
 
 - IDs y claves gestionadas solo por variables de entorno
 - Toda la lógica (por canal/comando) separada de los textos/avisos (`mensajes/`)
-- Todos los canales críticos (normas, comandos, faltas) protegidos: solo el bot publica o responde
+- Todos los canales críticos (normas, comandos, faltas, viral) protegidos: solo el bot publica o responde
 - Actualizaciones y mejoras no afectan lo ya funcional gracias al diseño modular
 - Panel de faltas y reputación siempre actualizado, sin duplicados ni pérdidas
+- Sistema de automatización en `#🧵go-viral` está 100% centralizado y editable
 
 ---
 
@@ -110,7 +126,7 @@ Este documento resume las funcionalidades implementadas en **VXbot**, infraestru
 - Módulo para automatizar soporte avanzado
 - Integración con panel web o dashboard de reputación
 - Registro ampliado en `#📝logs` y más comandos administrativos
-- Automatización avanzada de publicaciones en `#🧵go-viral`
+- Automatización avanzada de publicaciones y anti-spam en `#🧵go-viral`
 
 ---
 
