@@ -27,14 +27,17 @@ async def on_ready():
         except Exception as e:
             print(f"❌ Error al cargar {ext}: {e}")
 
-    # 🟡 Sincronizar comandos después de cargar los módulos
     try:
         synced = await bot.tree.sync()
         print(f"🔁 {len(synced)} comandos sincronizados.")
     except Exception as e:
         print(f"❌ Error al sincronizar comandos: {e}")
 
-# Iniciar el bot
-if __name__ == "__main__":
-    TOKEN = os.getenv("DISCORD_TOKEN")
+    # 🛡️ Previene apagado automático
+    while True:
+        await asyncio.sleep(60)
+        print(\"⏳ Bot sigue vivo...\")
+
+if __name__ == \"__main__\":
+    TOKEN = os.getenv(\"DISCORD_TOKEN\")
     asyncio.run(bot.start(TOKEN))
