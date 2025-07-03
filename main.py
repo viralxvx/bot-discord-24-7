@@ -13,7 +13,7 @@ EXTENSIONES = [
     "canales.presentate",
     "canales.normas_generales",
     "canales.faltas",
-    "comandos"  # Este módulo cargará estado.py y estadisticas.py
+    "comandos"  # Contiene estado y estadisticas
 ]
 
 @bot.event
@@ -33,10 +33,6 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Error al sincronizar comandos: {e}")
 
-    while True:
-        await asyncio.sleep(60)
-        print("⏳ Bot sigue vivo...")
-
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -47,6 +43,12 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-if __name__ == "__main__":
+# 🔁 Mantenemos el bot vivo con loop eterno fuera del bot
+async def main():
     TOKEN = os.getenv("DISCORD_TOKEN")
-    asyncio.run(bot.start(TOKEN))
+    async with bot:
+        await bot.start(TOKEN)
+
+# ✅ Ejecutamos el bot
+if __name__ == "__main__":
+    asyncio.run(main())
