@@ -16,6 +16,7 @@ EXTENSIONES = [
     "canales.faltas",
     "canales.comandos",   # ← para configurar el canal 💻comandos
     "canales.inactividad",    # ← AGREGA ESTA LÍNEA
+    "canales.soporte_prorroga",  # <-- aquí
     "comandos.prorroga",    # ← NUEVO comando aquí
     "comandos",           # ← para registrar /estado y /estadisticas
 ]
