@@ -41,3 +41,14 @@ async def on_ready():
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
     asyncio.run(bot.start(TOKEN))
+    
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    if message.content.lower() == "hola bot":
+        await message.channel.send("👋 ¡Hola, soy VXbot y estoy vivo!")
+
+    await bot.process_commands(message)
+
