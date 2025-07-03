@@ -118,3 +118,26 @@ class Comandos(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Comandos(bot))
+
+@bot.event
+async def on_ready():
+    canal = bot.get_channel(1390164280959303831)
+    if canal:
+        mensajes = [msg async for msg in canal.history(limit=20)]
+        ya_publicado = any("📌 **Comandos disponibles**" in msg.content for msg in mensajes if msg.author == bot.user)
+
+        if not ya_publicado:
+            try:
+                await canal.send(
+                    "**📌 COMANDOS DISPONIBLES EN ESTE CANAL**\n\n"
+                    "➡️ `/estado`: Consulta tu estado actual (faltas, sanciones, situación).\n"
+                    "➡️ `/estadísticas`: Muestra estadísticas generales del servidor.\n\n"
+                    "⚠️ Solo los administradores pueden usar `/estadísticas`.\n"
+                    "⏳ Las respuestas aquí durarán 10 minutos y también serán enviadas por DM."
+                )
+                print("✅ Instrucciones de comandos publicadas en el canal 💻comandos.")
+            except Exception as e:
+                print(f"❌ Error al enviar instrucciones: {e}")
+    else:
+        print("❌ No se encontró el canal de comandos.")
+
