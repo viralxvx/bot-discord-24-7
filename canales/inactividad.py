@@ -93,5 +93,6 @@ class Inactividad(commands.Cog):
 
         print("✅ [INACTIVIDAD] Verificación automática completada.")
 
-def setup(bot):
-    bot.add_cog(Inactividad(bot))
+async def setup(bot):
+    await bot.add_cog(Inactividad(bot))
+
