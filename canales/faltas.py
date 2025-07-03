@@ -32,12 +32,8 @@ class Faltas(commands.Cog):
 
     async def reconstruir_panel_publico(self, canal):
         print("📊 Reconstruyendo panel público de faltas...")
-        keys = await self.redis.keys("faltas:*")
-        usuarios = set(k.split(":")[1] for k in keys if k.count(":") == 1)
-
-        for user_id in usuarios:
-            miembro = canal.guild.get_member(int(user_id))
-            if not miembro:
+        for miembro in canal.guild.members:
+            if miembro.bot:
                 continue
             await self.publicar_o_actualizar_usuario(canal, miembro)
         print("✅ Panel público actualizado.")
@@ -68,6 +64,24 @@ class Faltas(commands.Cog):
             self.mensajes_panel[user_id] = mensaje.id
         except Exception as e:
             print(f"❌ Error al publicar registro público para {miembro.display_name}: {e}")
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        canal = self.bot.get_channel(CANAL_FALTAS_ID)
+        if canal:
+            await self.publicar_o_actualizar_usuario(canal, member)
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member):
+        canal = self.bot.get_channel(CANAL_FALTAS_ID)
+        user_id = str(member.id)
+        if user_id in self.mensajes_panel:
+            try:
+                msg = await canal.fetch_message(self.mensajes_panel[user_id])
+                await msg.delete()
+                print(f"🗑️ Mensaje eliminado para {member.display_name} tras salir del servidor.")
+            except Exception as e:
+                print(f"❌ No se pudo eliminar mensaje de {member.display_name}: {e}")
 
 async def setup(bot):
     await bot.add_cog(Faltas(bot))
