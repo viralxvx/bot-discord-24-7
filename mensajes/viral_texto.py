@@ -52,3 +52,19 @@ MENSAJE_BIENVENIDA_NUEVO = (
     "![Logo](https://drive.google.com/uc?export=view&id=1KQTwE3IazBixpiF5vHa3eSTZoKYZUNd9)\n"
     "*Mensaje automatizado por VXbot*"
 )
+
+NOTIFICACION_URL_EDUCATIVA = (
+    "⚠️ Tu enlace tenía un formato incorrecto y ha sido corregido automáticamente por el sistema. "
+    "Asegúrate de publicar solo enlaces limpios como:\n"
+    "`https://x.com/usuario/status/1234567890`\n"
+    "Practica el formato correcto para evitar sanciones en el futuro."
+)
+
+NOTIFICACION_URL_DM = (
+    "📬 Hola, {usuario}. Tu última publicación en #🧵go-viral fue corregida automáticamente "
+    "porque el enlace no tenía el formato correcto. Recuerda que solo se permite el formato limpio:\n"
+    "`https://x.com/usuario/status/1234567890`\n"
+    "Esta vez fue solo educativo, pero la próxima vez podría considerarse una falta.\n"
+    "¡Gracias por tu atención! — VXbot"
+)
+
