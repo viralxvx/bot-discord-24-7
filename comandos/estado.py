@@ -1,37 +1,34 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-import os
-import redis.asyncio as redis
+from config import CANAL_COMANDOS_ID
 from mensajes.comandos_texto import generar_embed_estado
-from config import CANAL_COMANDOS
 
-r = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
-
-class EstadoCommand(commands.Cog):
+class Estado(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="estado", description="Consulta tu estado actual en el sistema.")
+    @app_commands.command(name="estado", description="Consulta tu estado actual en el sistema de faltas.")
     async def estado(self, interaction: discord.Interaction):
-        if interaction.channel.id != CANAL_COMANDOS:
-            return await interaction.response.send_message("Este comando solo puede usarse en el canal de comandos.", ephemeral=True)
+        if interaction.channel.id != CANAL_COMANDOS_ID:
+            await interaction.response.send_message(
+                "❌ Este comando solo puede usarse en el canal autorizado.",
+                ephemeral=True
+            )
+            return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=False)
+        embed = await generar_embed_estado(interaction.user.id, self.bot)
 
-        user_id = str(interaction.user.id)
-        data = await r.hgetall(f"faltas:{user_id}")
-
-        embed = generar_embed_estado(interaction.user, data)
-
-        # Respuesta en canal (temporal)
-        await interaction.followup.send(embed=embed, ephemeral=False, delete_after=600)
-
-        # Enviar por DM también
         try:
             await interaction.user.send(embed=embed)
         except discord.Forbidden:
-            print(f"❌ No se pudo enviar DM a {interaction.user}")
+            await interaction.followup.send("⚠️ No pude enviarte un DM. Verifica tu configuración de privacidad.")
+            return
+
+        msg = await interaction.followup.send("📬 ¡Revisa tu DM! Te envié tu estado.", ephemeral=False)
+        await discord.utils.sleep_until(discord.utils.utcnow() + discord.utils.timedelta(minutes=10))
+        await msg.delete()
 
 async def setup(bot):
-    await bot.add_cog(EstadoCommand(bot))
+    await bot.add_cog(Estado(bot))
