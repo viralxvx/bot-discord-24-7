@@ -4,8 +4,9 @@ import os
 import asyncio
 
 intents = discord.Intents.default()
-intents.members = True
 intents.message_content = True
+intents.members = True
+intents.guilds = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -13,7 +14,7 @@ EXTENSIONES = [
     "canales.presentate",
     "canales.normas_generales",
     "canales.faltas",
-    "canales.comandos",  # Este carga todos los comandos
+    "canales.comandos",  # Este módulo también carga los comandos
 ]
 
 @bot.event
@@ -33,13 +34,10 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Error al sincronizar comandos: {e}")
 
+    # 🛡️ Previene que Railway apague el bot por inactividad
     while True:
         await asyncio.sleep(60)
         print("⏳ Bot sigue vivo...")
-
-if __name__ == "__main__":
-    TOKEN = os.getenv("DISCORD_TOKEN")
-    asyncio.run(bot.start(TOKEN))
 
 @bot.event
 async def on_message(message):
@@ -50,3 +48,7 @@ async def on_message(message):
         await message.channel.send("👋 ¡Hola, soy VXbot y estoy vivo!")
 
     await bot.process_commands(message)
+
+if __name__ == "__main__":
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    asyncio.run(bot.start(TOKEN))
