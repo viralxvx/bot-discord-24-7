@@ -13,7 +13,7 @@ EXTENSIONES = [
     "canales.presentate",
     "canales.normas_generales",
     "canales.faltas",
-    "comandos.estado"
+    # "comandos.estado"  ← comenta o elimina esta línea
 ]
 
 @bot.event
