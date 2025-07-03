@@ -1,56 +1,37 @@
-# comandos/estado.py
-
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks
+from discord.ext import commands
 import os
-import redis
-import json
-from comandos.mensajes import ERROR_DM
-from datetime import datetime, timedelta
+import redis.asyncio as redis
+from mensajes.comandos_texto import generar_embed_estado
+from config import CANAL_COMANDOS
 
-CANAL_COMANDOS = int(os.getenv("CANAL_COMANDOS"))
-REDIS_URL = os.getenv("REDIS_URL")
+r = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 
-r = redis.Redis.from_url(REDIS_URL, decode_responses=True)
-
-class Estado(commands.Cog):
+class EstadoCommand(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="estado", description="Consulta tu estado actual en el sistema de faltas.")
+    @app_commands.command(name="estado", description="Consulta tu estado actual en el sistema.")
     async def estado(self, interaction: discord.Interaction):
         if interaction.channel.id != CANAL_COMANDOS:
-            await interaction.response.send_message(
-                "❌ Este comando solo puede utilizarse en el canal autorizado.", ephemeral=True
-            )
-            return
+            return await interaction.response.send_message("Este comando solo puede usarse en el canal de comandos.", ephemeral=True)
 
-        user = interaction.user
-        user_id = str(user.id)
-        datos = r.get(f"faltas:{user_id}")
-        datos_usuario = json.loads(datos) if datos else {}
+        await interaction.response.defer(ephemeral=True)
 
-        # Construimos embed
-        embed = discord.Embed(
-            title="📋 Estado del Usuario",
-            description=f"Información para: {user.mention}",
-            color=discord.Color.orange()
-        )
-        embed.add_field(name="Faltas Totales", value=str(datos_usuario.get("total_faltas", 0)), inline=True)
-        embed.add_field(name="Faltas Este Mes", value=str(datos_usuario.get("faltas_mes", 0)), inline=True)
-        embed.add_field(name="Estado", value=datos_usuario.get("estado", "Activo"), inline=True)
-        embed.add_field(name="Última Falta", value=datos_usuario.get("ultima_falta", "N/A"), inline=True)
-        embed.set_footer(text="VXbot • Sistema de Faltas")
+        user_id = str(interaction.user.id)
+        data = await r.hgetall(f"faltas:{user_id}")
 
-        # Enviar respuesta pública en el canal
-        await interaction.response.send_message(embed=embed, delete_after=600)
+        embed = generar_embed_estado(interaction.user, data)
 
-        # Enviar por DM
+        # Respuesta en canal (temporal)
+        await interaction.followup.send(embed=embed, ephemeral=False, delete_after=600)
+
+        # Enviar por DM también
         try:
-            await user.send(embed=embed)
+            await interaction.user.send(embed=embed)
         except discord.Forbidden:
-            await interaction.followup.send(ERROR_DM, ephemeral=True)
+            print(f"❌ No se pudo enviar DM a {interaction.user}")
 
 async def setup(bot):
-    await bot.add_cog(Estado(bot))
+    await bot.add_cog(EstadoCommand(bot))
