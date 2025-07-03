@@ -5,7 +5,7 @@ import asyncio
 import redis
 from datetime import datetime, timedelta, timezone
 from config import CANAL_OBJETIVO_ID, REDIS_URL, CANAL_FALTAS_ID, CANAL_LOGS_ID
-from mensajes.inactividad_texto import AVISO_BANEO, AVISO_EXPULSION
+from mensajes.inactividad_texto import AVISO_BANEO, AVISO_EXPULSION, PRORROGA_CONCEDIDA
 
 DIAS_LIMITE_INACTIVIDAD = 3
 DURACION_BANEO_DIAS = 7
@@ -60,6 +60,16 @@ class Inactividad(commands.Cog):
                 key_actividad = f"inactividad:{user_id}"
                 key_ban = f"inactividad:ban:{user_id}"
                 key_expulsado = f"inactividad:expulsado:{user_id}"
+                key_prorroga = f"inactividad:prorroga:{user_id}"
+
+                # 1. PRÓRROGA: ¿está en periodo de prórroga?
+                prorroga_iso = self.redis.get(key_prorroga)
+                if prorroga_iso:
+                    fecha_prorroga = datetime.fromisoformat(prorroga_iso)
+                    ahora = datetime.now(timezone.utc)
+                    if ahora < fecha_prorroga:
+                        print(f"⏳ [INACTIVIDAD] {member.display_name} ({user_id}) está en prórroga hasta {fecha_prorroga}. No se sanciona.")
+                        continue  # No sancionar ni banear ni expulsar
 
                 ultima_fecha_iso = self.redis.get(key_actividad)
                 if not ultima_fecha_iso:
@@ -77,8 +87,6 @@ class Inactividad(commands.Cog):
                 fecha_ban_iso = self.redis.get(key_ban)
                 if fecha_ban_iso:
                     fecha_ban = datetime.fromisoformat(fecha_ban_iso)
-                    # Si ya pasaron los 7 días del baneo, puede volver al servidor (debe hacerlo manual)
-                    # Si vuelve y reincide, expulsar
                     if dias_inactivo >= DIAS_LIMITE_INACTIVIDAD:
                         try:
                             await guild.kick(member, reason="Expulsión automática: reincidencia por inactividad")
