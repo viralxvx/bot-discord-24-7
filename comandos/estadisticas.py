@@ -8,34 +8,28 @@ class Estadisticas(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="estadisticas", description="Estadísticas generales del sistema de faltas.")
+    @app_commands.command(name="estadisticas", description="(Solo admins) Estadísticas del servidor.")
     async def estadisticas(self, interaction: discord.Interaction):
         if interaction.channel.id != CANAL_COMANDOS_ID:
-            await interaction.response.send_message(
-                "❌ Este comando solo puede usarse en el canal autorizado.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("❌ Este comando solo puede usarse en el canal 💻comandos.", ephemeral=True)
             return
 
-        if interaction.user.id != int(ADMIN_ID) and not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message(
-                "⛔ Solo administradores pueden usar este comando.",
-                ephemeral=True
-            )
+        if interaction.user.id != int(ADMIN_ID):
+            await interaction.response.send_message("❌ No tienes permiso para usar este comando.", ephemeral=True)
             return
 
-        await interaction.response.defer(ephemeral=False)
-        embed = await generar_embed_estadisticas(self.bot)
+        await interaction.response.defer(thinking=True)
 
+        embed = await generar_embed_estadisticas(interaction.guild)
+
+        # Enviar en canal
+        await interaction.followup.send(embed=embed, delete_after=600)
+
+        # Enviar por DM
         try:
             await interaction.user.send(embed=embed)
-        except discord.Forbidden:
-            await interaction.followup.send("⚠️ No pude enviarte un DM. Verifica tu configuración de privacidad.")
-            return
-
-        msg = await interaction.followup.send("📊 Estadísticas enviadas por DM.", ephemeral=False)
-        await discord.utils.sleep_until(discord.utils.utcnow() + discord.utils.timedelta(minutes=10))
-        await msg.delete()
+        except:
+            print(f"❌ No se pudo enviar el DM a {interaction.user.name}.")
 
 async def setup(bot):
     await bot.add_cog(Estadisticas(bot))
