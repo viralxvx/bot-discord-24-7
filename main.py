@@ -6,7 +6,6 @@ import asyncio
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
-intents.guilds = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -14,7 +13,7 @@ EXTENSIONES = [
     "canales.presentate",
     "canales.normas_generales",
     "canales.faltas",
-    "comandos",  # aquí se carga todo lo de comandos.py
+    "canales.comandos",  # Este carga todos los comandos
 ]
 
 @bot.event
@@ -34,7 +33,6 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Error al sincronizar comandos: {e}")
 
-    # 🛡️ Previene que Railway apague el bot por inactividad
     while True:
         await asyncio.sleep(60)
         print("⏳ Bot sigue vivo...")
