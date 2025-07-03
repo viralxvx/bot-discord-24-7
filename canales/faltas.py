@@ -1,11 +1,10 @@
 import discord
 from discord.ext import commands
 import os
-import asyncio
-from config import CANAL_FALTAS_ID, REDIS_URL
 import redis
-from datetime import datetime
 import pytz
+from datetime import datetime
+from config import CANAL_FALTAS_ID, REDIS_URL
 
 class Faltas(commands.Cog):
     def __init__(self, bot):
@@ -23,59 +22,67 @@ class Faltas(commands.Cog):
             return
 
         print("🔍 Cargando mensajes existentes del canal #📤faltas...")
-        mensajes_existentes = [m async for m in canal.history(limit=None)]
-        mensajes_por_usuario = {}
+        try:
+            mensajes_actuales = [m async for m in canal.history(limit=None) if not m.author.bot or m.embeds]
+            registros = {}
 
-        for mensaje in mensajes_existentes:
-            if mensaje.author != self.bot.user or not mensaje.embeds:
-                continue
-            embed = mensaje.embeds[0]
-            if embed.title and embed.title.startswith("📤 REGISTRO DE"):
-                usuario_mencion = embed.title.replace("📤 REGISTRO DE ", "").strip()
-                mensajes_por_usuario[usuario_mencion] = mensaje
+            for mensaje in mensajes_actuales:
+                if mensaje.embeds:
+                    embed = mensaje.embeds[0]
+                    titulo = embed.title
+                    if titulo and titulo.startswith("📤 REGISTRO DE"):
+                        user_mention = titulo.split("📤 REGISTRO DE ")[1].strip()
+                        registros[user_mention] = mensaje
+
+        except Exception as e:
+            print(f"❌ Error al leer mensajes del canal: {e}")
+            return
 
         print("♻️ Sincronizando mensajes por miembro...")
-        miembros_actuales = [m for m in canal.guild.members if not m.bot]
-        usuarios_actuales = set()
+        try:
+            guild = canal.guild
+            total = 0
+            for miembro in guild.members:
+                if miembro.bot:
+                    continue
 
-        for miembro in miembros_actuales:
-            usuarios_actuales.add(miembro.mention)
-            mensaje_existente = mensajes_por_usuario.get(miembro.mention)
-            embed = self.crear_embed_usuario(miembro)
+                user_mention = f"{miembro.mention}"
+                embed = self.generar_embed_faltas(miembro)
+                avatar = miembro.display_avatar.url
 
-            if mensaje_existente:
-                try:
-                    await mensaje_existente.edit(embed=embed)
-                except Exception as e:
-                    print(f"❌ Error al editar mensaje de {miembro.display_name}: {e}")
-            else:
-                try:
-                    await canal.send(embed=embed)
-                except Exception as e:
-                    print(f"❌ Error al crear mensaje de {miembro.display_name}: {e}")
+                if user_mention in registros:
+                    try:
+                        await registros[user_mention].edit(embed=embed, avatar_url=avatar)
+                    except Exception as e:
+                        print(f"❌ Error al editar mensaje de {miembro.display_name}: {e}")
+                else:
+                    try:
+                        await canal.send(embed=embed, avatar_url=avatar)
+                    except Exception as e:
+                        print(f"❌ Error al enviar mensaje para {miembro.display_name}: {e}")
+                total += 1
 
-        print("🧹 Eliminando mensajes sobrantes...")
-        for usuario_mencion, mensaje in mensajes_por_usuario.items():
-            if usuario_mencion not in usuarios_actuales:
-                try:
-                    await mensaje.delete()
-                except Exception as e:
-                    print(f"❌ Error al borrar mensaje sobrante: {e}")
+            print(f"✅ Panel público actualizado. Total miembros sincronizados: {total}")
 
-        print("✅ Panel público actualizado.")
+        except Exception as e:
+            print(f"❌ Error al reconstruir el panel: {e}")
 
-    def crear_embed_usuario(self, miembro):
-        tz = pytz.timezone("America/Santo_Domingo")
-        ahora = datetime.now(tz)
-        fecha_hora = ahora.strftime("%A a las %H:%M").capitalize()
+    def generar_embed_faltas(self, miembro):
+        ahora = datetime.now(pytz.timezone("America/Santo_Domingo"))
+        timestamp = ahora.strftime("%A %H:%M").capitalize()
 
-        embed = discord.Embed(title=f"📤 REGISTRO DE {miembro.mention}", color=discord.Color.orange())
+        embed = discord.Embed(
+            title=f"📤 REGISTRO DE {miembro.mention}",
+            description=(
+                f"**Estado actual:** Activo\n"
+                f"**Total de faltas:** 0\n"
+                f"**Faltas este mes:** 0"
+            ),
+            color=discord.Color.orange()
+        )
         embed.set_author(name=miembro.display_name, icon_url=miembro.display_avatar.url)
-        embed.add_field(name="Estado actual", value="Activo", inline=False)
-        embed.add_field(name="Total de faltas", value="0", inline=True)
-        embed.add_field(name="Faltas este mes", value="0", inline=True)
-        embed.set_footer(text=f"Sistema automatizado de reputación pública • {fecha_hora}")
+        embed.set_footer(text=f"Sistema automatizado de reputación pública • {timestamp}")
         return embed
 
-def setup(bot):
-    bot.add_cog(Faltas(bot))
+async def setup(bot):
+    await bot.add_cog(Faltas(bot))
