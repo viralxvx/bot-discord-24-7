@@ -1,14 +1,13 @@
 import discord
-from discord import app_commands
 from discord.ext import commands
+from discord import app_commands
 
-class Estado(commands.Cog):
-    def __init__(self, bot):
-        self.bot = bot
+async def estado(interaction: discord.Interaction):
+    await interaction.response.send_message("✅ El comando básico está funcionando.")
 
-    @app_commands.command(name="estado", description="Comando de prueba temporal")
-    async def estado(self, interaction: discord.Interaction):
-        await interaction.response.send_message("✅ El comando `/estado` está funcionando correctamente.")
-
-async def setup(bot):
-    await bot.add_cog(Estado(bot))
+def setup(bot):
+    bot.tree.add_command(app_commands.Command(
+        name="estado",
+        description="Test directo sin clase",
+        callback=estado
+    ))
