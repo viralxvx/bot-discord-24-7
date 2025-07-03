@@ -5,14 +5,11 @@ from mensajes.viral_texto import (
     MENSAJE_FIJO,
     MENSAJE_BIENVENIDA_NUEVO,
     NOTIFICACION_URL_EDUCATIVA,
-    NOTIFICACION_URL_DM,
-    NOTIFICACION_SIN_LIKE_EDUCATIVA,
-    NOTIFICACION_SIN_LIKE_DM
+    NOTIFICACION_URL_DM
 )
 from datetime import datetime
 import redis
 import re
-import asyncio
 
 class GoViral(commands.Cog):
     def __init__(self, bot):
@@ -49,7 +46,7 @@ class GoViral(commands.Cog):
         user_id = str(message.author.id)
         key_bienvenida = f"go_viral:bienvenida:{user_id}"
 
-        # Bienvenida solo la primera vez
+        # Envío de bienvenida SOLO si no se ha enviado antes
         if not self.redis.get(key_bienvenida):
             self.redis.set(key_bienvenida, "1")
             try:
@@ -62,94 +59,40 @@ class GoViral(commands.Cog):
             except Exception as e:
                 print(f"❌ [GO-VIRAL] Error enviando bienvenida a {user_id}: {e}")
 
-        # Corrección automática de URL
-        url_pattern = r'https://x\.com/[\w\d_]+/status/\d+'
-        links = re.findall(url_pattern, message.content)
-        if not links:
-            if "x.com" in message.content and "/status/" in message.content:
-                url_base = re.search(url_pattern, message.content)
-                if url_base:
-                    url_limpio = url_base.group(0)
+        # ---- FASE 5: Corrección automática de URL ----
+        url_pattern = r"https://x\.com/[\w\d_]+/status/\d+"
+        urls_encontradas = re.findall(r"https://[^\s]+", message.content)
+        if urls_encontradas:
+            url = urls_encontradas[0]
+            # Si el enlace no cumple el patrón limpio, corregirlo
+            if not re.match(url_pattern, url):
+                url_limpio = re.search(url_pattern, url)
+                if url_limpio:
+                    url_limpio = url_limpio.group(0)
                     try:
                         await message.delete()
                     except Exception as e:
-                        print(f"❌ [GO-VIRAL] Error borrando mensaje incorrecto: {e}")
-                    webhooks = await message.channel.webhooks()
-                    wh = None
-                    for hook in webhooks:
-                        if hook.user == self.bot.user:
-                            wh = hook
-                            break
-                    if not wh:
-                        wh = await message.channel.create_webhook(name="VXbotGO")
+                        print(f"❌ [GO-VIRAL] Error borrando mensaje original: {e}")
                     try:
-                        posted = await wh.send(
-                            content=url_limpio,
-                            username=message.author.display_name,
-                            avatar_url=message.author.display_avatar.url if hasattr(message.author, 'display_avatar') else message.author.avatar_url,
-                            wait=True
+                        await message.channel.send(
+                            f"{message.author.mention} {url_limpio}"
                         )
-                        print(f"✅ [GO-VIRAL] URL corregida y publicada por {message.author.display_name}")
-                        # Mensaje educativo en canal (15s)
-                        try:
-                            aviso = await message.channel.send(
-                                NOTIFICACION_URL_EDUCATIVA,
-                                reference=message,
-                                delete_after=15
-                            )
-                        except Exception:
-                            pass
-                        # Mensaje DM educativo
-                        try:
-                            await message.author.send(
-                                NOTIFICACION_URL_DM.format(usuario=message.author.display_name)
-                            )
-                        except Exception as e:
-                            print(f"⚠️ [GO-VIRAL] No se pudo enviar DM educativo a {message.author.display_name}: {e}")
-                        # Ahora verificar reacción 👍 (like propio)
-                        await self.verificar_like_propio(posted, message.author)
+                        print(f"🔁 [GO-VIRAL] URL corregida para {message.author.display_name}: {url_limpio}")
                     except Exception as e:
-                        print(f"❌ [GO-VIRAL] Error en corrección automática: {e}")
-                    return
-
-        # Si el mensaje fue correcto, verificar reacción 👍
-        await self.verificar_like_propio(message, message.author)
-
-    async def verificar_like_propio(self, msg, author):
-        # Espera 120 segundos a que el autor reaccione con 👍
-        try:
-            print(f"🕒 [GO-VIRAL] Esperando reacción 👍 de {author.display_name} ({author.id}) en mensaje {msg.id}...")
-            def check(reaction, user):
-                return (
-                    reaction.message.id == msg.id
-                    and user.id == author.id
-                    and str(reaction.emoji) == "👍"
-                )
-
-            try:
-                await self.bot.wait_for('reaction_add', timeout=120, check=check)
-                print(f"👍 [GO-VIRAL] {author.display_name} reaccionó con 👍 a tiempo.")
-            except asyncio.TimeoutError:
-                try:
-                    await msg.delete()
-                except Exception as e:
-                    print(f"❌ [GO-VIRAL] Error borrando mensaje por falta de 👍: {e}")
-                # Notificación educativa canal (15s)
-                try:
-                    aviso = await msg.channel.send(
-                        NOTIFICACION_SIN_LIKE_EDUCATIVA.format(usuario=author.mention),
-                        delete_after=15
-                    )
-                except Exception:
-                    pass
-                # Notificación educativa DM
-                try:
-                    await author.send(NOTIFICACION_SIN_LIKE_DM)
-                except Exception as e:
-                    print(f"⚠️ [GO-VIRAL] No se pudo enviar DM educativo a {author.display_name}: {e}")
-                print(f"❌ [GO-VIRAL] {author.display_name} no reaccionó con 👍, publicación eliminada y notificado.")
-        except Exception as e:
-            print(f"❌ [GO-VIRAL] Error general en verificar_like_propio: {e}")
+                        print(f"❌ [GO-VIRAL] Error re-publicando URL corregida: {e}")
+                    # Notificación educativa (canal, 15s)
+                    try:
+                        await message.channel.send(
+                            NOTIFICACION_URL_EDUCATIVA,
+                            delete_after=15
+                        )
+                    except Exception:
+                        pass
+                    # Notificación por DM
+                    try:
+                        await message.author.send(NOTIFICACION_URL_DM.format(usuario=message.author.mention))
+                    except Exception as e:
+                        print(f"⚠️ [GO-VIRAL] No se pudo enviar DM a {message.author.display_name}: {e}")
 
 def setup(bot):
     bot.add_cog(GoViral(bot))
