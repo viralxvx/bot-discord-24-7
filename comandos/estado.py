@@ -8,6 +8,7 @@ class Estado(commands.Cog):
 
     @app_commands.command(name="estado", description="Consulta tu estado actual en el sistema de faltas.")
     async def estado(self, interaction: discord.Interaction):
+        print(f"🧪 [LOG] Usuario ejecutó /estado: {interaction.user} ({interaction.user.id})")
         await interaction.response.send_message(
             "✅ Comando `/estado` funcionando correctamente.",
             ephemeral=True
