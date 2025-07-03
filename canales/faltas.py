@@ -1,87 +1,60 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
+import os
+import asyncio
 from config import CANAL_FALTAS_ID, REDIS_URL
-import redis.asyncio as redis
-import datetime
+import redis
 
 class Faltas(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.redis = redis.from_url(REDIS_URL, decode_responses=True)
-        self.mensajes_panel = {}  # user_id: message_id
+        self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+        bot.loop.create_task(self.inicializar_panel_faltas())
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        print("\n⚙️ Iniciando módulo de faltas...")
+    async def inicializar_panel_faltas(self):
+        await self.bot.wait_until_ready()
+        print("⚙️ Iniciando módulo de faltas...")
+
         canal = self.bot.get_channel(CANAL_FALTAS_ID)
         if not canal:
-            print(f"❌ No se encontró el canal con ID {CANAL_FALTAS_ID}")
+            print("❌ Error: no se encontró el canal de faltas.")
             return
 
-        await self.limpiar_canal(canal)
-        await self.reconstruir_panel_publico(canal)
+        print("🔍 Cargando mensajes existentes del canal #📤faltas...")
+        mensajes_existentes = await canal.history(limit=None).flatten()
+        mensajes_dict = {}
 
-    async def limpiar_canal(self, canal):
-        print("🧹 Borrando todos los mensajes del canal #📤faltas...")
-        try:
-            async for mensaje in canal.history(limit=None):
-                await mensaje.delete()
-            print("✅ Canal limpiado con éxito.")
-        except Exception as e:
-            print(f"❌ Error al limpiar el canal: {e}")
+        for mensaje in mensajes_existentes:
+            if mensaje.author != self.bot.user or not mensaje.embeds:
+                continue
+            embed = mensaje.embeds[0]
+            if embed.fields:
+                usuario_mention = embed.fields[0].value
+                user_id = int(usuario_mention.replace("<@", "").replace(">", "").replace("!", ""))
+                mensajes_dict[user_id] = mensaje
 
-    async def reconstruir_panel_publico(self, canal):
-        print("📊 Reconstruyendo panel público de faltas...")
-        for miembro in canal.guild.members:
+        print("📊 Actualizando o creando panel público de faltas...")
+        guild = canal.guild
+
+        for miembro in guild.members:
             if miembro.bot:
                 continue
-            await self.publicar_o_actualizar_usuario(canal, miembro)
+
+            embed = discord.Embed(title=f"📋 Estado de {miembro.display_name}", color=discord.Color.orange())
+            embed.add_field(name="Usuario", value=miembro.mention, inline=True)
+            embed.add_field(name="Faltas (mes)", value="0", inline=True)
+            embed.add_field(name="Estado", value="✅ Activo", inline=True)
+            embed.set_footer(text="Sistema automatizado de faltas - V𝕏")
+
+            try:
+                if miembro.id in mensajes_dict:
+                    await mensajes_dict[miembro.id].edit(embed=embed)
+                else:
+                    await canal.send(embed=embed)
+            except Exception as e:
+                print(f"❌ Error al procesar mensaje para {miembro.display_name}: {e}")
+
         print("✅ Panel público actualizado.")
 
-    async def publicar_o_actualizar_usuario(self, canal, miembro):
-        user_id = str(miembro.id)
-        total_faltas = await self.redis.get(f"faltas:{user_id}") or 0
-        mes_actual = datetime.datetime.utcnow().strftime("%Y-%m")
-        faltas_mes = await self.redis.get(f"faltas:{user_id}:{mes_actual}") or 0
-        estado = await self.redis.get(f"estado:{user_id}") or "Activo"
-        timestamp = await self.redis.get(f"ultimo_registro:{user_id}")
-
-        embed = discord.Embed(
-            title=f"📤 REGISTRO DE {miembro.display_name}",
-            description=f"**Estado actual:** `{estado}`\n**Total de faltas:** `{total_faltas}`\n**Faltas este mes:** `{faltas_mes}`",
-            color=discord.Color.orange(),
-            timestamp=datetime.datetime.utcnow()
-        )
-        if timestamp:
-            fecha = datetime.datetime.fromtimestamp(int(timestamp))
-            embed.add_field(name="🕓 Última falta", value=f"<t:{int(fecha.timestamp())}:R>", inline=False)
-
-        embed.set_footer(text="Sistema automatizado de reputación pública")
-        embed.set_author(name=miembro.display_name, icon_url=miembro.display_avatar.url)
-
-        try:
-            mensaje = await canal.send(embed=embed)
-            self.mensajes_panel[user_id] = mensaje.id
-        except Exception as e:
-            print(f"❌ Error al publicar registro público para {miembro.display_name}: {e}")
-
-    @commands.Cog.listener()
-    async def on_member_join(self, member):
-        canal = self.bot.get_channel(CANAL_FALTAS_ID)
-        if canal:
-            await self.publicar_o_actualizar_usuario(canal, member)
-
-    @commands.Cog.listener()
-    async def on_member_remove(self, member):
-        canal = self.bot.get_channel(CANAL_FALTAS_ID)
-        user_id = str(member.id)
-        if user_id in self.mensajes_panel:
-            try:
-                msg = await canal.fetch_message(self.mensajes_panel[user_id])
-                await msg.delete()
-                print(f"🗑️ Mensaje eliminado para {member.display_name} tras salir del servidor.")
-            except Exception as e:
-                print(f"❌ No se pudo eliminar mensaje de {member.display_name}: {e}")
-
-async def setup(bot):
-    await bot.add_cog(Faltas(bot))
+def setup(bot):
+    bot.add_cog(Faltas(bot))
