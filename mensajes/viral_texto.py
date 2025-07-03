@@ -79,4 +79,12 @@ NOTIFICACION_SIN_LIKE_DM = (
     "Si tienes dudas, revisa las reglas en #✅normas-generales o pregunta en #👨🔧soporte."
 )
 
+NOTIFICACION_APOYO_9_EDUCATIVA = (
+    "🚨 {usuario}, antes de volver a publicar debes apoyar con 🔥 a los 9 compañeros anteriores. "
+    "Por favor apoya a los demás para poder compartir tu contenido."
+)
 
+NOTIFICACION_APOYO_9_DM = (
+    "Hola, tu última publicación en 🧵go-viral fue eliminada porque no diste apoyo a los 9 anteriores. "
+    "Recuerda: solo puedes volver a publicar después de apoyar con 🔥 (RT + Like + Comentario) a los 9 anteriores."
+)
