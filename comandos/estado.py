@@ -2,12 +2,13 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 
-async def estado(interaction: discord.Interaction):
-    await interaction.response.send_message("✅ El comando básico está funcionando.")
+class Estado(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
 
-def setup(bot):
-    bot.tree.add_command(app_commands.Command(
-        name="estado",
-        description="Test directo sin clase",
-        callback=estado
-    ))
+    @app_commands.command(name="estado", description="Consulta tu estado actual en el sistema de faltas.")
+    async def estado(self, interaction: discord.Interaction):
+        await interaction.response.send_message("✅ Comando /estado funcionando correctamente.")
+
+async def setup(bot):
+    await bot.add_cog(Estado(bot))
