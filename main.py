@@ -13,7 +13,7 @@ EXTENSIONES = [
     "canales.presentate",
     "canales.normas_generales",
     "canales.faltas",
-    "comandos"  # Contiene estado y estadisticas
+    "comandos"  # Contiene comandos.estado y comandos.estadisticas
 ]
 
 @bot.event
@@ -43,12 +43,11 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# 🔁 Mantenemos el bot vivo con loop eterno fuera del bot
+# 🔁 Este loop mantiene vivo el bot en Railway
 async def main():
     TOKEN = os.getenv("DISCORD_TOKEN")
     async with bot:
         await bot.start(TOKEN)
 
-# ✅ Ejecutamos el bot
 if __name__ == "__main__":
     asyncio.run(main())
