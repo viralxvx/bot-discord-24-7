@@ -14,7 +14,8 @@ EXTENSIONES = [
     "canales.presentate",
     "canales.normas_generales",
     "canales.faltas",
-    "canales.comandos",  # Este módulo también carga los comandos
+    "canales.comandos",   # ← para configurar el canal 💻comandos
+    "comandos",           # ← para registrar /estado y /estadisticas
 ]
 
 @bot.event
