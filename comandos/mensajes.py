@@ -1,35 +1,30 @@
-import discord
+# comandos/mensajes.py
 
-def generar_embed_estado(usuario, info):
-    embed = discord.Embed(
-        title="📌 Estado del Usuario",
-        description=f"Consulta personalizada para {usuario.mention}",
-        color=discord.Color.orange()
-    )
+INSTRUCCIONES_COMANDOS = """
+📌 **Bienvenido al canal de comandos oficiales de VXbot**
 
-    embed.add_field(name="🆔 Usuario", value=f"{usuario.name}#{usuario.discriminator}", inline=False)
-    embed.add_field(name="📊 Faltas acumuladas", value=f"{info.get('faltas', 0)}", inline=True)
-    embed.add_field(name="🗓️ Estado actual", value=f"{info.get('estado', 'Desconocido')}", inline=True)
+Aquí puedes consultar información automatizada de tu cuenta y del servidor.
 
-    if info.get("estado") == "Baneado":
-        embed.set_footer(text="⛔ Actualmente estás baneado. Contacta soporte si es un error.")
-    elif info.get("estado") == "Expulsado":
-        embed.set_footer(text="🚫 Usuario expulsado del servidor.")
-    else:
-        embed.set_footer(text="✅ Estado activo. ¡Sigue participando y creciendo!")
+---
 
-    return embed
+### 🧾 Comandos disponibles:
 
-def generar_embed_estadisticas(total, baneados, expulsados):
-    embed = discord.Embed(
-        title="📈 Estadísticas Generales de la Comunidad",
-        description="Panel informativo para administradores",
-        color=discord.Color.green()
-    )
+1. `/estado`  
+Consulta tu estado actual: número de faltas, estado (activo, baneado, etc), advertencias, etc.  
+📬 También recibirás esta información por DM.
 
-    embed.add_field(name="👥 Total de miembros", value=str(total), inline=True)
-    embed.add_field(name="⛔ Miembros baneados", value=str(baneados), inline=True)
-    embed.add_field(name="🚫 Miembros expulsados", value=str(expulsados), inline=True)
+2. `/estadisticas`  
+Muestra las estadísticas generales del servidor: miembros activos, baneados, expulsados, etc.  
+🛡️ Solo los administradores pueden usar este comando.
 
-    embed.set_footer(text="Solo visible para administradores con acceso al canal 💻comandos.")
-    return embed
+---
+
+✅ **Importante**:
+- Los mensajes se eliminan automáticamente a los **10 minutos** para mantener limpio el canal.
+- Solo se pueden usar comandos **desde este canal** 💻comandos.
+
+"""
+
+ERROR_DM = (
+    "⚠️ No pude enviarte mensaje privado. Activa los mensajes directos del servidor para recibir información personalizada."
+)
