@@ -7,7 +7,9 @@ from mensajes.viral_texto import (
     NOTIFICACION_URL_EDUCATIVA,
     NOTIFICACION_URL_DM,
     NOTIFICACION_SIN_LIKE_EDUCATIVA,
-    NOTIFICACION_SIN_LIKE_DM
+    NOTIFICACION_SIN_LIKE_DM,
+    NOTIFICACION_APOYO_9_EDUCATIVA,
+    NOTIFICACION_APOYO_9_DM,
 )
 from datetime import datetime
 import redis
@@ -16,14 +18,16 @@ import re
 
 def limpiar_url_tweet(texto):
     """
-    Extrae y devuelve la URL limpia de X/Twitter si está presente.
+    Extrae y limpia una URL válida de x.com/TUUSER/status/ID
+    Retorna la url limpia si encuentra, sino None
     """
-    # Acepta variantes con parámetros y los limpia
-    patron = re.compile(r'https?://x\.com/[^/\s]+/status/(\d+)')
-    coincidencias = patron.findall(texto)
-    if coincidencias:
-        # Usa solo el primer match, limpia el texto
-        return f"https://x.com/{re.search(r'x\.com/([^/\s]+)/status', texto).group(1)}/status/{coincidencias[0]}"
+    match = re.search(r"https?://x\.com/\w+/status/(\d+)", texto)
+    if match:
+        usuario = re.search(r"https?://x\.com/([^/]+)/status", texto)
+        if usuario:
+            user = usuario.group(1)
+            status_id = match.group(1)
+            return f"https://x.com/{user}/status/{status_id}"
     return None
 
 class GoViral(commands.Cog):
@@ -74,48 +78,91 @@ class GoViral(commands.Cog):
             except Exception as e:
                 print(f"❌ [GO-VIRAL] Error enviando bienvenida a {user_id}: {e}")
 
-        # --- Fase 7: Corrección automática de URLs ---
-        # Detectar y corregir URL si está mal
+        # --- Corrección automática de URLs mal formateadas ---
         url_limpia = limpiar_url_tweet(message.content)
         if url_limpia:
-            # ¿El mensaje ya era limpio? Si sí, nada.
             if url_limpia == message.content.strip():
-                pass  # Ya está perfecto
+                pass  # ya está limpia, sigue
             else:
                 try:
                     await message.delete()
-                    print(f"🧹 [GO-VIRAL] Mensaje con URL mal formateada eliminado ({message.author.display_name})")
-                except Exception as e:
-                    print(f"❌ [GO-VIRAL] Error al borrar mensaje con URL mal: {e}")
+                except: pass
+                try:
+                    await message.channel.send(f"{message.author.mention} {url_limpia}")
+                except: pass
+                try:
+                    await message.channel.send(NOTIFICACION_URL_EDUCATIVA, delete_after=15)
+                except: pass
+                try:
+                    await message.author.send(NOTIFICACION_URL_DM.format(usuario=message.author.display_name))
+                except: pass
+                return
 
-                # Re-publica como si fuera el usuario (mencionándolo)
-                try:
-                    nuevo_msg = await message.channel.send(
-                        f"{message.author.mention} {url_limpia}"
-                    )
-                    print(f"✅ [GO-VIRAL] URL corregida y republicada para {message.author.display_name}")
-                except Exception as e:
-                    print(f"❌ [GO-VIRAL] Error al republicar URL limpia: {e}")
-
-                # Mensaje educativo en canal (15s)
-                try:
-                    aviso = await message.channel.send(
-                        NOTIFICACION_URL_EDUCATIVA,
-                        delete_after=15
-                    )
-                except Exception:
-                    pass
-                # DM educativo
-                try:
-                    await message.author.send(
-                        NOTIFICACION_URL_DM.format(usuario=message.author.display_name)
-                    )
-                except Exception as e:
-                    print(f"⚠️ [GO-VIRAL] No se pudo enviar DM (URL): {e}")
-                return  # ¡No sigas! Ya procesado.
+        # --- Verificación de apoyo a los 9 anteriores ---
+        if not await self.verificar_apoyo_nueve_anteriores(message):
+            return  # Si falla, ya notificó y borró el mensaje
 
         # Inicia verificación de reacción 👍 del autor a su propio mensaje
         self.bot.loop.create_task(self.verificar_reaccion_like(message))
+
+    async def verificar_apoyo_nueve_anteriores(self, message):
+        """Valida si el usuario ha reaccionado 🔥 a los 9 posts anteriores antes de publicar."""
+        canal = message.channel
+        mensajes = [msg async for msg in canal.history(limit=50, oldest_first=False)]
+        mensajes.reverse()  # De más antiguos a más nuevos
+
+        # Busca la posición de este mensaje
+        idx = None
+        for i, msg in enumerate(mensajes):
+            if msg.id == message.id:
+                idx = i
+                break
+        if idx is None or idx < 9:
+            # Primer post del usuario o no hay suficiente historia, deja pasar
+            return True
+
+        # Toma los 9 mensajes inmediatamente anteriores
+        posts_previos = mensajes[idx-9:idx]
+        apoyo_faltante = []
+        for post in posts_previos:
+            # Solo considera mensajes de miembros (no bots)
+            if post.author.bot:
+                continue
+            tiene_fuego = False
+            for reaction in post.reactions:
+                if str(reaction.emoji) == "🔥":
+                    async for user in reaction.users():
+                        if user.id == message.author.id:
+                            tiene_fuego = True
+                            break
+                if tiene_fuego:
+                    break
+            if not tiene_fuego:
+                apoyo_faltante.append(post)
+
+        if apoyo_faltante:
+            # Elimina la publicación y notifica
+            try:
+                await message.delete()
+                print(f"❌ [GO-VIRAL] Publicación de {message.author.display_name} eliminada por NO apoyar a los 9 anteriores.")
+            except Exception as e:
+                print(f"❌ [GO-VIRAL] Error eliminando mensaje (no apoyó a 9): {e}")
+
+            # Mensaje educativo en canal
+            try:
+                await message.channel.send(
+                    NOTIFICACION_APOYO_9_EDUCATIVA.format(usuario=message.author.mention),
+                    delete_after=15
+                )
+            except Exception:
+                pass
+            # DM educativo
+            try:
+                await message.author.send(NOTIFICACION_APOYO_9_DM)
+            except Exception as e:
+                print(f"⚠️ [GO-VIRAL] No se pudo enviar DM (apoyo 9) a {message.author.display_name}: {e}")
+            return False
+        return True
 
     async def verificar_reaccion_like(self, message):
         """Espera 120 segundos y verifica si el autor reaccionó con 👍 a su propio mensaje"""
