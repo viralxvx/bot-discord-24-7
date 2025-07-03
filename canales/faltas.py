@@ -4,7 +4,7 @@ import os
 import asyncio
 from config import CANAL_FALTAS_ID, REDIS_URL
 import redis
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
 
 class Faltas(commands.Cog):
@@ -23,54 +23,59 @@ class Faltas(commands.Cog):
             return
 
         print("🔍 Cargando mensajes existentes del canal #📤faltas...")
-        try:
-            mensajes_existentes = [msg async for msg in canal.history(limit=None)]
-        except Exception as e:
-            print(f"❌ Error al cargar mensajes existentes: {e}")
-            return
+        mensajes_existentes = [m async for m in canal.history(limit=None)]
+        mensajes_por_usuario = {}
 
-        print("🧹 Borrando todos los mensajes del canal...")
-        try:
-            await canal.purge(limit=None)
-            print("✅ Canal limpiado con éxito.")
-        except Exception as e:
-            print(f"❌ Error al limpiar el canal: {e}")
-            return
+        for mensaje in mensajes_existentes:
+            if mensaje.author != self.bot.user or not mensaje.embeds:
+                continue
+            embed = mensaje.embeds[0]
+            if embed.title and embed.title.startswith("📤 REGISTRO DE"):
+                usuario_mencion = embed.title.replace("📤 REGISTRO DE ", "").strip()
+                mensajes_por_usuario[usuario_mencion] = mensaje
 
-        print("📊 Reconstruyendo panel público de faltas...")
-        try:
-            guild = canal.guild
-            for miembro in guild.members:
-                if miembro.bot:
-                    continue
-                await self.publicar_o_actualizar_faltas(canal, miembro)
-            print("✅ Panel público actualizado.")
-        except Exception as e:
-            print(f"❌ Error al reconstruir el panel: {e}")
+        print("♻️ Sincronizando mensajes por miembro...")
+        miembros_actuales = [m for m in canal.guild.members if not m.bot]
+        usuarios_actuales = set()
 
-    async def publicar_o_actualizar_faltas(self, canal, miembro):
-        user_id = str(miembro.id)
+        for miembro in miembros_actuales:
+            usuarios_actuales.add(miembro.mention)
+            mensaje_existente = mensajes_por_usuario.get(miembro.mention)
+            embed = self.crear_embed_usuario(miembro)
 
-        # Cargar datos del usuario (si existieran en Redis)
-        total_faltas = int(self.redis.get(f"faltas:{user_id}:total") or 0)
-        faltas_mes = int(self.redis.get(f"faltas:{user_id}:mes") or 0)
-        estado = self.redis.get(f"faltas:{user_id}:estado") or "✅ Activo"
+            if mensaje_existente:
+                try:
+                    await mensaje_existente.edit(embed=embed)
+                except Exception as e:
+                    print(f"❌ Error al editar mensaje de {miembro.display_name}: {e}")
+            else:
+                try:
+                    await canal.send(embed=embed)
+                except Exception as e:
+                    print(f"❌ Error al crear mensaje de {miembro.display_name}: {e}")
+
+        print("🧹 Eliminando mensajes sobrantes...")
+        for usuario_mencion, mensaje in mensajes_por_usuario.items():
+            if usuario_mencion not in usuarios_actuales:
+                try:
+                    await mensaje.delete()
+                except Exception as e:
+                    print(f"❌ Error al borrar mensaje sobrante: {e}")
+
+        print("✅ Panel público actualizado.")
+
+    def crear_embed_usuario(self, miembro):
+        tz = pytz.timezone("America/Santo_Domingo")
+        ahora = datetime.now(tz)
+        fecha_hora = ahora.strftime("%A a las %H:%M").capitalize()
 
         embed = discord.Embed(title=f"📤 REGISTRO DE {miembro.mention}", color=discord.Color.orange())
-        embed.set_author(name=f"{miembro.display_name}", icon_url=miembro.display_avatar.url)
-        embed.add_field(name="Estado actual", value=estado, inline=False)
-        embed.add_field(name="Total de faltas", value=str(total_faltas), inline=False)
-        embed.add_field(name="Faltas este mes", value=str(faltas_mes), inline=False)
-
-        hora_actual = datetime.now(pytz.timezone('America/Santo_Domingo'))
-        hora_formateada = hora_actual.strftime('%A a las %H:%M').capitalize()
-        embed.set_footer(text=f"Sistema automatizado de reputación pública • {hora_formateada}")
-
-        try:
-            await canal.send(embed=embed)
-        except Exception as e:
-            print(f"❌ Error al enviar mensaje de {miembro.display_name}: {e}")
-
+        embed.set_author(name=miembro.display_name, icon_url=miembro.display_avatar.url)
+        embed.add_field(name="Estado actual", value="Activo", inline=False)
+        embed.add_field(name="Total de faltas", value="0", inline=True)
+        embed.add_field(name="Faltas este mes", value="0", inline=True)
+        embed.set_footer(text=f"Sistema automatizado de reputación pública • {fecha_hora}")
+        return embed
 
 def setup(bot):
     bot.add_cog(Faltas(bot))
