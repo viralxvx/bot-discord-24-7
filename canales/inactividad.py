@@ -128,6 +128,10 @@ class Inactividad(commands.Cog):
 
         print("✅ [INACTIVIDAD] Verificación automática completada.")
 
-async def setup(bot):
-    await bot.add_cog(SoporteProrroga(bot))
+# ¡NO CARGUES NINGÚN COG aquí!  
+# Este archivo es SOLO para el cog de Inactividad.
+# Se carga así desde main.py/extensiones:
+# await bot.load_extension("canales.inactividad")
 
+async def setup(bot):
+    await bot.add_cog(Inactividad(bot))
