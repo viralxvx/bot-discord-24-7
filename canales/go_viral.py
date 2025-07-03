@@ -248,5 +248,6 @@ class GoViral(commands.Cog):
             except Exception as e:
                 print(f"⚠️ [GO-VIRAL] No se pudo enviar DM (sin like) a {autor.display_name}: {e}")
 
-def setup(bot):
-    bot.add_cog(GoViral(bot))
+async def setup(bot):
+    await bot.add_cog(GoViral(bot))
+
