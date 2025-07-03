@@ -1,49 +1,41 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-import os
-import redis.asyncio as redis
+from config import ADMIN_ID, CANAL_COMANDOS_ID
 from mensajes.comandos_texto import generar_embed_estadisticas
-from config import ADMIN_ID, CANAL_COMANDOS
 
-r = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
-
-class EstadisticasCommand(commands.Cog):
+class Estadisticas(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="estadisticas", description="Consulta estadísticas del sistema (solo admins).")
+    @app_commands.command(name="estadisticas", description="Estadísticas generales del sistema de faltas.")
     async def estadisticas(self, interaction: discord.Interaction):
-        if interaction.channel.id != CANAL_COMANDOS:
-            return await interaction.response.send_message("Este comando solo puede usarse en el canal de comandos.", ephemeral=True)
+        if interaction.channel.id != CANAL_COMANDOS_ID:
+            await interaction.response.send_message(
+                "❌ Este comando solo puede usarse en el canal autorizado.",
+                ephemeral=True
+            )
+            return
 
-        if interaction.user.id != ADMIN_ID:
-            return await interaction.response.send_message("No tienes permisos para este comando.", ephemeral=True)
+        if interaction.user.id != int(ADMIN_ID) and not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message(
+                "⛔ Solo administradores pueden usar este comando.",
+                ephemeral=True
+            )
+            return
 
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=False)
+        embed = await generar_embed_estadisticas(self.bot)
 
-        keys = await r.keys("faltas:*")
-        total_miembros = len(keys)
-
-        baneados = 0
-        expulsados = 0
-        for key in keys:
-            data = await r.hgetall(key)
-            if data.get("estado") == "baneado":
-                baneados += 1
-            elif data.get("estado") == "expulsado":
-                expulsados += 1
-
-        embed = generar_embed_estadisticas(total_miembros, baneados, expulsados)
-
-        # Enviar en canal (temporal)
-        await interaction.followup.send(embed=embed, ephemeral=False, delete_after=600)
-
-        # Enviar por DM
         try:
             await interaction.user.send(embed=embed)
         except discord.Forbidden:
-            print(f"❌ No se pudo enviar DM a {interaction.user}")
+            await interaction.followup.send("⚠️ No pude enviarte un DM. Verifica tu configuración de privacidad.")
+            return
+
+        msg = await interaction.followup.send("📊 Estadísticas enviadas por DM.", ephemeral=False)
+        await discord.utils.sleep_until(discord.utils.utcnow() + discord.utils.timedelta(minutes=10))
+        await msg.delete()
 
 async def setup(bot):
-    await bot.add_cog(EstadisticasCommand(bot))
+    await bot.add_cog(Estadisticas(bot))
