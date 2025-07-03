@@ -3,7 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 import redis
 import logging
-from config import REDIS_URL, CANAL_COMANDOS_ID, ADMIN_ID
+from config import REDIS_URL, CANAL_COMANDOS_ID
 from mensajes.comandos_texto import generar_embed_estado
 
 class Estado(commands.Cog):
@@ -15,7 +15,6 @@ class Estado(commands.Cog):
     async def estado(self, interaction: discord.Interaction):
         usuario = interaction.user
 
-        # Verificamos que el comando se use en el canal correcto
         if interaction.channel.id != CANAL_COMANDOS_ID:
             await interaction.response.send_message(
                 "❌ Este comando solo puede usarse en el canal de comandos.",
@@ -27,18 +26,19 @@ class Estado(commands.Cog):
             # Obtener datos desde Redis
             data = self.redis.hgetall(f"faltas:{usuario.id}")
 
-            # Si no hay datos, usar valores por defecto
-            if not data:
-                data = {
-                    "estado": "Activo",
-                    "faltas_total": "0",
-                    "faltas_mes": "0"
-                }
+            # Establecer valores por defecto si faltan
+            faltas_total = int(data.get("faltas_total", 0))
+            faltas_mes = int(data.get("faltas_mes", 0))
+            estado = data.get("estado", "Activo")
 
-            # Generar el embed profesional
-            embed = generar_embed_estado(usuario, data)
+            data_usuario = {
+                "estado": estado,
+                "faltas_total": faltas_total,
+                "faltas_mes": faltas_mes
+            }
 
-            # Enviar respuesta en el canal (visible 10 min) y por DM
+            embed = generar_embed_estado(usuario, data_usuario)
+
             await interaction.response.send_message(embed=embed, delete_after=600)
 
             try:
