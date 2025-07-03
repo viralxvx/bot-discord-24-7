@@ -13,7 +13,7 @@ EXTENSIONES = [
     "canales.presentate",
     "canales.normas_generales",
     "canales.faltas",
-    # "comandos.estado"  ← comenta o elimina esta línea
+    "comandos"  # Este módulo cargará estado.py y estadisticas.py
 ]
 
 @bot.event
@@ -33,15 +33,10 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Error al sincronizar comandos: {e}")
 
-    # 🛡️ Previene que Railway apague el bot por inactividad
     while True:
         await asyncio.sleep(60)
         print("⏳ Bot sigue vivo...")
 
-if __name__ == "__main__":
-    TOKEN = os.getenv("DISCORD_TOKEN")
-    asyncio.run(bot.start(TOKEN))
-    
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -52,3 +47,6 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
+if __name__ == "__main__":
+    TOKEN = os.getenv("DISCORD_TOKEN")
+    asyncio.run(bot.start(TOKEN))
