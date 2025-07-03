@@ -5,11 +5,13 @@ from mensajes.viral_texto import (
     MENSAJE_FIJO,
     MENSAJE_BIENVENIDA_NUEVO,
     NOTIFICACION_URL_EDUCATIVA,
-    NOTIFICACION_URL_DM
+    NOTIFICACION_URL_DM,
+    NOTIFICACION_SIN_LIKE_EDUCATIVA,
+    NOTIFICACION_SIN_LIKE_DM
 )
 from datetime import datetime
 import redis
-import re
+import asyncio
 
 class GoViral(commands.Cog):
     def __init__(self, bot):
@@ -46,7 +48,7 @@ class GoViral(commands.Cog):
         user_id = str(message.author.id)
         key_bienvenida = f"go_viral:bienvenida:{user_id}"
 
-        # Envío de bienvenida SOLO si no se ha enviado antes
+        # Bienvenida SOLO si no se ha enviado antes
         if not self.redis.get(key_bienvenida):
             self.redis.set(key_bienvenida, "1")
             try:
@@ -59,40 +61,48 @@ class GoViral(commands.Cog):
             except Exception as e:
                 print(f"❌ [GO-VIRAL] Error enviando bienvenida a {user_id}: {e}")
 
-        # ---- FASE 5: Corrección automática de URL ----
-        url_pattern = r"https://x\.com/[\w\d_]+/status/\d+"
-        urls_encontradas = re.findall(r"https://[^\s]+", message.content)
-        if urls_encontradas:
-            url = urls_encontradas[0]
-            # Si el enlace no cumple el patrón limpio, corregirlo
-            if not re.match(url_pattern, url):
-                url_limpio = re.search(url_pattern, url)
-                if url_limpio:
-                    url_limpio = url_limpio.group(0)
-                    try:
-                        await message.delete()
-                    except Exception as e:
-                        print(f"❌ [GO-VIRAL] Error borrando mensaje original: {e}")
-                    try:
-                        await message.channel.send(
-                            f"{message.author.mention} {url_limpio}"
-                        )
-                        print(f"🔁 [GO-VIRAL] URL corregida para {message.author.display_name}: {url_limpio}")
-                    except Exception as e:
-                        print(f"❌ [GO-VIRAL] Error re-publicando URL corregida: {e}")
-                    # Notificación educativa (canal, 15s)
-                    try:
-                        await message.channel.send(
-                            NOTIFICACION_URL_EDUCATIVA,
-                            delete_after=15
-                        )
-                    except Exception:
-                        pass
-                    # Notificación por DM
-                    try:
-                        await message.author.send(NOTIFICACION_URL_DM.format(usuario=message.author.mention))
-                    except Exception as e:
-                        print(f"⚠️ [GO-VIRAL] No se pudo enviar DM a {message.author.display_name}: {e}")
+        # Inicia verificación de reacción 👍 del autor a su propio mensaje
+        self.bot.loop.create_task(self.verificar_reaccion_like(message))
+
+    async def verificar_reaccion_like(self, message):
+        """Espera 120 segundos y verifica si el autor reaccionó con 👍 a su propio mensaje"""
+        await asyncio.sleep(120)
+        try:
+            msg = await message.channel.fetch_message(message.id)
+        except (discord.NotFound, discord.Forbidden):
+            # El mensaje ya no existe
+            return
+
+        autor = message.author
+        tiene_like = False
+
+        for reaction in msg.reactions:
+            if str(reaction.emoji) == "👍":
+                async for user in reaction.users():
+                    if user.id == autor.id:
+                        tiene_like = True
+                        break
+
+        if not tiene_like:
+            # Elimina mensaje, notifica en canal y por DM
+            try:
+                await msg.delete()
+                print(f"❌ [GO-VIRAL] Publicación eliminada por no validar con 👍: {autor.display_name}")
+            except Exception as e:
+                print(f"❌ [GO-VIRAL] Error eliminando mensaje sin like: {e}")
+            # Mensaje educativo en canal (15s)
+            try:
+                await msg.channel.send(
+                    NOTIFICACION_SIN_LIKE_EDUCATIVA.format(usuario=autor.mention),
+                    delete_after=15
+                )
+            except Exception:
+                pass
+            # DM educativo
+            try:
+                await autor.send(NOTIFICACION_SIN_LIKE_DM)
+            except Exception as e:
+                print(f"⚠️ [GO-VIRAL] No se pudo enviar DM (sin like) a {autor.display_name}: {e}")
 
 def setup(bot):
     bot.add_cog(GoViral(bot))
