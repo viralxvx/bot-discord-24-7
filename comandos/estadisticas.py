@@ -8,6 +8,7 @@ class Estadisticas(commands.Cog):
 
     @app_commands.command(name="estadisticas", description="Muestra estadísticas generales del servidor.")
     async def estadisticas(self, interaction: discord.Interaction):
+        print(f"📊 [LOG] Usuario ejecutó /estadisticas: {interaction.user} ({interaction.user.id})")
         await interaction.response.send_message(
             "📊 Comando `/estadisticas` funcionando correctamente.",
             ephemeral=True
