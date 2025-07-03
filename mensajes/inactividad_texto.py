@@ -1,7 +1,3 @@
-# mensajes/inactividad_texto.py
-
-# Mensajes base para futuras fases del sistema de inactividad
-
 AVISO_BANEO = (
     "🚫 Has sido baneado automáticamente por inactividad (3 días sin publicar en 🧵go-viral). "
     "Puedes solicitar prórroga en el canal de soporte si tienes justificación."
@@ -13,5 +9,15 @@ AVISO_EXPULSION = (
 )
 
 PRORROGA_CONCEDIDA = (
-    "⏳ Tu prórroga de inactividad ha sido concedida por {dias} días. Aprovecha para ponerte al día."
+    "⏳ Tu prórroga de inactividad ha sido concedida por {dias} días. "
+    "Aprovecha para ponerte al día y evitar sanciones."
+)
+
+PRORROGA_SOLICITADA = (
+    "✅ Tu solicitud de prórroga ha sido registrada. "
+    "Un moderador la revisará pronto. Si es aprobada, recibirás confirmación por DM."
+)
+
+PRORROGA_ADMIN_OK = (
+    "✅ Prórroga concedida correctamente. {usuario} tiene {dias} días de prórroga de inactividad."
 )
