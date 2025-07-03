@@ -6,50 +6,60 @@ Este archivo documenta la estructura actual del bot, su estado por módulo y su 
 
 ## 📂 Archivos raíz
 
-| Archivo        | Estado        | Propósito |
-|----------------|---------------|-----------|
-| `main.py`      | ✅ Ya trabajado | Arranca el bot, carga cogs y eventos |
-| `config.py`    | ✅ Ya trabajado | Contiene los valores globales como IDs y tokens |
-| `requirements.txt` | ✅ Ya trabajado | Lista de dependencias para Railway |
+| Archivo             | Estado         | Propósito |
+|---------------------|----------------|-----------|
+| `main.py`           | ✅ Ya trabajado | Arranca el bot, carga cogs y mantiene vivo en Railway |
+| `config.py`         | ✅ Ya trabajado | Centraliza todas las variables de entorno |
+| `requirements.txt`  | ✅ Ya trabajado | Lista de dependencias para Railway |
 
 ---
 
 ## 📂 `/mensajes/` — Contenido visual y configuración central
 
-| Archivo                  | Estado        | Propósito |
-|--------------------------|---------------|-----------|
+| Archivo                  | Estado         | Propósito |
+|--------------------------|----------------|-----------|
 | `normas_texto.py`        | ✅ Ya trabajado | Texto completo del mensaje de normas generales |
-| `normas_config.py`       | ✅ Ya trabajado | Variables de configuración funcional del bot para las normas |
+| `normas_config.py`       | ✅ Ya trabajado | Variables de configuración funcional del bot para normas |
+| `comandos_texto.py`      | ✅ Ya trabajado | Instrucciones y embeds del canal de comandos |
 
 ---
 
 ## 📂 `/canales/` — Módulos por canal
 
-| Archivo                  | Estado        | Propósito |
-|--------------------------|---------------|-----------|
-| `presentate.py`          | ✅ Ya trabajado | Módulo para dar la bienvenida con menú desplegable en `#👋preséntate` |
-| `normas_generales.py`    | ✅ Ya trabajado | Limpia y mantiene actualizado `#✅normas-generales` |
+| Archivo                  | Estado         | Propósito |
+|--------------------------|----------------|-----------|
+| `presentate.py`          | ✅ Ya trabajado | Bienvenida automática en `#👋preséntate` con menú |
+| `normas_generales.py`    | ✅ Ya trabajado | Limpia y mantiene el mensaje fijo de normas |
+| `faltas.py`              | ✅ Ya trabajado | Genera y sincroniza el panel público en `#📤faltas` |
+| `comandos.py`            | ✅ Ya trabajado | Limpia y configura instrucciones en `#💻comandos` |
+
+---
+
+## 📂 `/comandos/` — Comandos slash
+
+| Archivo                  | Estado         | Propósito |
+|--------------------------|----------------|-----------|
+| `estado.py`              | ✅ Ya trabajado | Muestra el estado individual del usuario |
+| `estadisticas.py`        | ✅ Ya trabajado | Muestra estadísticas globales para admins |
 
 ---
 
 ## 🗂️ Planificación futura
 
-| Módulo                   | Estado        | Propósito previsto |
-|--------------------------|---------------|---------------------|
-| `faltas.py`              | 🧠 Planificado | Registrar y controlar el sistema de faltas por incumplimiento |
-| `go_viral.py`            | 🧠 Planificado | Validar, corregir, y procesar publicaciones en `#🧵go-viral` |
-| `logs.py`                | 🧠 Planificado | Registrar toda la actividad del bot en `#📝logs` |
-| `soporte.py`             | 🧠 Planificado | Automatizar respuestas y solicitudes en `#👨🔧soporte` |
+| Módulo                   | Estado         | Propósito previsto |
+|--------------------------|----------------|---------------------|
+| `go_viral.py`            | 🧠 Planificado  | Automatizar validación en `#🧵go-viral` |
+| `logs.py`                | 🧠 Planificado  | Registrar eventos en `#📝logs` |
+| `soporte.py`             | 🧠 Planificado  | Gestionar asistencia automática |
 
 ---
 
 ## 🧠 Notas importantes
 
-- Todos los módulos están pensados para ser independientes. Nuevas funciones no deben romper lo ya implementado.
-- Las normas generales están divididas en dos partes:
-  - Visual (`normas_texto.py`)
-  - Configuración funcional (`normas_config.py`)
-- El canal `#✅normas-generales` es de uso exclusivo del bot. No se permite texto de usuarios, pero sí reacciones.
+- Todos los módulos son independientes. Fallos en uno no afectan al resto.
+- El bot es completamente modular y seguro para escalar.
+- El canal de comandos es exclusivo y debe usarse solo para `/estado` y `/estadisticas`.
+- El canal de faltas se sincroniza al iniciar, sin duplicar.
 
 ---
 
