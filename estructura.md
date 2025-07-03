@@ -1,6 +1,6 @@
 # 📁 ESTRUCTURA DEL BOT — Viral 𝕏 | V𝕏
 
-Este archivo documenta la estructura **real y actual** del bot, el estado de cada módulo y su propósito. Actualizado con los módulos de inactividad, soporte y prórroga. El diseño es modular, seguro y escalable.
+Este archivo documenta la estructura **real y actual** del bot, el estado de cada módulo y su propósito. Actualizado con todos los módulos: inactividad, soporte, prórroga y automatización completa en go-viral. El diseño es modular, seguro y escalable.
 
 ---
 
@@ -22,6 +22,7 @@ Este archivo documenta la estructura **real y actual** del bot, el estado de cad
 | `normas_config.py`       | ✅ Ya trabajado | Configuración funcional para normas                     |
 | `comandos_texto.py`      | ✅ Ya trabajado | Instrucciones y embeds del canal de comandos            |
 | `inactividad_texto.py`   | ✅ Ya trabajado | Mensajes de baneo, expulsión y prórroga (editables)     |
+| `viral_texto.py`         | ✅ Ya trabajado | Todos los embeds, notificaciones y textos de go-viral   |
 
 ---
 
@@ -35,6 +36,7 @@ Este archivo documenta la estructura **real y actual** del bot, el estado de cad
 | `comandos.py`            | ✅ Ya trabajado | Limpia y configura instrucciones en `#💻comandos`               |
 | `inactividad.py`         | ✅ Ya trabajado | Detecta inactividad, ejecuta baneos y expulsiones automáticas  |
 | `soporte_prorroga.py`    | ✅ Ya trabajado | Gestiona solicitudes de prórroga de usuarios en `#👨🔧soporte`   |
+| `go_viral.py`            | ✅ Ya trabajado | **Automatiza todo en `#🧵go-viral`: reglas, control, embeds, validaciones** |
 
 ---
 
@@ -52,7 +54,6 @@ Este archivo documenta la estructura **real y actual** del bot, el estado de cad
 
 | Módulo                   | Estado         | Propósito previsto                                 |
 |--------------------------|----------------|----------------------------------------------------|
-| `go_viral.py`            | 🧠 Planificado  | Automatizar validación y corrección en `#🧵go-viral`|
 | `logs.py`                | 🧠 Planificado  | Registrar eventos y auditoría en `#📝logs`          |
 | `soporte.py`             | 🧠 Planificado  | Mejorar atención automática y FAQ en soporte        |
 
@@ -62,11 +63,12 @@ Este archivo documenta la estructura **real y actual** del bot, el estado de cad
 
 - Todos los módulos son **independientes**. Fallos en uno no afectan a los demás.
 - El bot es completamente **modular y seguro** para añadir funciones.
-- Canales críticos (`#comandos`, `#faltas`, `#normas-generales`) están protegidos: solo el bot publica.
+- Canales críticos (`#comandos`, `#faltas`, `#normas-generales`, `#go-viral`) están protegidos: solo el bot publica.
 - El panel de faltas y los comandos slash **se sincronizan automáticamente** al iniciar el bot.
 - Los mensajes y textos que ve el usuario están **centralizados en `/mensajes/`** para fácil edición sin tocar código.
-- Sistema de **inactividad y prórrogas** 100% automático, sin intervención humana, configurable y seguro.
+- Sistema de **inactividad, faltas, go-viral y prórrogas** 100% automático, sin intervención humana, configurable y seguro.
+- Todos los embeds y mensajes públicos son profesionales, educativos y pueden editarse sin reiniciar el bot.
 
 ---
 
-*Última actualización: 2025-07-04*
+*Última actualización: 2025-07-04  —  18:18*
