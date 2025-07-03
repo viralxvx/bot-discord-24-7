@@ -88,3 +88,14 @@ NOTIFICACION_APOYO_9_DM = (
     "Hola, tu última publicación en 🧵go-viral fue eliminada porque no diste apoyo a los 9 anteriores. "
     "Recuerda: solo puedes volver a publicar después de apoyar con 🔥 (RT + Like + Comentario) a los 9 anteriores."
 )
+
+NOTIFICACION_INTERVALO_EDUCATIVA = (
+    "⏳ {usuario}, debes esperar al menos que **2 miembros diferentes** publiquen antes de volver a compartir. "
+    "¡Apoya, espera y sigue creciendo! Publica de nuevo cuando cumplas el intervalo."
+)
+
+NOTIFICACION_INTERVALO_DM = (
+    "Hola, tu publicación fue eliminada porque no esperaste que al menos 2 miembros publicaran después de tu último post. "
+    "Recuerda: después de tu publicación, deben pasar 2 publicaciones válidas de otros antes de volver a publicar."
+)
+
