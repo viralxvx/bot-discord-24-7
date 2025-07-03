@@ -16,7 +16,8 @@ CANAL_LOGS_ID = get_env_variable("CANAL_LOGS")
 CANAL_OBJETIVO_ID = get_env_variable("CANAL_OBJETIVO")
 CANAL_REPORTE_ID = get_env_variable("CANAL_REPORTE")
 CANAL_VICTORIAS_ID = get_env_variable("CANAL_VICTORIAS")
+CANAL_ESTRATEGIAS_ID = get_env_variable("CANAL_ESTRATEGIAS")  # nuevo
 
 # Otros valores
 ADMIN_ID = get_env_variable("ADMIN_ID")
-REDIS_URL = os.getenv("REDIS_URL")  # Redirige sin convertir a int
+REDIS_URL = os.getenv("REDIS_URL")
