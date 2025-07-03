@@ -1,15 +1,16 @@
 import discord
 from discord.ext import commands
-from config import CANAL_OBJETIVO_ID
+from config import CANAL_OBJETIVO_ID, REDIS_URL
 from mensajes.viral_texto import MENSAJE_FIJO, MENSAJE_BIENVENIDA_NUEVO
 from datetime import datetime
 import asyncio
+import redis
 
 class GoViral(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
         bot.loop.create_task(self.init_mensaje_fijo())
-        self.usuarios_bienvenida = set()  # En producción, usa Redis/db
 
     async def init_mensaje_fijo(self):
         await self.bot.wait_until_ready()
@@ -36,3 +37,22 @@ class GoViral(commands.Cog):
     async def on_message(self, message):
         if message.author.bot or message.channel.id != CANAL_OBJETIVO_ID:
             return
+
+        user_id = str(message.author.id)
+        key_bienvenida = f"go_viral:bienvenida:{user_id}"
+
+        # Envío de bienvenida SOLO si no se ha enviado antes
+        if not self.redis.get(key_bienvenida):
+            self.redis.set(key_bienvenida, "1")
+            try:
+                await message.reply(
+                    MENSAJE_BIENVENIDA_NUEVO,
+                    mention_author=True,
+                    delete_after=120
+                )
+                print(f"✅ [GO-VIRAL] Bienvenida enviada a {message.author.display_name} ({user_id})")
+            except Exception as e:
+                print(f"❌ [GO-VIRAL] Error enviando bienvenida a {user_id}: {e}")
+
+def setup(bot):
+    bot.add_cog(GoViral(bot))
