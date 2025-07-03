@@ -3,18 +3,30 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# IDs de canales (se cargan desde variables de entorno)
-CANAL_PRESENTATE_ID = int(os.getenv("CANAL_PRESENTATE"))
-CANAL_NORMAS_ID = int(os.getenv("CANAL_NORMAS"))
-CANAL_FALTAS_ID = int(os.getenv("CANAL_FALTAS"))
-CANAL_LOGS_ID = int(os.getenv("CANAL_LOGS"))
-CANAL_COMANDOS_ID = int(os.getenv("CANAL_COMANDOS"))
-CANAL_OBJETIVO_ID = int(os.getenv("CANAL_OBJETIVO"))
-CANAL_REPORTE_ID = int(os.getenv("CANAL_REPORTE"))
+def get_env_int(var_name):
+    value = os.getenv(var_name)
+    if value is None:
+        raise ValueError(f"❌ Error: la variable de entorno '{var_name}' no está definida.")
+    return int(value)
 
-# Otros datos
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
-GUILD_ID = int(os.getenv("GUILD_ID"))
-REDIS_URL = os.getenv("REDIS_URL")
-STATE_PATH = os.getenv("STATE_PATH")
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+def get_env(var_name):
+    value = os.getenv(var_name)
+    if value is None:
+        raise ValueError(f"❌ Error: la variable de entorno '{var_name}' no está definida.")
+    return value
+
+# Variables críticas convertidas en enteros
+CANAL_PRESENTATE_ID = get_env_int("CANAL_PRESENTATE")
+CANAL_NORMAS_ID = get_env_int("CANAL_NORMAS")
+CANAL_FALTAS_ID = get_env_int("CANAL_FALTAS")
+CANAL_LOGS_ID = get_env_int("CANAL_LOGS")
+CANAL_COMANDOS_ID = get_env_int("CANAL_COMANDOS")
+CANAL_OBJETIVO_ID = get_env_int("CANAL_OBJETIVO")
+CANAL_REPORTE_ID = get_env_int("CANAL_REPORTE")
+ADMIN_ID = get_env_int("ADMIN_ID")
+GUILD_ID = get_env_int("GUILD_ID")
+
+# Variables de texto
+REDIS_URL = get_env("REDIS_URL")
+STATE_PATH = get_env("STATE_PATH")
+DISCORD_TOKEN = get_env("DISCORD_TOKEN")
