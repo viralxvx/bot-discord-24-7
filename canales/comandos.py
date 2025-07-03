@@ -1,33 +1,38 @@
-# canales/comandos.py
-
 import discord
 from discord.ext import commands
+import logging
 import os
+from config import CANAL_COMANDOS_ID
 from mensajes.comandos_texto import INSTRUCCIONES_COMANDOS
-
-CANAL_COMANDOS = int(os.getenv("CANAL_COMANDOS"))
 
 class CanalComandos(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.logger = logging.getLogger(__name__)
+        bot.loop.create_task(self.configurar_canal_comandos())
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        print("⚙️ Iniciando módulo de comandos...")
+    async def configurar_canal_comandos(self):
+        await self.bot.wait_until_ready()
+        canal = self.bot.get_channel(CANAL_COMANDOS_ID)
 
-        canal = self.bot.get_channel(CANAL_COMANDOS)
         if not canal:
-            print(f"❌ Error: No se encontró el canal de comandos con ID {CANAL_COMANDOS}")
+            self.logger.error("❌ No se encontró el canal de comandos.")
+            return
+
+        self.logger.info("🛠️ Configurando canal de comandos...")
+
+        try:
+            await canal.purge(limit=None)
+            self.logger.info("🧹 Canal de comandos limpiado correctamente.")
+        except Exception as e:
+            self.logger.error(f"❌ Error al limpiar el canal de comandos: {e}")
             return
 
         try:
-            async for msg in canal.history(limit=100):
-                if msg.author == self.bot.user:
-                    await msg.delete()
             await canal.send(INSTRUCCIONES_COMANDOS)
-            print("✅ Mensaje de instrucciones enviado en canal de comandos.")
+            self.logger.info("✅ Instrucciones de uso enviadas al canal de comandos.")
         except Exception as e:
-            print(f"❌ Error al enviar el mensaje de instrucciones: {e}")
+            self.logger.error(f"❌ Error al enviar instrucciones al canal de comandos: {e}")
 
-async def setup(bot):
-    await bot.add_cog(CanalComandos(bot))
+def setup(bot):
+    bot.add_cog(CanalComandos(bot))
