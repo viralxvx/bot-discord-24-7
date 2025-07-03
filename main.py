@@ -33,11 +33,11 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Error al sincronizar comandos: {e}")
 
-    # 🛡️ Previene apagado automático
+    # 🛡️ Previene que Railway apague el bot por inactividad
     while True:
         await asyncio.sleep(60)
-        print(\"⏳ Bot sigue vivo...\")
+        print("⏳ Bot sigue vivo...")
 
-if __name__ == \"__main__\":
-    TOKEN = os.getenv(\"DISCORD_TOKEN\")
+if __name__ == "__main__":
+    TOKEN = os.getenv("DISCORD_TOKEN")
     asyncio.run(bot.start(TOKEN))
