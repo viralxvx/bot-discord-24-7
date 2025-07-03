@@ -10,6 +10,8 @@ from mensajes.viral_texto import (
     NOTIFICACION_SIN_LIKE_DM,
     NOTIFICACION_APOYO_9_EDUCATIVA,
     NOTIFICACION_APOYO_9_DM,
+    NOTIFICACION_INTERVALO_EDUCATIVA,
+    NOTIFICACION_INTERVALO_DM
 )
 from datetime import datetime
 import redis
@@ -17,10 +19,6 @@ import asyncio
 import re
 
 def limpiar_url_tweet(texto):
-    """
-    Extrae y limpia una URL válida de x.com/TUUSER/status/ID
-    Retorna la url limpia si encuentra, sino None
-    """
     match = re.search(r"https?://x\.com/\w+/status/(\d+)", texto)
     if match:
         usuario = re.search(r"https?://x\.com/([^/]+)/status", texto)
@@ -42,13 +40,10 @@ class GoViral(commands.Cog):
         if not canal:
             print(f"❌ [GO-VIRAL] No se encontró el canal (ID {CANAL_OBJETIVO_ID})")
             return
-
-        # Busca mensaje fijo existente
         async for msg in canal.history(limit=20, oldest_first=True):
             if msg.author == self.bot.user and "¡Bienvenido a GO-VIRAL!" in msg.content:
                 print("✅ [GO-VIRAL] Mensaje fijo ya existe.")
                 return
-        # Si no existe, publica y fija
         fecha = datetime.now().strftime("%Y-%m-%d")
         msg = await canal.send(MENSAJE_FIJO.format(fecha=fecha))
         try:
@@ -98,6 +93,10 @@ class GoViral(commands.Cog):
                 except: pass
                 return
 
+        # --- Control de intervalo entre publicaciones ---
+        if not await self.verificar_intervalo_entre_publicaciones(message):
+            return  # Si falla, ya notificó y borró el mensaje
+
         # --- Verificación de apoyo a los 9 anteriores ---
         if not await self.verificar_apoyo_nueve_anteriores(message):
             return  # Si falla, ya notificó y borró el mensaje
@@ -105,27 +104,81 @@ class GoViral(commands.Cog):
         # Inicia verificación de reacción 👍 del autor a su propio mensaje
         self.bot.loop.create_task(self.verificar_reaccion_like(message))
 
+    async def verificar_intervalo_entre_publicaciones(self, message):
+        """
+        Solo permite publicar si hay al menos 2 publicaciones válidas de otros miembros
+        desde la última publicación de este usuario.
+        """
+        canal = message.channel
+        mensajes = [msg async for msg in canal.history(limit=50, oldest_first=False)]
+        mensajes.reverse()  # Más antiguo a más nuevo
+
+        # Busca la última publicación de este usuario antes de este mensaje
+        idx_actual = None
+        for i, msg in enumerate(mensajes):
+            if msg.id == message.id:
+                idx_actual = i
+                break
+        if idx_actual is None:
+            return True  # Mensaje fantasma, dejar pasar
+
+        idx_ultima = None
+        for i in range(idx_actual - 1, -1, -1):
+            if mensajes[i].author.id == message.author.id and not mensajes[i].author.bot:
+                idx_ultima = i
+                break
+
+        if idx_ultima is None:
+            return True  # Es su primer post
+
+        # Contar cuántas publicaciones válidas (de otros usuarios) hay entre la última y la actual
+        publicaciones_otros = set()
+        for i in range(idx_ultima + 1, idx_actual):
+            msg = mensajes[i]
+            if msg.author.id != message.author.id and not msg.author.bot:
+                publicaciones_otros.add(msg.author.id)
+            if len(publicaciones_otros) >= 2:
+                break
+
+        if len(publicaciones_otros) < 2:
+            # Elimina la publicación y notifica
+            try:
+                await message.delete()
+                print(f"❌ [GO-VIRAL] Publicación de {message.author.display_name} eliminada por INTERVALO insuficiente.")
+            except Exception as e:
+                print(f"❌ [GO-VIRAL] Error eliminando mensaje (intervalo): {e}")
+            # Mensaje educativo en canal
+            try:
+                await message.channel.send(
+                    NOTIFICACION_INTERVALO_EDUCATIVA.format(usuario=message.author.mention),
+                    delete_after=15
+                )
+            except Exception:
+                pass
+            # DM educativo
+            try:
+                await message.author.send(NOTIFICACION_INTERVALO_DM)
+            except Exception as e:
+                print(f"⚠️ [GO-VIRAL] No se pudo enviar DM (intervalo) a {message.author.display_name}: {e}")
+            return False
+        return True
+
     async def verificar_apoyo_nueve_anteriores(self, message):
-        """Valida si el usuario ha reaccionado 🔥 a los 9 posts anteriores antes de publicar."""
         canal = message.channel
         mensajes = [msg async for msg in canal.history(limit=50, oldest_first=False)]
         mensajes.reverse()  # De más antiguos a más nuevos
 
-        # Busca la posición de este mensaje
         idx = None
         for i, msg in enumerate(mensajes):
             if msg.id == message.id:
                 idx = i
                 break
         if idx is None or idx < 9:
-            # Primer post del usuario o no hay suficiente historia, deja pasar
-            return True
+            return True  # Primer post del usuario o poco historial
 
-        # Toma los 9 mensajes inmediatamente anteriores
         posts_previos = mensajes[idx-9:idx]
         apoyo_faltante = []
         for post in posts_previos:
-            # Solo considera mensajes de miembros (no bots)
             if post.author.bot:
                 continue
             tiene_fuego = False
@@ -141,14 +194,11 @@ class GoViral(commands.Cog):
                 apoyo_faltante.append(post)
 
         if apoyo_faltante:
-            # Elimina la publicación y notifica
             try:
                 await message.delete()
                 print(f"❌ [GO-VIRAL] Publicación de {message.author.display_name} eliminada por NO apoyar a los 9 anteriores.")
             except Exception as e:
                 print(f"❌ [GO-VIRAL] Error eliminando mensaje (no apoyó a 9): {e}")
-
-            # Mensaje educativo en canal
             try:
                 await message.channel.send(
                     NOTIFICACION_APOYO_9_EDUCATIVA.format(usuario=message.author.mention),
@@ -156,7 +206,6 @@ class GoViral(commands.Cog):
                 )
             except Exception:
                 pass
-            # DM educativo
             try:
                 await message.author.send(NOTIFICACION_APOYO_9_DM)
             except Exception as e:
@@ -165,12 +214,10 @@ class GoViral(commands.Cog):
         return True
 
     async def verificar_reaccion_like(self, message):
-        """Espera 120 segundos y verifica si el autor reaccionó con 👍 a su propio mensaje"""
         await asyncio.sleep(120)
         try:
             msg = await message.channel.fetch_message(message.id)
         except (discord.NotFound, discord.Forbidden):
-            # El mensaje ya no existe
             return
 
         autor = message.author
@@ -184,13 +231,11 @@ class GoViral(commands.Cog):
                         break
 
         if not tiene_like:
-            # Elimina mensaje, notifica en canal y por DM
             try:
                 await msg.delete()
                 print(f"❌ [GO-VIRAL] Publicación eliminada por no validar con 👍: {autor.display_name}")
             except Exception as e:
                 print(f"❌ [GO-VIRAL] Error eliminando mensaje sin like: {e}")
-            # Mensaje educativo en canal (15s)
             try:
                 await msg.channel.send(
                     NOTIFICACION_SIN_LIKE_EDUCATIVA.format(usuario=autor.mention),
@@ -198,7 +243,6 @@ class GoViral(commands.Cog):
                 )
             except Exception:
                 pass
-            # DM educativo
             try:
                 await autor.send(NOTIFICACION_SIN_LIKE_DM)
             except Exception as e:
