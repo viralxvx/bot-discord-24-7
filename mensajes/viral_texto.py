@@ -68,3 +68,15 @@ NOTIFICACION_URL_DM = (
     "¡Gracias por tu atención! — VXbot"
 )
 
+NOTIFICACION_SIN_LIKE_EDUCATIVA = (
+    "❗ {usuario}, no reaccionaste con 👍 a tu propio post en los primeros 2 minutos. "
+    "Por norma del canal, tu publicación fue eliminada. ¡Recuerda validar tu post la próxima vez!"
+)
+
+NOTIFICACION_SIN_LIKE_DM = (
+    "Hola, tu publicación en 🧵go-viral fue eliminada porque no le diste 👍 en los primeros 2 minutos. "
+    "Es necesario validar tu propio post con un 👍 para mantener el orden y la calidad. "
+    "Si tienes dudas, revisa las reglas en #✅normas-generales o pregunta en #👨🔧soporte."
+)
+
+
