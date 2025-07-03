@@ -1,50 +1,33 @@
+# canales/comandos.py
+
 import discord
 from discord.ext import commands
-from discord import TextChannel
 import os
+from mensajes.comandos_texto import INSTRUCCIONES_COMANDOS
 
-class Comandos(commands.Cog):
+CANAL_COMANDOS = int(os.getenv("CANAL_COMANDOS"))
+
+class CanalComandos(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
     @commands.Cog.listener()
     async def on_ready(self):
-        canal_comandos_id = int(os.getenv("CANAL_COMANDOS"))
-        canal: TextChannel = self.bot.get_channel(canal_comandos_id)
+        print("⚙️ Iniciando módulo de comandos...")
 
-        if canal:
-            # Elimina mensajes existentes del canal 💻comandos
-            try:
-                async for msg in canal.history(limit=100):
-                    if msg.author == self.bot.user:
-                        await msg.delete()
-            except Exception as e:
-                print(f"❌ Error limpiando canal de comandos: {e}")
+        canal = self.bot.get_channel(CANAL_COMANDOS)
+        if not canal:
+            print(f"❌ Error: No se encontró el canal de comandos con ID {CANAL_COMANDOS}")
+            return
 
-            # Envía el mensaje de instrucciones
-            embed = discord.Embed(
-                title="💻 Comandos disponibles",
-                description=(
-                    "**/estado [usuario]** → Consulta pública y DM sobre el estado de un usuario.\n"
-                    "**/estadisticas** → Muestra estadísticas generales del servidor (solo admins).\n\n"
-                    "📌 Solo puedes usar estos comandos en este canal.\n"
-                    "🕒 Las respuestas se borran automáticamente tras 10 minutos."
-                ),
-                color=discord.Color.green()
-            )
-            await canal.send(embed=embed)
-            print("✅ Instrucciones publicadas en canal 💻comandos.")
-        else:
-            print("❌ Error: No se encontró el canal de comandos.")
+        try:
+            async for msg in canal.history(limit=100):
+                if msg.author == self.bot.user:
+                    await msg.delete()
+            await canal.send(INSTRUCCIONES_COMANDOS)
+            print("✅ Mensaje de instrucciones enviado en canal de comandos.")
+        except Exception as e:
+            print(f"❌ Error al enviar el mensaje de instrucciones: {e}")
 
 async def setup(bot):
-    await bot.add_cog(Comandos(bot))
-
-    # Carga comandos individuales
-    from comandos.estado import Estado
-    from comandos.estadisticas import Estadisticas
-
-    await bot.add_cog(Estado(bot))
-    await bot.add_cog(Estadisticas(bot))
-
-    print("✅ Comandos /estado y /estadisticas registrados.")
+    await bot.add_cog(CanalComandos(bot))
