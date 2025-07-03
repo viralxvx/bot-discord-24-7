@@ -1,8 +1,11 @@
 import discord
 from discord.ext import commands
 import os
+import asyncio
 from config import CANAL_FALTAS_ID, REDIS_URL
 import redis
+from datetime import datetime, timedelta
+import pytz
 
 class Faltas(commands.Cog):
     def __init__(self, bot):
@@ -21,55 +24,53 @@ class Faltas(commands.Cog):
 
         print("🔍 Cargando mensajes existentes del canal #📤faltas...")
         try:
-            mensajes_existentes = [m async for m in canal.history(limit=None)]
+            mensajes_existentes = [msg async for msg in canal.history(limit=None)]
         except Exception as e:
-            print(f"❌ Error al obtener historial: {e}")
+            print(f"❌ Error al cargar mensajes existentes: {e}")
             return
 
-        mensajes_por_usuario = {}
-        for mensaje in mensajes_existentes:
-            if mensaje.author != self.bot.user:
-                continue
-            if not mensaje.embeds:
-                continue
-            embed = mensaje.embeds[0]
-            if embed.description and embed.description.startswith("📤 REGISTRO DE"):
-                usuario_mention = embed.description.split("\n")[0].replace("📤 REGISTRO DE ", "").strip()
-                mensajes_por_usuario[usuario_mention] = mensaje
+        print("🧹 Borrando todos los mensajes del canal...")
+        try:
+            await canal.purge(limit=None)
+            print("✅ Canal limpiado con éxito.")
+        except Exception as e:
+            print(f"❌ Error al limpiar el canal: {e}")
+            return
 
         print("📊 Reconstruyendo panel público de faltas...")
         try:
-            for miembro in canal.guild.members:
+            guild = canal.guild
+            for miembro in guild.members:
                 if miembro.bot:
                     continue
-                await self.generar_o_actualizar_mensaje(canal, miembro, mensajes_por_usuario)
+                await self.publicar_o_actualizar_faltas(canal, miembro)
             print("✅ Panel público actualizado.")
         except Exception as e:
             print(f"❌ Error al reconstruir el panel: {e}")
 
-    async def generar_o_actualizar_mensaje(self, canal, miembro, mensajes_existentes):
-        estado = "✅ Activo"
-        faltas_mes = "0"
-        faltas_totales = "0"
+    async def publicar_o_actualizar_faltas(self, canal, miembro):
+        user_id = str(miembro.id)
 
-        embed = discord.Embed(color=discord.Color.orange())
-        embed.set_author(name=miembro.display_name, icon_url=miembro.display_avatar.url)
-        embed.description = (
-            f"📤 REGISTRO DE {miembro.mention}\n"
-            f"Estado actual: {estado}\n"
-            f"Total de faltas: {faltas_totales}\n"
-            f"Faltas este mes: {faltas_mes}"
-        )
-        embed.set_footer(text="Sistema automatizado de reputación pública")
+        # Cargar datos del usuario (si existieran en Redis)
+        total_faltas = int(self.redis.get(f"faltas:{user_id}:total") or 0)
+        faltas_mes = int(self.redis.get(f"faltas:{user_id}:mes") or 0)
+        estado = self.redis.get(f"faltas:{user_id}:estado") or "✅ Activo"
 
-        mensaje_existente = mensajes_existentes.get(miembro.mention)
+        embed = discord.Embed(title=f"📤 REGISTRO DE {miembro.mention}", color=discord.Color.orange())
+        embed.set_author(name=f"{miembro.display_name}", icon_url=miembro.display_avatar.url)
+        embed.add_field(name="Estado actual", value=estado, inline=False)
+        embed.add_field(name="Total de faltas", value=str(total_faltas), inline=False)
+        embed.add_field(name="Faltas este mes", value=str(faltas_mes), inline=False)
+
+        hora_actual = datetime.now(pytz.timezone('America/Santo_Domingo'))
+        hora_formateada = hora_actual.strftime('%A a las %H:%M').capitalize()
+        embed.set_footer(text=f"Sistema automatizado de reputación pública • {hora_formateada}")
+
         try:
-            if mensaje_existente:
-                await mensaje_existente.edit(embed=embed)
-            else:
-                await canal.send(embed=embed)
+            await canal.send(embed=embed)
         except Exception as e:
-            print(f"❌ Error con {miembro.display_name}: {e}")
+            print(f"❌ Error al enviar mensaje de {miembro.display_name}: {e}")
 
-async def setup(bot):
-    await bot.add_cog(Faltas(bot))
+
+def setup(bot):
+    bot.add_cog(Faltas(bot))
