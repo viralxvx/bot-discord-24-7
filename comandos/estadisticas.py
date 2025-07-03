@@ -1,53 +1,42 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-import redis
 import os
+import redis
+import json
+from comandos.mensajes import generar_embed_estadisticas
+
+CANAL_COMANDOS_ID = 1390164280959303831
+REDIS_URL = os.getenv("REDIS_URL")
+redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
 class Estadisticas(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.redis = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 
-    @app_commands.command(name="estadisticas", description="Muestra estadísticas generales del servidor.")
+    @app_commands.command(name="estadísticas", description="Estadísticas generales del servidor.")
     async def estadisticas(self, interaction: discord.Interaction):
-        user = interaction.user
-        guild_id = os.getenv("GUILD_ID")
-        print(f"📊 [LOG] Usuario ejecutó /estadisticas: {user.name} ({user.id})")
+        if interaction.channel.id != CANAL_COMANDOS_ID:
+            return  # Solo se ejecuta en 💻comandos
 
-        # Obtener claves que correspondan a usuarios
-        miembros = self.redis.keys(f"{guild_id}:faltas:*")
-        total_miembros = len(miembros)
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Solo los administradores pueden usar este comando.", ephemeral=True)
+            return
 
-        baneados = 0
-        expulsados = 0
-        activos = 0
+        # Datos de Redis
+        todos = redis_client.keys("faltas:*")
+        total = len(todos)
+        baneados = sum(1 for k in todos if json.loads(redis_client.get(k)).get("estado") == "Baneado")
+        expulsados = sum(1 for k in todos if json.loads(redis_client.get(k)).get("estado") == "Expulsado")
 
-        for clave in miembros:
-            estado = self.redis.hget(clave, "estado")
-            if estado == "baneado":
-                baneados += 1
-            elif estado == "expulsado":
-                expulsados += 1
-            else:
-                activos += 1
-
-        embed = discord.Embed(
-            title="📊 Estadísticas Generales del Servidor",
-            color=discord.Color.blue()
-        )
-        embed.add_field(name="👥 Total de miembros", value=total_miembros, inline=True)
-        embed.add_field(name="🟢 Activos", value=activos, inline=True)
-        embed.add_field(name="⛔ Baneados", value=baneados, inline=True)
-        embed.add_field(name="🚫 Expulsados", value=expulsados, inline=True)
-        embed.set_footer(text="Sistema automatizado de control • VX")
+        embed = generar_embed_estadisticas(total, baneados, expulsados)
 
         try:
-            await user.send(embed=embed)
-            await interaction.response.send_message("✅ Te envié las estadísticas por DM.", ephemeral=True)
+            # Enviar al canal y por DM
+            await interaction.response.send_message(embed=embed, ephemeral=False)
+            await interaction.user.send(embed=embed)
         except Exception as e:
-            print(f"❌ Error al enviar DM: {e}")
-            await interaction.response.send_message("❌ No pude enviarte las estadísticas por DM. Asegúrate de tener los mensajes privados activados.", ephemeral=True)
+            print(f"❌ Error enviando estadísticas: {e}")
 
 async def setup(bot):
     await bot.add_cog(Estadisticas(bot))
