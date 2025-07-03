@@ -3,7 +3,6 @@ from discord.ext import commands
 from config import CANAL_OBJETIVO_ID, REDIS_URL
 from mensajes.viral_texto import MENSAJE_FIJO, MENSAJE_BIENVENIDA_NUEVO
 from datetime import datetime
-import asyncio
 import redis
 
 class GoViral(commands.Cog):
