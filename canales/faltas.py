@@ -33,9 +33,9 @@ class Faltas(commands.Cog):
             if not mensaje.embeds:
                 continue
             embed = mensaje.embeds[0]
-            if embed.title and embed.title.startswith("📋 Estado de "):
-                usuario = embed.fields[0].value  # el @usuario
-                mensajes_por_usuario[usuario] = mensaje
+            if embed.description and embed.description.startswith("📤 REGISTRO DE"):
+                usuario_mention = embed.description.split("\n")[0].replace("📤 REGISTRO DE ", "").strip()
+                mensajes_por_usuario[usuario_mention] = mensaje
 
         print("📊 Reconstruyendo panel público de faltas...")
         try:
@@ -48,11 +48,19 @@ class Faltas(commands.Cog):
             print(f"❌ Error al reconstruir el panel: {e}")
 
     async def generar_o_actualizar_mensaje(self, canal, miembro, mensajes_existentes):
-        embed = discord.Embed(title=f"📋 Estado de {miembro.display_name}", color=discord.Color.orange())
-        embed.add_field(name="Usuario", value=miembro.mention, inline=True)
-        embed.add_field(name="Faltas (mes)", value="0", inline=True)
-        embed.add_field(name="Estado", value="✅ Activo", inline=True)
-        embed.set_footer(text="Sistema automatizado de faltas - V𝕏")
+        estado = "✅ Activo"
+        faltas_mes = "0"
+        faltas_totales = "0"
+
+        embed = discord.Embed(color=discord.Color.orange())
+        embed.set_author(name=miembro.display_name, icon_url=miembro.display_avatar.url)
+        embed.description = (
+            f"📤 REGISTRO DE {miembro.mention}\n"
+            f"Estado actual: {estado}\n"
+            f"Total de faltas: {faltas_totales}\n"
+            f"Faltas este mes: {faltas_mes}"
+        )
+        embed.set_footer(text="Sistema automatizado de reputación pública")
 
         mensaje_existente = mensajes_existentes.get(miembro.mention)
         try:
@@ -63,6 +71,5 @@ class Faltas(commands.Cog):
         except Exception as e:
             print(f"❌ Error con {miembro.display_name}: {e}")
 
-# 🔧 CORREGIDO: función async
 async def setup(bot):
     await bot.add_cog(Faltas(bot))
