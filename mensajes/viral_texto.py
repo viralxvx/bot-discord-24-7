@@ -32,7 +32,7 @@ MENSAJE_FIJO = (
     "• Pregunta siempre en `#👨🔧soporte` antes de molestar a los moderadores.\n\n"
     "🔥 **Aquí se viene a crecer. El que apoya, crece. El que aprende, nunca se queda atrás.**\n"
     "---\n"
-    "![Logo](https://drive.google.com/uc?export=view&id=1KQTwE3IazBixpiF5vHa3eSTZoKYZUNd9)\n"
+    "![Logo](https://drive.google.com/file/d/1LGwse5dI_Q_PpQhhfpLBudteATKoy4Hj/view?usp=drive_link)\n"
     "*Mensaje automatizado por VXbot — actualizado al {fecha}*"
 )
 
