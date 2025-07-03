@@ -15,6 +15,7 @@ EXTENSIONES = [
     "canales.normas_generales",
     "canales.faltas",
     "canales.comandos",   # ← para configurar el canal 💻comandos
+    "canales.inactividad",    # ← AGREGA ESTA LÍNEA
     "comandos",           # ← para registrar /estado y /estadisticas
 ]
 
