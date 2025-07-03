@@ -1,9 +1,9 @@
 import discord
 from discord.ext import commands
-from config import CANAL_SOPORTE_ID, REDIS_URL
-from mensajes.inactividad_texto import PRORROGA_CONCEDIDA, PRORROGA_SOLICITADA
+from config import CANAL_SOPORTE_ID, REDIS_URL  # ← Aquí va la importación, al principio
 import redis
 from datetime import datetime, timedelta, timezone
+from mensajes.inactividad_texto import PRORROGA_CONCEDIDA
 
 class SoporteProrroga(commands.Cog):
     def __init__(self, bot):
@@ -40,7 +40,7 @@ class SoporteProrroga(commands.Cog):
         # Borra el mensaje para mantener el canal limpio
         try:
             await message.delete()
-        except:
+        except Exception:
             pass
 
         # DM al usuario
@@ -51,8 +51,11 @@ class SoporteProrroga(commands.Cog):
 
         # Respuesta temporal en canal (10s)
         try:
-            aviso = await message.channel.send(f"✅ {member.mention}, tu prórroga de {dias} días fue registrada. Revisa tu DM.", delete_after=10)
-        except:
+            aviso = await message.channel.send(
+                f"✅ {member.mention}, tu prórroga de {dias} días fue registrada. Revisa tu DM.",
+                delete_after=10
+            )
+        except Exception:
             pass
 
 def setup(bot):
