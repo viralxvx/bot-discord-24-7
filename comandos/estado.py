@@ -1,46 +1,37 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from redis.commands.json.path import Path
-import redis
 import os
+import redis
 import json
+from comandos.mensajes import generar_embed_estado
+
+CANAL_COMANDOS_ID = 1390164280959303831
+REDIS_URL = os.getenv("REDIS_URL")
+redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
 class Estado(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.redis = redis.from_url(os.getenv("REDIS_URL"), decode_responses=True)
 
-    @app_commands.command(name="estado", description="Consulta tu estado actual en el sistema de faltas.")
+    @app_commands.command(name="estado", description="Consulta tu situación actual en el servidor.")
     async def estado(self, interaction: discord.Interaction):
-        user = interaction.user
-        user_id = str(user.id)
-        guild_id = os.getenv("GUILD_ID")
+        if interaction.channel.id != CANAL_COMANDOS_ID:
+            return  # Solo se ejecuta en el canal 💻comandos
 
-        print(f"🧪 [LOG] Usuario ejecutó /estado: {user.name} ({user_id})")
+        user_id = str(interaction.user.id)
+        data = redis_client.get(f"faltas:{user_id}")
+        info = json.loads(data) if data else {"faltas": 0, "estado": "Activo"}
 
-        data = self.redis.hgetall(f"{guild_id}:faltas:{user_id}")
-
-        total = data.get("total", "0")
-        mes = data.get("mes", "0")
-        estado = data.get("estado", "activo")
-
-        embed = discord.Embed(
-            title="📋 Tu Estado Actual",
-            description=f"👤 Usuario: {user.mention}",
-            color=discord.Color.orange()
-        )
-        embed.add_field(name="📅 Faltas del mes", value=mes, inline=True)
-        embed.add_field(name="📊 Total de faltas", value=total, inline=True)
-        embed.add_field(name="⚠️ Estado actual", value=estado.upper(), inline=False)
-        embed.set_footer(text="Sistema automatizado de faltas VX")
+        embed = generar_embed_estado(interaction.user, info)
 
         try:
-            await user.send(embed=embed)
-            await interaction.response.send_message("✅ Te envié tu estado por DM.", ephemeral=True)
+            # Enviar al canal
+            canal_msg = await interaction.response.send_message(embed=embed, ephemeral=False)
+            # Enviar por DM
+            await interaction.user.send(embed=embed)
         except Exception as e:
-            print(f"❌ Error al enviar DM: {e}")
-            await interaction.response.send_message("❌ No pude enviarte un mensaje privado. Asegúrate de tener los DMs habilitados.", ephemeral=True)
+            print(f"❌ Error enviando embed: {e}")
 
 async def setup(bot):
     await bot.add_cog(Estado(bot))
