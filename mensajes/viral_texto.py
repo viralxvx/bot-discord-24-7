@@ -117,3 +117,40 @@ DESCRIPCION_INTERVALO_DM = (
     "Recuerda: después de tu publicación, deben pasar 2 publicaciones válidas de otros antes de volver a publicar. "
     "Si pasan 24h y nadie publica, puedes volver a participar."
 )
+
+# --- PERMISOS SOLO URL (NO TEXTO NI OTROS MENSAJES) ---
+TITULO_SOLO_URL_EDU = "🚫 Solo se permite publicar enlaces de X (Twitter)"
+DESCRIPCION_SOLO_URL_EDU = (
+    "{usuario}, en este canal solo puedes publicar enlaces directos de tus publicaciones de X:\n"
+    "`https://x.com/usuario/status/1234567890`\n\n"
+    "Los mensajes de texto, imágenes, o cualquier otro tipo de contenido serán eliminados automáticamente.\n"
+    "Por favor, comparte solo tu enlace para mantener el orden del canal.\n"
+    "---\n"
+    "¿Tienes dudas? Pregunta en `#👨🔧soporte`."
+)
+
+TITULO_SOLO_URL_DM = "Solo se permiten enlaces en #🧵go-viral"
+DESCRIPCION_SOLO_URL_DM = (
+    "Hola, tu mensaje fue eliminado de #🧵go-viral porque solo se permiten enlaces directos de publicaciones de X (Twitter), "
+    "no se permiten textos, imágenes u otro contenido.\n\n"
+    "Por favor, comparte únicamente el enlace de tu tweet.\n"
+    "Si tienes dudas, escribe en #👨🔧soporte."
+)
+
+# --- SOLO REACCIONES PERMITIDAS (🔥 y 👍) ---
+TITULO_SOLO_REACCION_EDU = "🚫 Solo se permiten reacciones 🔥 y 👍"
+DESCRIPCION_SOLO_REACCION_EDU = (
+    "{usuario}, en este canal solo puedes reaccionar a publicaciones con 🔥 (apoyo) o 👍 (validación).\n"
+    "Las demás reacciones serán eliminadas automáticamente para mantener el orden y la claridad.\n"
+    "Gracias por apoyar correctamente a la comunidad.\n"
+    "---\n"
+    "¿Tienes dudas? Pregunta en `#👨🔧soporte`."
+)
+
+TITULO_SOLO_REACCION_DM = "Solo 🔥 y 👍 permitidos en #🧵go-viral"
+DESCRIPCION_SOLO_REACCION_DM = (
+    "Hola, tu reacción ha sido eliminada en #🧵go-viral porque solo se permiten las reacciones 🔥 (apoyo) y 👍 (validación).\n"
+    "Por favor, utiliza solo esas reacciones para apoyar a tus compañeros.\n"
+    "Si tienes dudas, escribe en #👨🔧soporte."
+)
+
