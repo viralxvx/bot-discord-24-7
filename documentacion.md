@@ -1,5 +1,3 @@
-¡Aquí tienes la **documentación técnica** completamente actualizada con los últimos cambios para `#🧵go-viral` (sólo embeds, reglas adaptativas, control 9/2, mensajes profesionales, textos centralizados), lista para tu equipo y para moderadores!
-
 ---
 
 # 📘 DOCUMENTACIÓN TÉCNICA — VXbot
