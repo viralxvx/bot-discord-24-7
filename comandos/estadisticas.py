@@ -23,21 +23,36 @@ class Estadisticas(commands.Cog):
 
             guild = interaction.guild
             miembros = [m for m in guild.members if not m.bot]
-
             total_miembros = len(miembros)
 
-            # Corregido: Obtener lista de baneados correctamente
-            total_baneados = [ban async for ban in guild.bans()]
-            total_baneados_count = len(total_baneados)
+            # Leer todos los usuarios con registro de estado en Redis
+            keys = self.redis.keys("usuario:*")
+            estados = {
+                "activo": 0,
+                "baneado": 0,
+                "expulsado": 0,
+                "desercion": 0
+            }
+            for key in keys:
+                estado = (self.redis.hget(key, "estado") or "activo").lower()
+                if estado in estados:
+                    estados[estado] += 1
+                else:
+                    estados["activo"] += 1  # Fallback si hay datos viejos
 
-            # Contar usuarios expulsados
-            total_expulsados = 0
-            for miembro in miembros:
-                status = self.redis.hget(f"usuario:{miembro.id}", "estado")
-                if status and status.lower() == "expulsado":
-                    total_expulsados += 1
+            # Armoniza los valores
+            total_baneados = estados["baneado"]
+            total_expulsados = estados["expulsado"]
+            total_deserciones = estados["desercion"]
+            total_activos = estados["activo"]
 
-            embed = generar_embed_estadisticas(total_miembros, total_baneados_count, total_expulsados)
+            embed = generar_embed_estadisticas(
+                total_miembros,
+                total_baneados,
+                total_expulsados,
+                total_deserciones,
+                total_activos
+            )
 
             await interaction.followup.send(embed=embed, ephemeral=True)
 
