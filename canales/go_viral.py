@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 import redis
 import asyncio
 import re
+import hashlib
 
 def limpiar_url_tweet(texto):
     match = re.search(r"https?://x\.com/\w+/status/(\d+)", texto)
@@ -31,6 +32,10 @@ def limpiar_url_tweet(texto):
             status_id = match.group(1)
             return f"https://x.com/{user}/status/{status_id}"
     return None
+
+def calcular_hash_embed(titulo, descripcion, imagen_url):
+    contenido = f"{titulo}|{descripcion}|{imagen_url}"
+    return hashlib.sha256(contenido.encode("utf-8")).hexdigest()
 
 class GoViral(commands.Cog):
     def __init__(self, bot):
@@ -63,33 +68,51 @@ class GoViral(commands.Cog):
             print(f"❌ [GO-VIRAL] No se encontró el canal (ID {CANAL_OBJETIVO_ID})")
             return
 
-        mensaje_fijo_existente = None
-        async for msg in canal.history(limit=30, oldest_first=True):
-            if msg.author == self.bot.user and msg.embeds:
-                embed = msg.embeds[0]
-                if embed.title and embed.title == TITULO_FIJO:
-                    mensaje_fijo_existente = msg
-                    break
-
         fecha = datetime.now().strftime("%Y-%m-%d")
+        descripcion = DESCRIPCION_FIJO.format(fecha=fecha)
+        hash_nuevo = calcular_hash_embed(TITULO_FIJO, descripcion, IMAGEN_URL)
+
+        msg_id_guardado = self.redis.get("go_viral:mensaje_fijo_id")
+        hash_guardado = self.redis.get("go_viral:mensaje_fijo_hash")
+
+        if msg_id_guardado:
+            try:
+                mensaje = await canal.fetch_message(int(msg_id_guardado))
+                if mensaje and mensaje.embeds:
+                    embed_actual = mensaje.embeds[0]
+                    hash_actual = calcular_hash_embed(
+                        embed_actual.title or "",
+                        embed_actual.description or "",
+                        embed_actual.image.url if embed_actual.image else ""
+                    )
+                    if hash_actual == hash_nuevo:
+                        print("✅ [GO-VIRAL] Mensaje fijo ya existe y está actualizado.")
+                        return
+                    else:
+                        embed_fijo = discord.Embed(
+                            title=TITULO_FIJO,
+                            description=descripcion,
+                            color=discord.Color.blurple()
+                        )
+                        embed_fijo.set_image(url=IMAGEN_URL)
+                        await mensaje.edit(embed=embed_fijo)
+                        self.redis.set("go_viral:mensaje_fijo_hash", hash_nuevo)
+                        print("🔄 [GO-VIRAL] Mensaje fijo actualizado.")
+                        return
+            except Exception as e:
+                print(f"⚠️ [GO-VIRAL] No se pudo recuperar el mensaje guardado: {e}")
+
         embed_fijo = discord.Embed(
             title=TITULO_FIJO,
-            description=DESCRIPCION_FIJO.format(fecha=fecha),
+            description=descripcion,
             color=discord.Color.blurple()
         )
         embed_fijo.set_image(url=IMAGEN_URL)
-
-        if mensaje_fijo_existente:
-            embed_actual = mensaje_fijo_existente.embeds[0]
-            if (embed_actual.description != embed_fijo.description) or (embed_actual.image.url != IMAGEN_URL):
-                await mensaje_fijo_existente.edit(embed=embed_fijo)
-                print("🔄 [GO-VIRAL] Mensaje fijo actualizado.")
-            else:
-                print("✅ [GO-VIRAL] Mensaje fijo ya existe y está actualizado.")
-        else:
-            msg = await canal.send(embed=embed_fijo)
-            await msg.pin()
-            print("✅ [GO-VIRAL] Mensaje fijo publicado y fijado.")
+        msg = await canal.send(embed=embed_fijo)
+        await msg.pin()
+        self.redis.set("go_viral:mensaje_fijo_id", str(msg.id))
+        self.redis.set("go_viral:mensaje_fijo_hash", hash_nuevo)
+        print("✅ [GO-VIRAL] Mensaje fijo publicado y registrado.")
 
     @commands.Cog.listener()
     async def on_message(self, message):
