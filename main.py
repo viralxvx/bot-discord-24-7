@@ -19,6 +19,7 @@ EXTENSIONES = [
     "canales.soporte_prorroga",  # <-- aquí
     "canales.go_viral",
     "comandos.prorroga",    # ← NUEVO comando aquí
+    "comandos.override",
     "comandos",           # ← para registrar /estado y /estadisticas
 ]
 
