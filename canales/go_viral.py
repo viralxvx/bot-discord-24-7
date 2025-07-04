@@ -42,6 +42,7 @@ class GoViral(commands.Cog):
         self.bot = bot
         self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
         bot.loop.create_task(self.preload_historial_miembros())
+        bot.loop.create_task(self.preload_apoyos_reacciones())
         bot.loop.create_task(self.init_mensaje_fijo())
 
     async def preload_historial_miembros(self):
@@ -60,6 +61,28 @@ class GoViral(commands.Cog):
             print("✅ [GO-VIRAL] Historial de usuarios antiguos sincronizado en Redis.")
         except Exception as e:
             print(f"❌ [GO-VIRAL] Error cargando historial: {e}")
+
+    async def preload_apoyos_reacciones(self):
+        """Escanea TODO el historial de mensajes y reacciones y almacena quién ha dado 🔥 en Redis."""
+        await self.bot.wait_until_ready()
+        canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
+        if not canal:
+            print("❌ [GO-VIRAL] No se encontró el canal para cargar apoyos.")
+            return
+        print("🔎 [GO-VIRAL] Cargando apoyos 🔥 históricos en Redis...")
+        try:
+            async for msg in canal.history(limit=None, oldest_first=True):
+                if msg.author.bot:
+                    continue
+                for reaction in msg.reactions:
+                    if str(reaction.emoji) == "🔥":
+                        async for usuario in reaction.users():
+                            if usuario.bot:
+                                continue
+                            self.redis.sadd(f"go_viral:apoyos:{msg.id}", usuario.id)
+            print("✅ [GO-VIRAL] Apoyos 🔥 históricos sincronizados en Redis.")
+        except Exception as e:
+            print(f"❌ [GO-VIRAL] Error cargando apoyos: {e}")
 
     async def init_mensaje_fijo(self):
         await self.bot.wait_until_ready()
@@ -198,7 +221,6 @@ class GoViral(commands.Cog):
         # --- Lógica para permitir PRIMERA publicación sin restricciones ---
         if not self.redis.get(key_primera_publicacion):
             self.redis.set(key_primera_publicacion, "1")
-            # ACTUALIZAR FECHA ÚLTIMA PUBLICACIÓN PARA INACTIVIDAD:
             fecha_iso = datetime.now(timezone.utc).isoformat()
             self.redis.set(f"inactividad:{user_id}", fecha_iso)
             self.bot.loop.create_task(self.verificar_reaccion_like(message))
@@ -212,11 +234,9 @@ class GoViral(commands.Cog):
         if not await self.verificar_apoyo_nueve_anteriores(message):
             return
 
-        # ACTUALIZAR FECHA ÚLTIMA PUBLICACIÓN PARA INACTIVIDAD:
         fecha_iso = datetime.now(timezone.utc).isoformat()
         self.redis.set(f"inactividad:{user_id}", fecha_iso)
 
-        # Inicia verificación de reacción 👍 del autor a su propio mensaje
         self.bot.loop.create_task(self.verificar_reaccion_like(message))
 
     @commands.Cog.listener()
@@ -224,6 +244,9 @@ class GoViral(commands.Cog):
         # Permitir solo 👍 y 🔥 en el canal GO-VIRAL
         if reaction.message.channel.id != CANAL_OBJETIVO_ID or user.bot:
             return
+        # Si es 🔥, registrar en Redis el apoyo
+        if str(reaction.emoji) == "🔥":
+            self.redis.sadd(f"go_viral:apoyos:{reaction.message.id}", user.id)
         if str(reaction.emoji) not in ["🔥", "👍"]:
             try:
                 await reaction.remove(user)
@@ -248,7 +271,6 @@ class GoViral(commands.Cog):
             except Exception:
                 pass
 
-    # --- No cambian las validaciones de intervalo, apoyo, like ---
     async def verificar_intervalo_entre_publicaciones(self, message):
         canal = message.channel
         mensajes = [msg async for msg in canal.history(limit=50, oldest_first=False)]
@@ -322,16 +344,8 @@ class GoViral(commands.Cog):
         for post in posts_previos:
             if post.author.bot:
                 continue
-            tiene_fuego = False
-            for reaction in post.reactions:
-                if str(reaction.emoji) == "🔥":
-                    async for user in reaction.users():
-                        if user.id == message.author.id:
-                            tiene_fuego = True
-                            break
-                if tiene_fuego:
-                    break
-            if not tiene_fuego:
+            apoyaron = self.redis.smembers(f"go_viral:apoyos:{post.id}")
+            if str(message.author.id) not in apoyaron:
                 apoyo_faltante.append(post)
 
         if apoyo_faltante:
