@@ -64,6 +64,8 @@ class Inactividad(commands.Cog):
                         try:
                             await guild.unban(user, reason="Baneo de inactividad vencido, reintegrado automáticamente")
                             self.redis.delete(key_ban)
+                            # Actualiza el estado a "activo"
+                            self.redis.hset(f"usuario:{user.id}", "estado", "activo")
                             print(f"🔓 [INACTIVIDAD] Usuario {user} ({user.id}) desbaneado automáticamente tras 7 días.")
                             try:
                                 await user.send("🔓 Tu baneo por inactividad ha vencido y ya puedes volver a la comunidad. ¡Sé más activo para evitar nuevas sanciones!")
@@ -113,7 +115,6 @@ class Inactividad(commands.Cog):
                 if self.redis.get(key_expulsado):
                     continue  # Ya expulsado
 
-                # Lógica de reincidencia (baneo y luego expulsión)
                 key_reincidencia = f"inactividad:reincidencia:{member.id}"
                 reincidencias = int(self.redis.get(key_reincidencia) or 0)
 
@@ -124,6 +125,7 @@ class Inactividad(commands.Cog):
                             await guild.ban(member, reason="Inactividad superior a 3 días (automatizado)", delete_message_days=0)
                             self.redis.set(key_ban, ahora.isoformat())
                             self.redis.incr(key_reincidencia)
+                            self.redis.hset(f"usuario:{member.id}", "estado", "baneado")  # Actualiza estado en Redis
                             print(f"⛔ [INACTIVIDAD] Usuario {member} ({member.id}) baneado por inactividad.")
                             try:
                                 await member.send(AVISO_BANEO)
@@ -140,6 +142,7 @@ class Inactividad(commands.Cog):
                         try:
                             await guild.kick(member, reason="Expulsión por inactividad reincidente (automatizado)")
                             self.redis.set(key_expulsado, "1")
+                            self.redis.hset(f"usuario:{member.id}", "estado", "expulsado")  # Actualiza estado en Redis
                             print(f"🚫 [INACTIVIDAD] Usuario {member} ({member.id}) EXPULSADO por reincidencia de inactividad.")
                             try:
                                 await member.send(AVISO_EXPULSION)
@@ -154,5 +157,33 @@ class Inactividad(commands.Cog):
 
         print("✅ [INACTIVIDAD] Verificación automática completada.")
 
+# =============== LISTENERS UNIVERSALES DE ESTADO ===============
+
+class EstadoMiembros(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+        self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+
+    @commands.Cog.listener()
+    async def on_member_ban(self, guild, user):
+        self.redis.hset(f"usuario:{user.id}", "estado", "baneado")
+
+    @commands.Cog.listener()
+    async def on_member_unban(self, guild, user):
+        self.redis.hset(f"usuario:{user.id}", "estado", "activo")
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member):
+        expulsado = self.redis.get(f"inactividad:expulsado:{member.id}")
+        if expulsado == "1":
+            self.redis.hset(f"usuario:{member.id}", "estado", "expulsado")
+        else:
+            self.redis.hset(f"usuario:{member.id}", "estado", "desercion")
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member):
+        self.redis.hset(f"usuario:{member.id}", "estado", "activo")
+
 async def setup(bot):
     await bot.add_cog(Inactividad(bot))
+    await bot.add_cog(EstadoMiembros(bot))
