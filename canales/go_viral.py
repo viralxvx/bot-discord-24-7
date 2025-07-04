@@ -63,38 +63,24 @@ class GoViral(commands.Cog):
             print(f"❌ [GO-VIRAL] Error cargando historial: {e}")
 
     async def preload_apoyos_reacciones(self):
-        """Escanea TODO el historial de mensajes y reacciones.
-           - Guarda apoyos 🔥 en Redis (go_viral:apoyos:{post_id})
-           - Elimina TODA reacción que NO sea 🔥 o 👍 de cualquier mensaje
-        """
+        """Lee el historial del canal y guarda los apoyos (🔥) en Redis para mantener memoria aunque el bot se reinicie."""
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
-            print("❌ [GO-VIRAL] No se encontró el canal para cargar apoyos.")
+            print("❌ [GO-VIRAL] No se encontró el canal para cargar reacciones.")
             return
-        print("🔎 [GO-VIRAL] Cargando apoyos 🔥 y limpiando reacciones históricas...")
+        print("🔄 [GO-VIRAL] Sincronizando reacciones 🔥 antiguas en Redis...")
         try:
-            async for msg in canal.history(limit=None, oldest_first=True):
-                if msg.author.bot:
-                    continue
+            async for msg in canal.history(limit=100, oldest_first=True):
+                # Limita a los últimos 100 mensajes para velocidad, puedes subir si quieres
                 for reaction in msg.reactions:
-                    # Si es 🔥, guardar todos los usuarios que apoyaron en Redis
                     if str(reaction.emoji) == "🔥":
-                        async for usuario in reaction.users():
-                            if usuario.bot:
-                                continue
-                            self.redis.sadd(f"go_viral:apoyos:{msg.id}", usuario.id)
-                    # Si NO es 🔥 ni 👍, ELIMINAR la reacción de TODOS los usuarios
-                    elif str(reaction.emoji) not in ["🔥", "👍"]:
-                        async for usuario in reaction.users():
-                            try:
-                                await reaction.remove(usuario)
-                                print(f"❌ [GO-VIRAL] Reacción prohibida {reaction.emoji} eliminada en mensaje {msg.id} de {usuario.display_name}")
-                            except Exception as e:
-                                print(f"⚠️ [GO-VIRAL] No se pudo eliminar reacción {reaction.emoji} en mensaje {msg.id}: {e}")
-            print("✅ [GO-VIRAL] Apoyos 🔥 sincronizados y reacciones prohibidas eliminadas en TODO el canal.")
+                        async for user in reaction.users():
+                            if not user.bot:
+                                self.redis.sadd(f"go_viral:apoyos:{msg.id}", str(user.id))
+            print("✅ [GO-VIRAL] Apoyos sincronizados en Redis.")
         except Exception as e:
-            print(f"❌ [GO-VIRAL] Error cargando apoyos/reacciones: {e}")
+            print(f"❌ [GO-VIRAL] Error sincronizando reacciones: {e}")
 
     async def init_mensaje_fijo(self):
         await self.bot.wait_until_ready()
@@ -157,16 +143,6 @@ class GoViral(commands.Cog):
         user_id = str(message.author.id)
         key_bienvenida = f"go_viral:bienvenida:{user_id}"
         key_primera_publicacion = f"go_viral:primera_pub:{user_id}"
-
-        # --- OVERRIDE especial para el usuario ---
-        if self.redis.get(f"go_viral:override:{user_id}"):
-            self.redis.delete(f"go_viral:override:{user_id}")
-            fecha_iso = datetime.now(timezone.utc).isoformat()
-            self.redis.set(f"inactividad:{user_id}", fecha_iso)
-            # Permite publicar sin restricciones (solo requiere validar el 👍 como siempre)
-            self.bot.loop.create_task(self.verificar_reaccion_like(message))
-            print(f"⚡ [GO-VIRAL] OVERRIDE aplicado para {message.author.display_name} ({user_id})")
-            return
 
         # Solo permitir mensajes que sean URL válidas de x.com
         url_limpia = limpiar_url_tweet(message.content)
@@ -243,22 +219,25 @@ class GoViral(commands.Cog):
         # --- Lógica para permitir PRIMERA publicación sin restricciones ---
         if not self.redis.get(key_primera_publicacion):
             self.redis.set(key_primera_publicacion, "1")
+            # ACTUALIZAR FECHA ÚLTIMA PUBLICACIÓN PARA INACTIVIDAD:
             fecha_iso = datetime.now(timezone.utc).isoformat()
             self.redis.set(f"inactividad:{user_id}", fecha_iso)
             self.bot.loop.create_task(self.verificar_reaccion_like(message))
             return
 
-        # --- Control de intervalo entre publicaciones (mínimo 2 posts de otros después de ti) ---
+        # --- Control de intervalo entre publicaciones ---
         if not await self.verificar_intervalo_entre_publicaciones(message):
             return
 
-        # --- Verificación de apoyo adaptativo (mínimo 2, máximo 9 previos) ---
+        # --- Verificación de apoyo a los 9 anteriores ---
         if not await self.verificar_apoyo_nueve_anteriores(message):
             return
 
+        # ACTUALIZAR FECHA ÚLTIMA PUBLICACIÓN PARA INACTIVIDAD:
         fecha_iso = datetime.now(timezone.utc).isoformat()
         self.redis.set(f"inactividad:{user_id}", fecha_iso)
 
+        # Inicia verificación de reacción 👍 del autor a su propio mensaje
         self.bot.loop.create_task(self.verificar_reaccion_like(message))
 
     @commands.Cog.listener()
@@ -266,10 +245,6 @@ class GoViral(commands.Cog):
         # Permitir solo 👍 y 🔥 en el canal GO-VIRAL
         if reaction.message.channel.id != CANAL_OBJETIVO_ID or user.bot:
             return
-        # Si es 🔥, registrar en Redis el apoyo
-        if str(reaction.emoji) == "🔥":
-            self.redis.sadd(f"go_viral:apoyos:{reaction.message.id}", user.id)
-        # Eliminar cualquier reacción no autorizada
         if str(reaction.emoji) not in ["🔥", "👍"]:
             try:
                 await reaction.remove(user)
@@ -293,6 +268,9 @@ class GoViral(commands.Cog):
                 await user.send(embed=embed_dm)
             except Exception:
                 pass
+        # SI ES 🔥, ACTUALIZA MEMORIA EN REDIS
+        if str(reaction.emoji) == "🔥" and not user.bot:
+            self.redis.sadd(f"go_viral:apoyos:{reaction.message.id}", str(user.id))
 
     async def verificar_intervalo_entre_publicaciones(self, message):
         canal = message.channel
@@ -306,7 +284,6 @@ class GoViral(commands.Cog):
         if idx_actual is None:
             return True
 
-        # Buscar la última publicación válida de este usuario
         idx_ultima = None
         for i in range(idx_actual - 1, -1, -1):
             if mensajes[i].author.id == message.author.id and not mensajes[i].author.bot:
@@ -316,18 +293,18 @@ class GoViral(commands.Cog):
         if idx_ultima is None:
             return True
 
-        publicaciones_otros = []
+        publicaciones_otros = set()
         for i in range(idx_ultima + 1, idx_actual):
             msg = mensajes[i]
             if msg.author.id != message.author.id and not msg.author.bot:
-                publicaciones_otros.append(msg)
+                publicaciones_otros.add(msg.author.id)
             if len(publicaciones_otros) >= 2:
                 break
 
         if len(publicaciones_otros) < 2:
             try:
                 await message.delete()
-                print(f"❌ [GO-VIRAL] Publicación de {message.author.display_name} eliminada por INTERVALO insuficiente (menos de 2 posts de otros después de él).")
+                print(f"❌ [GO-VIRAL] Publicación de {message.author.display_name} eliminada por INTERVALO insuficiente.")
             except Exception as e:
                 print(f"❌ [GO-VIRAL] Error eliminando mensaje (intervalo): {e}")
             embed = discord.Embed(
@@ -363,21 +340,19 @@ class GoViral(commands.Cog):
         if idx is None:
             return True
 
-        # Filtra solo posts válidos de usuarios (no bots) antes de este mensaje
+        guild = canal.guild
+        miembros_actuales = {str(m.id) for m in guild.members if not m.bot}
         posts_previos = []
         for msg in mensajes[:idx]:
-            if not msg.author.bot:
+            autor_id = str(msg.author.id)
+            # Solo cuenta mensajes de miembros actuales (no expulsados, no bots)
+            if autor_id in miembros_actuales:
                 posts_previos.append(msg)
 
         # Adaptativo: Si hay menos de 9, exige todos; si hay más, solo los últimos 9
-        if len(posts_previos) <= 9:
-            revisar_posts = posts_previos
-        else:
-            revisar_posts = posts_previos[-9:]
-
-        # Pero el mínimo siempre será 2 (solo verifica si hay al menos 2 previos)
+        revisar_posts = posts_previos if len(posts_previos) <= 9 else posts_previos[-9:]
         if len(revisar_posts) < 2:
-            return True  # No exige apoyos si el canal está casi vacío
+            return True  # Solo exige apoyos si hay al menos 2 previos
 
         apoyo_faltante = []
         for post in revisar_posts:
