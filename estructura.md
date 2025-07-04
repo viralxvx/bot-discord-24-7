@@ -70,11 +70,10 @@ Este archivo documenta la estructura **real y actual** del bot, el estado de cad
 * Los mensajes y textos que ve el usuario están **centralizados en `/mensajes/`** para fácil edición sin tocar código.
 * Sistemas de **inactividad, faltas, go-viral y prórrogas** 100% automáticos, seguros y auditables.
 * Todos los embeds y mensajes públicos son profesionales, educativos y pueden editarse en caliente.
+* El bot registra el **historial completo del canal** `#🧵go-viral` en Redis para evitar confusiones de usuarios nuevos o antiguos tras reinicio.
 
 ---
 
 *Última actualización: 2025-07-04  — 12:01am*
 
 ---
-
-
