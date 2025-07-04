@@ -2,18 +2,18 @@ import discord
 from discord.ext import commands
 from config import CANAL_OBJETIVO_ID, REDIS_URL
 from mensajes.viral_texto import (
-    TITULO_FIJO, IMAGEN_URL, DESCRIPCION_FIJO,
-    TITULO_BIENVENIDA, DESCRIPCION_BIENVENIDA,
-    TITULO_URL_EDU, DESCRIPCION_URL_EDU,
-    TITULO_URL_DM, DESCRIPCION_URL_DM,
-    TITULO_SIN_LIKE_EDU, DESCRIPCION_SIN_LIKE_EDU,
-    TITULO_SIN_LIKE_DM, DESCRIPCION_SIN_LIKE_DM,
-    TITULO_APOYO_9_EDU, DESCRIPCION_APOYO_9_EDU,
-    TITULO_APOYO_9_DM, DESCRIPCION_APOYO_9_DM,
-    TITULO_INTERVALO_EDU, DESCRIPCION_INTERVALO_EDU,
-    TITULO_INTERVALO_DM, DESCRIPCION_INTERVALO_DM,
+    MENSAJE_FIJO,
+    MENSAJE_BIENVENIDA_NUEVO,
+    NOTIFICACION_URL_EDUCATIVA,
+    NOTIFICACION_URL_DM,
+    NOTIFICACION_SIN_LIKE_EDUCATIVA,
+    NOTIFICACION_SIN_LIKE_DM,
+    NOTIFICACION_APOYO_9_EDUCATIVA,
+    NOTIFICACION_APOYO_9_DM,
+    NOTIFICACION_INTERVALO_EDUCATIVA,
+    NOTIFICACION_INTERVALO_DM
 )
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import redis
 import asyncio
 import re
@@ -41,25 +41,16 @@ class GoViral(commands.Cog):
             print(f"❌ [GO-VIRAL] No se encontró el canal (ID {CANAL_OBJETIVO_ID})")
             return
         async for msg in canal.history(limit=20, oldest_first=True):
-            if msg.author == self.bot.user and msg.embeds:
-                embed = msg.embeds[0]
-                if TITULO_FIJO in embed.title:
-                    print("✅ [GO-VIRAL] Embed fijo ya existe.")
-                    return
+            if msg.author == self.bot.user and "¡Bienvenido a GO-VIRAL!" in msg.content:
+                print("✅ [GO-VIRAL] Mensaje fijo ya existe.")
+                return
         fecha = datetime.now().strftime("%Y-%m-%d")
-        embed_fijo = discord.Embed(
-            title=TITULO_FIJO,
-            description=DESCRIPCION_FIJO.format(fecha=fecha),
-            color=0xFF9900
-        )
-        embed_fijo.set_thumbnail(url=IMAGEN_URL)
-        embed_fijo.set_footer(text="VXbot • Viral 𝕏 | V𝕏")
-        msg = await canal.send(embed=embed_fijo)
+        msg = await canal.send(MENSAJE_FIJO.format(fecha=fecha))
         try:
             await msg.pin()
-            print("✅ [GO-VIRAL] Embed fijo publicado y fijado.")
+            print("✅ [GO-VIRAL] Mensaje fijo publicado y fijado.")
         except Exception as e:
-            print(f"⚠️ [GO-VIRAL] Error fijando embed: {e}")
+            print(f"⚠️ [GO-VIRAL] Error fijando mensaje: {e}")
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -72,18 +63,15 @@ class GoViral(commands.Cog):
         # Bienvenida SOLO si no se ha enviado antes
         if not self.redis.get(key_bienvenida):
             self.redis.set(key_bienvenida, "1")
-            embed_bienvenida = discord.Embed(
-                title=TITULO_BIENVENIDA,
-                description=DESCRIPCION_BIENVENIDA,
-                color=0x1DA1F2
-            )
-            embed_bienvenida.set_thumbnail(url=IMAGEN_URL)
-            embed_bienvenida.set_footer(text="VXbot • Viral 𝕏 | V𝕏")
             try:
-                await message.reply(embed=embed_bienvenida, mention_author=True, delete_after=120)
-                print(f"✅ [GO-VIRAL] Bienvenida embed enviada a {message.author.display_name} ({user_id})")
+                await message.reply(
+                    MENSAJE_BIENVENIDA_NUEVO,
+                    mention_author=True,
+                    delete_after=120
+                )
+                print(f"✅ [GO-VIRAL] Bienvenida enviada a {message.author.display_name} ({user_id})")
             except Exception as e:
-                print(f"❌ [GO-VIRAL] Error enviando bienvenida embed a {user_id}: {e}")
+                print(f"❌ [GO-VIRAL] Error enviando bienvenida a {user_id}: {e}")
 
         # --- Corrección automática de URLs mal formateadas ---
         url_limpia = limpiar_url_tweet(message.content)
@@ -94,31 +82,14 @@ class GoViral(commands.Cog):
                 try:
                     await message.delete()
                 except: pass
-                # Simular que el usuario publicó el enlace corregido
                 try:
-                    nuevo = await message.channel.send(f"{message.author.mention} {url_limpia}")
+                    await message.channel.send(f"{message.author.mention} {url_limpia}")
                 except: pass
-                # Notificación educativa (embed) en canal
-                embed_url_edu = discord.Embed(
-                    title=TITULO_URL_EDU,
-                    description=DESCRIPCION_URL_EDU,
-                    color=0xE67E22
-                )
-                embed_url_edu.set_thumbnail(url=IMAGEN_URL)
-                embed_url_edu.set_footer(text="VXbot • Viral 𝕏 | V𝕏")
                 try:
-                    await message.channel.send(embed=embed_url_edu, delete_after=15)
+                    await message.channel.send(NOTIFICACION_URL_EDUCATIVA, delete_after=15)
                 except: pass
-                # Notificación educativa (embed) por DM
-                embed_url_dm = discord.Embed(
-                    title=TITULO_URL_DM,
-                    description=DESCRIPCION_URL_DM.format(usuario=message.author.display_name),
-                    color=0xE67E22
-                )
-                embed_url_dm.set_thumbnail(url=IMAGEN_URL)
-                embed_url_dm.set_footer(text="VXbot • Viral 𝕏 | V𝕏")
                 try:
-                    await message.author.send(embed=embed_url_dm)
+                    await message.author.send(NOTIFICACION_URL_DM.format(usuario=message.author.display_name))
                 except: pass
                 return
 
@@ -126,18 +97,24 @@ class GoViral(commands.Cog):
         if not await self.verificar_intervalo_entre_publicaciones(message):
             return  # Si falla, ya notificó y borró el mensaje
 
-        # --- Verificación de apoyo a los 9 anteriores ---
-        if not await self.verificar_apoyo_nueve_anteriores(message):
+        # --- Verificación de apoyo a los anteriores (hasta 9, pero puede ser menos) ---
+        if not await self.verificar_apoyo_anteriores(message):
             return  # Si falla, ya notificó y borró el mensaje
 
         # Inicia verificación de reacción 👍 del autor a su propio mensaje
         self.bot.loop.create_task(self.verificar_reaccion_like(message))
 
     async def verificar_intervalo_entre_publicaciones(self, message):
+        """
+        Permite publicar si hay al menos 2 publicaciones válidas de otros miembros
+        desde la última publicación de este usuario
+        O si han pasado 24 horas desde su última publicación
+        """
         canal = message.channel
         mensajes = [msg async for msg in canal.history(limit=50, oldest_first=False)]
         mensajes.reverse()  # Más antiguo a más nuevo
 
+        # Busca la última publicación de este usuario antes de este mensaje
         idx_actual = None
         for i, msg in enumerate(mensajes):
             if msg.id == message.id:
@@ -155,6 +132,13 @@ class GoViral(commands.Cog):
         if idx_ultima is None:
             return True  # Es su primer post
 
+        # Si han pasado más de 24h desde su última publicación, permitir
+        ultima_fecha = mensajes[idx_ultima].created_at.replace(tzinfo=timezone.utc)
+        ahora = datetime.now(timezone.utc)
+        if (ahora - ultima_fecha).total_seconds() >= 24 * 3600:
+            return True
+
+        # Contar cuántas publicaciones válidas (de otros usuarios) hay entre la última y la actual
         publicaciones_otros = set()
         for i in range(idx_ultima + 1, idx_actual):
             msg = mensajes[i]
@@ -170,32 +154,25 @@ class GoViral(commands.Cog):
                 print(f"❌ [GO-VIRAL] Publicación de {message.author.display_name} eliminada por INTERVALO insuficiente.")
             except Exception as e:
                 print(f"❌ [GO-VIRAL] Error eliminando mensaje (intervalo): {e}")
-            embed_intervalo_edu = discord.Embed(
-                title=TITULO_INTERVALO_EDU,
-                description=DESCRIPCION_INTERVALO_EDU.format(usuario=message.author.mention),
-                color=0x95A5A6
-            )
-            embed_intervalo_edu.set_thumbnail(url=IMAGEN_URL)
-            embed_intervalo_edu.set_footer(text="VXbot • Viral 𝕏 | V𝕏")
             try:
-                await message.channel.send(embed=embed_intervalo_edu, delete_after=15)
+                await message.channel.send(
+                    NOTIFICACION_INTERVALO_EDUCATIVA.format(usuario=message.author.mention),
+                    delete_after=15
+                )
             except Exception:
                 pass
-            embed_intervalo_dm = discord.Embed(
-                title=TITULO_INTERVALO_DM,
-                description=DESCRIPCION_INTERVALO_DM,
-                color=0x95A5A6
-            )
-            embed_intervalo_dm.set_thumbnail(url=IMAGEN_URL)
-            embed_intervalo_dm.set_footer(text="VXbot • Viral 𝕏 | V𝕏")
             try:
-                await message.author.send(embed=embed_intervalo_dm)
+                await message.author.send(NOTIFICACION_INTERVALO_DM)
             except Exception as e:
                 print(f"⚠️ [GO-VIRAL] No se pudo enviar DM (intervalo) a {message.author.display_name}: {e}")
             return False
         return True
 
-    async def verificar_apoyo_nueve_anteriores(self, message):
+    async def verificar_apoyo_anteriores(self, message):
+        """
+        Verifica que el usuario haya apoyado con 🔥 a TODAS las publicaciones previas (hasta 9, o menos si hay menos).
+        Solo revisa los posts desde la última publicación suya.
+        """
         canal = message.channel
         mensajes = [msg async for msg in canal.history(limit=50, oldest_first=False)]
         mensajes.reverse()  # De más antiguos a más nuevos
@@ -205,14 +182,32 @@ class GoViral(commands.Cog):
             if msg.id == message.id:
                 idx = i
                 break
-        if idx is None or idx < 9:
-            return True  # Primer post del usuario o poco historial
+        if idx is None:
+            return True  # Mensaje fantasma o error
 
-        posts_previos = mensajes[idx-9:idx]
+        # Busca la última publicación de este usuario antes de este mensaje
+        idx_ultima = None
+        for i in range(idx - 1, -1, -1):
+            if mensajes[i].author.id == message.author.id and not mensajes[i].author.bot:
+                idx_ultima = i
+                break
+
+        # Si nunca ha publicado antes, no se exige apoyo previo
+        if idx_ultima is None:
+            return True
+
+        # Solo contar publicaciones de otros después de su última publicación (máximo 9)
+        posts_previos = []
+        for i in range(idx_ultima + 1, idx):
+            post = mensajes[i]
+            if not post.author.bot and post.author.id != message.author.id:
+                posts_previos.append(post)
+            if len(posts_previos) >= 9:
+                break
+
+        # Si hay menos de 9, solo exigir los que haya
         apoyo_faltante = []
         for post in posts_previos:
-            if post.author.bot:
-                continue
             tiene_fuego = False
             for reaction in post.reactions:
                 if str(reaction.emoji) == "🔥":
@@ -228,31 +223,20 @@ class GoViral(commands.Cog):
         if apoyo_faltante:
             try:
                 await message.delete()
-                print(f"❌ [GO-VIRAL] Publicación de {message.author.display_name} eliminada por NO apoyar a los 9 anteriores.")
+                print(f"❌ [GO-VIRAL] Publicación de {message.author.display_name} eliminada por NO apoyar a los {len(posts_previos)} anteriores.")
             except Exception as e:
-                print(f"❌ [GO-VIRAL] Error eliminando mensaje (no apoyó a 9): {e}")
-            embed_apoyo_edu = discord.Embed(
-                title=TITULO_APOYO_9_EDU,
-                description=DESCRIPCION_APOYO_9_EDU.format(usuario=message.author.mention),
-                color=0xE74C3C
-            )
-            embed_apoyo_edu.set_thumbnail(url=IMAGEN_URL)
-            embed_apoyo_edu.set_footer(text="VXbot • Viral 𝕏 | V𝕏")
+                print(f"❌ [GO-VIRAL] Error eliminando mensaje (no apoyó): {e}")
             try:
-                await message.channel.send(embed=embed_apoyo_edu, delete_after=15)
+                await message.channel.send(
+                    NOTIFICACION_APOYO_9_EDUCATIVA.format(usuario=message.author.mention),
+                    delete_after=15
+                )
             except Exception:
                 pass
-            embed_apoyo_dm = discord.Embed(
-                title=TITULO_APOYO_9_DM,
-                description=DESCRIPCION_APOYO_9_DM,
-                color=0xE74C3C
-            )
-            embed_apoyo_dm.set_thumbnail(url=IMAGEN_URL)
-            embed_apoyo_dm.set_footer(text="VXbot • Viral 𝕏 | V𝕏")
             try:
-                await message.author.send(embed=embed_apoyo_dm)
+                await message.author.send(NOTIFICACION_APOYO_9_DM)
             except Exception as e:
-                print(f"⚠️ [GO-VIRAL] No se pudo enviar DM (apoyo 9) a {message.author.display_name}: {e}")
+                print(f"⚠️ [GO-VIRAL] No se pudo enviar DM (apoyo) a {message.author.display_name}: {e}")
             return False
         return True
 
@@ -279,26 +263,15 @@ class GoViral(commands.Cog):
                 print(f"❌ [GO-VIRAL] Publicación eliminada por no validar con 👍: {autor.display_name}")
             except Exception as e:
                 print(f"❌ [GO-VIRAL] Error eliminando mensaje sin like: {e}")
-            embed_like_edu = discord.Embed(
-                title=TITULO_SIN_LIKE_EDU,
-                description=DESCRIPCION_SIN_LIKE_EDU.format(usuario=autor.mention),
-                color=0x2980B9
-            )
-            embed_like_edu.set_thumbnail(url=IMAGEN_URL)
-            embed_like_edu.set_footer(text="VXbot • Viral 𝕏 | V𝕏")
             try:
-                await msg.channel.send(embed=embed_like_edu, delete_after=15)
+                await msg.channel.send(
+                    NOTIFICACION_SIN_LIKE_EDUCATIVA.format(usuario=autor.mention),
+                    delete_after=15
+                )
             except Exception:
                 pass
-            embed_like_dm = discord.Embed(
-                title=TITULO_SIN_LIKE_DM,
-                description=DESCRIPCION_SIN_LIKE_DM,
-                color=0x2980B9
-            )
-            embed_like_dm.set_thumbnail(url=IMAGEN_URL)
-            embed_like_dm.set_footer(text="VXbot • Viral 𝕏 | V𝕏")
             try:
-                await autor.send(embed=embed_like_dm)
+                await autor.send(NOTIFICACION_SIN_LIKE_DM)
             except Exception as e:
                 print(f"⚠️ [GO-VIRAL] No se pudo enviar DM (sin like) a {autor.display_name}: {e}")
 
