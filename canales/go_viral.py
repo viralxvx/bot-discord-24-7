@@ -226,11 +226,11 @@ class GoViral(commands.Cog):
             self.bot.loop.create_task(self.verificar_reaccion_like(message))
             return
 
-        # --- Control de intervalo entre publicaciones ---
+        # --- Control de intervalo entre publicaciones (siempre mínimo 2 posts de otros después de ti) ---
         if not await self.verificar_intervalo_entre_publicaciones(message):
             return
 
-        # --- Verificación de apoyo a los 9 anteriores ---
+        # --- Verificación de apoyo adaptativo (mínimo 2, máximo 9 previos) ---
         if not await self.verificar_apoyo_nueve_anteriores(message):
             return
 
@@ -283,6 +283,7 @@ class GoViral(commands.Cog):
         if idx_actual is None:
             return True
 
+        # Buscar la última publicación válida de este usuario
         idx_ultima = None
         for i in range(idx_actual - 1, -1, -1):
             if mensajes[i].author.id == message.author.id and not mensajes[i].author.bot:
@@ -292,18 +293,18 @@ class GoViral(commands.Cog):
         if idx_ultima is None:
             return True
 
-        publicaciones_otros = set()
+        publicaciones_otros = []
         for i in range(idx_ultima + 1, idx_actual):
             msg = mensajes[i]
             if msg.author.id != message.author.id and not msg.author.bot:
-                publicaciones_otros.add(msg.author.id)
+                publicaciones_otros.append(msg)
             if len(publicaciones_otros) >= 2:
                 break
 
         if len(publicaciones_otros) < 2:
             try:
                 await message.delete()
-                print(f"❌ [GO-VIRAL] Publicación de {message.author.display_name} eliminada por INTERVALO insuficiente.")
+                print(f"❌ [GO-VIRAL] Publicación de {message.author.display_name} eliminada por INTERVALO insuficiente (menos de 2 posts de otros después de él).")
             except Exception as e:
                 print(f"❌ [GO-VIRAL] Error eliminando mensaje (intervalo): {e}")
             embed = discord.Embed(
@@ -336,24 +337,40 @@ class GoViral(commands.Cog):
             if msg.id == message.id:
                 idx = i
                 break
-        if idx is None or idx < 9:
+        if idx is None:
             return True
 
-        posts_previos = mensajes[idx-9:idx]
+        # Filtra solo posts válidos de usuarios (no bots) antes de este mensaje
+        posts_previos = []
+        for msg in mensajes[:idx]:
+            if not msg.author.bot:
+                posts_previos.append(msg)
+
+        # Adaptativo: Si hay menos de 9, exige todos; si hay más, solo los últimos 9
+        if len(posts_previos) <= 9:
+            revisar_posts = posts_previos
+        else:
+            revisar_posts = posts_previos[-9:]
+
+        # Pero el mínimo siempre será 2 (solo verifica si hay al menos 2 previos)
+        if len(revisar_posts) < 2:
+            return True  # No exige apoyos si el canal está casi vacío
+
         apoyo_faltante = []
-        for post in posts_previos:
-            if post.author.bot:
-                continue
+        for post in revisar_posts:
             apoyaron = self.redis.smembers(f"go_viral:apoyos:{post.id}")
             if str(message.author.id) not in apoyaron:
                 apoyo_faltante.append(post)
 
         if apoyo_faltante:
+            print(f"⛔ [{message.author.display_name}] le falta dar 🔥 a los siguientes mensajes:")
+            for post in apoyo_faltante:
+                print(f"  - ID: {post.id} | Autor: {post.author.display_name} | Contenido: {post.content[:50]}")
             try:
                 await message.delete()
-                print(f"❌ [GO-VIRAL] Publicación de {message.author.display_name} eliminada por NO apoyar a los 9 anteriores.")
+                print(f"❌ [GO-VIRAL] Publicación de {message.author.display_name} eliminada por NO apoyar a los previos requeridos.")
             except Exception as e:
-                print(f"❌ [GO-VIRAL] Error eliminando mensaje (no apoyó a 9): {e}")
+                print(f"❌ [GO-VIRAL] Error eliminando mensaje (no apoyó): {e}")
             embed = discord.Embed(
                 title=TITULO_APOYO_9_EDU,
                 description=DESCRIPCION_APOYO_9_EDU.format(usuario=message.author.mention),
