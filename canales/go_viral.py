@@ -63,26 +63,38 @@ class GoViral(commands.Cog):
             print(f"❌ [GO-VIRAL] Error cargando historial: {e}")
 
     async def preload_apoyos_reacciones(self):
-        """Escanea TODO el historial de mensajes y reacciones y almacena quién ha dado 🔥 en Redis."""
+        """Escanea TODO el historial de mensajes y reacciones.
+           - Guarda apoyos 🔥 en Redis (go_viral:apoyos:{post_id})
+           - Elimina TODA reacción que NO sea 🔥 o 👍 de cualquier mensaje
+        """
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
             print("❌ [GO-VIRAL] No se encontró el canal para cargar apoyos.")
             return
-        print("🔎 [GO-VIRAL] Cargando apoyos 🔥 históricos en Redis...")
+        print("🔎 [GO-VIRAL] Cargando apoyos 🔥 y limpiando reacciones históricas...")
         try:
             async for msg in canal.history(limit=None, oldest_first=True):
                 if msg.author.bot:
                     continue
                 for reaction in msg.reactions:
+                    # Si es 🔥, guardar todos los usuarios que apoyaron en Redis
                     if str(reaction.emoji) == "🔥":
                         async for usuario in reaction.users():
                             if usuario.bot:
                                 continue
                             self.redis.sadd(f"go_viral:apoyos:{msg.id}", usuario.id)
-            print("✅ [GO-VIRAL] Apoyos 🔥 históricos sincronizados en Redis.")
+                    # Si NO es 🔥 ni 👍, ELIMINAR la reacción de TODOS los usuarios
+                    elif str(reaction.emoji) not in ["🔥", "👍"]:
+                        async for usuario in reaction.users():
+                            try:
+                                await reaction.remove(usuario)
+                                print(f"❌ [GO-VIRAL] Reacción prohibida {reaction.emoji} eliminada en mensaje {msg.id} de {usuario.display_name}")
+                            except Exception as e:
+                                print(f"⚠️ [GO-VIRAL] No se pudo eliminar reacción {reaction.emoji} en mensaje {msg.id}: {e}")
+            print("✅ [GO-VIRAL] Apoyos 🔥 sincronizados y reacciones prohibidas eliminadas en TODO el canal.")
         except Exception as e:
-            print(f"❌ [GO-VIRAL] Error cargando apoyos: {e}")
+            print(f"❌ [GO-VIRAL] Error cargando apoyos/reacciones: {e}")
 
     async def init_mensaje_fijo(self):
         await self.bot.wait_until_ready()
@@ -226,7 +238,7 @@ class GoViral(commands.Cog):
             self.bot.loop.create_task(self.verificar_reaccion_like(message))
             return
 
-        # --- Control de intervalo entre publicaciones (siempre mínimo 2 posts de otros después de ti) ---
+        # --- Control de intervalo entre publicaciones (mínimo 2 posts de otros después de ti) ---
         if not await self.verificar_intervalo_entre_publicaciones(message):
             return
 
@@ -247,6 +259,7 @@ class GoViral(commands.Cog):
         # Si es 🔥, registrar en Redis el apoyo
         if str(reaction.emoji) == "🔥":
             self.redis.sadd(f"go_viral:apoyos:{reaction.message.id}", user.id)
+        # Eliminar cualquier reacción no autorizada
         if str(reaction.emoji) not in ["🔥", "👍"]:
             try:
                 await reaction.remove(user)
