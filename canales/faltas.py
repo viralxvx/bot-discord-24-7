@@ -123,6 +123,17 @@ class Faltas(commands.Cog):
 
     def generar_embed_faltas(self, miembro, estado, faltas_total, faltas_mes):
         now = datetime.now(timezone.utc)
+        # Obtener avatar de manera segura
+        avatar_url = ""
+        if hasattr(miembro, "display_avatar"):
+            try:
+                avatar_url = miembro.display_avatar.url
+            except:
+                avatar_url = ""
+        elif hasattr(miembro, "avatar") and miembro.avatar:
+            avatar_url = miembro.avatar.url
+        else:
+            avatar_url = ""
 
         embed = discord.Embed(
             title=f"📤 REGISTRO DE {miembro.mention}",
@@ -133,8 +144,8 @@ class Faltas(commands.Cog):
             ),
             color=self.color_estado(estado)
         )
-        embed.set_author(name=getattr(miembro, 'display_name', 'Miembro'), icon_url=getattr(miembro, 'display_avatar', discord.Embed.Empty).url if hasattr(miembro, 'display_avatar') else discord.Embed.Empty)
-        embed.set_footer(text="Sistema automatizado de reputación pública", icon_url=getattr(miembro, 'display_avatar', discord.Embed.Empty).url if hasattr(miembro, 'display_avatar') else discord.Embed.Empty)
+        embed.set_author(name=getattr(miembro, 'display_name', 'Miembro'), icon_url=avatar_url)
+        embed.set_footer(text="Sistema automatizado de reputación pública", icon_url=avatar_url)
         embed.timestamp = now
         return embed
 
