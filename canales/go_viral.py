@@ -17,7 +17,7 @@ from mensajes.viral_texto import (
     TITULO_SOLO_REACCION_EDU, DESCRIPCION_SOLO_REACCION_EDU,
     TITULO_SOLO_REACCION_DM, DESCRIPCION_SOLO_REACCION_DM
 )
-from datetime import datetime
+from datetime import datetime, timezone
 import redis
 import asyncio
 import re
@@ -63,7 +63,6 @@ class GoViral(commands.Cog):
             print(f"❌ [GO-VIRAL] No se encontró el canal (ID {CANAL_OBJETIVO_ID})")
             return
 
-        # Busca mensaje fijo existente (embed con título específico)
         mensaje_fijo_existente = None
         async for msg in canal.history(limit=30, oldest_first=True):
             if msg.author == self.bot.user and msg.embeds:
@@ -80,9 +79,7 @@ class GoViral(commands.Cog):
         )
         embed_fijo.set_image(url=IMAGEN_URL)
 
-        # Si existe y es igual, no hace nada. Si existe pero cambió, edita. Si no existe, lo crea.
         if mensaje_fijo_existente:
-            # ¿El contenido cambió?
             embed_actual = mensaje_fijo_existente.embeds[0]
             if (embed_actual.description != embed_fijo.description) or (embed_actual.image.url != IMAGEN_URL):
                 await mensaje_fijo_existente.edit(embed=embed_fijo)
@@ -110,7 +107,6 @@ class GoViral(commands.Cog):
                 await message.delete()
             except Exception:
                 pass
-            # Notificación en canal (embed, 15s)
             embed = discord.Embed(
                 title=TITULO_SOLO_URL_EDU,
                 description=DESCRIPCION_SOLO_URL_EDU.format(usuario=message.author.mention),
@@ -120,7 +116,6 @@ class GoViral(commands.Cog):
                 await message.channel.send(embed=embed, delete_after=15)
             except Exception:
                 pass
-            # DM educativa
             embed_dm = discord.Embed(
                 title=TITULO_SOLO_URL_DM,
                 description=DESCRIPCION_SOLO_URL_DM,
@@ -180,6 +175,9 @@ class GoViral(commands.Cog):
         # --- Lógica para permitir PRIMERA publicación sin restricciones ---
         if not self.redis.get(key_primera_publicacion):
             self.redis.set(key_primera_publicacion, "1")
+            # ACTUALIZAR FECHA ÚLTIMA PUBLICACIÓN PARA INACTIVIDAD:
+            fecha_iso = datetime.now(timezone.utc).isoformat()
+            self.redis.set(f"inactividad:{user_id}", fecha_iso)
             self.bot.loop.create_task(self.verificar_reaccion_like(message))
             return
 
@@ -190,6 +188,10 @@ class GoViral(commands.Cog):
         # --- Verificación de apoyo a los 9 anteriores ---
         if not await self.verificar_apoyo_nueve_anteriores(message):
             return
+
+        # ACTUALIZAR FECHA ÚLTIMA PUBLICACIÓN PARA INACTIVIDAD:
+        fecha_iso = datetime.now(timezone.utc).isoformat()
+        self.redis.set(f"inactividad:{user_id}", fecha_iso)
 
         # Inicia verificación de reacción 👍 del autor a su propio mensaje
         self.bot.loop.create_task(self.verificar_reaccion_like(message))
@@ -204,7 +206,6 @@ class GoViral(commands.Cog):
                 await reaction.remove(user)
             except Exception:
                 pass
-            # Notifica en canal
             embed = discord.Embed(
                 title=TITULO_SOLO_REACCION_EDU,
                 description=DESCRIPCION_SOLO_REACCION_EDU.format(usuario=user.mention),
@@ -214,7 +215,6 @@ class GoViral(commands.Cog):
                 await reaction.message.channel.send(embed=embed, delete_after=15)
             except Exception:
                 pass
-            # DM educativa
             embed_dm = discord.Embed(
                 title=TITULO_SOLO_REACCION_DM,
                 description=DESCRIPCION_SOLO_REACCION_DM,
@@ -225,8 +225,7 @@ class GoViral(commands.Cog):
             except Exception:
                 pass
 
-    # ... (mantén aquí las funciones verificar_intervalo_entre_publicaciones, verificar_apoyo_nueve_anteriores y verificar_reaccion_like sin cambios)
-
+    # --- No cambian las validaciones de intervalo, apoyo, like ---
     async def verificar_intervalo_entre_publicaciones(self, message):
         canal = message.channel
         mensajes = [msg async for msg in canal.history(limit=50, oldest_first=False)]
