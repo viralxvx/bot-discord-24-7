@@ -158,6 +158,16 @@ class GoViral(commands.Cog):
         key_bienvenida = f"go_viral:bienvenida:{user_id}"
         key_primera_publicacion = f"go_viral:primera_pub:{user_id}"
 
+        # --- OVERRIDE especial para el usuario ---
+        if self.redis.get(f"go_viral:override:{user_id}"):
+            self.redis.delete(f"go_viral:override:{user_id}")
+            fecha_iso = datetime.now(timezone.utc).isoformat()
+            self.redis.set(f"inactividad:{user_id}", fecha_iso)
+            # Permite publicar sin restricciones (solo requiere validar el 👍 como siempre)
+            self.bot.loop.create_task(self.verificar_reaccion_like(message))
+            print(f"⚡ [GO-VIRAL] OVERRIDE aplicado para {message.author.display_name} ({user_id})")
+            return
+
         # Solo permitir mensajes que sean URL válidas de x.com
         url_limpia = limpiar_url_tweet(message.content)
         if not url_limpia:
