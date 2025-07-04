@@ -17,7 +17,7 @@ class Inactividad(commands.Cog):
 
     async def registrar_actividad(self):
         await self.bot.wait_until_ready()
-        print("🔎 [INACTIVIDAD] Iniciando escaneo de actividad en 🧵go-viral...")
+        print("🔎 [INACTIVIDAD] Escaneando TODO el historial en 🧵go-viral...")
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
             print(f"❌ [INACTIVIDAD] No se encontró el canal 🧵go-viral (ID {CANAL_OBJETIVO_ID})")
@@ -25,11 +25,12 @@ class Inactividad(commands.Cog):
 
         ultimos_mensajes = {}
         try:
-            async for mensaje in canal.history(limit=1000, oldest_first=False):
+            async for mensaje in canal.history(limit=None, oldest_first=False):
                 autor = mensaje.author
                 if autor.bot:
                     continue
                 user_id = str(autor.id)
+                # Guarda la más reciente
                 if user_id not in ultimos_mensajes or mensaje.created_at > ultimos_mensajes[user_id]:
                     ultimos_mensajes[user_id] = mensaje.created_at
             print(f"🔢 [INACTIVIDAD] Usuarios únicos detectados: {len(ultimos_mensajes)}")
@@ -46,10 +47,9 @@ class Inactividad(commands.Cog):
         await self.bot.wait_until_ready()
         print("⏰ [INACTIVIDAD] Ejecutando verificación automática de inactivos...")
 
-        guilds = self.bot.guilds
         ahora = datetime.now(timezone.utc)
 
-        for guild in guilds:
+        for guild in self.bot.guilds:
             canal_faltas = self.bot.get_channel(CANAL_FALTAS_ID)
             canal_logs = self.bot.get_channel(CANAL_LOGS_ID)
 
@@ -61,7 +61,6 @@ class Inactividad(commands.Cog):
                 if ban_fecha_iso:
                     ban_fecha = datetime.fromisoformat(ban_fecha_iso)
                     if (ahora - ban_fecha).days >= DURACION_BANEO_DIAS:
-                        # El baneo ha vencido, desbanear y limpiar estado
                         try:
                             await guild.unban(user, reason="Baneo de inactividad vencido, reintegrado automáticamente")
                             self.redis.delete(key_ban)
@@ -89,10 +88,71 @@ class Inactividad(commands.Cog):
                         self.redis.delete(key_prorroga)
                         print(f"🧹 [INACTIVIDAD] Prórroga vencida y eliminada para {member.display_name} ({member.id})")
 
-            # 3. Lógica de baneos/expulsiones normales (idéntico a la fase 5, no lo repito aquí...)
+            # 3. Lógica de baneo/expulsión por inactividad
+            for member in guild.members:
+                if member.bot:
+                    continue
+
+                key_prorroga = f"inactividad:prorroga:{member.id}"
+                if self.redis.get(key_prorroga):
+                    continue  # Usuario tiene prórroga
+
+                key_ban = f"inactividad:ban:{member.id}"
+                if self.redis.get(key_ban):
+                    continue  # Ya está baneado
+
+                key_inactividad = f"inactividad:{member.id}"
+                last_post_iso = self.redis.get(key_inactividad)
+                if not last_post_iso:
+                    continue  # No hay registro, se ignora (nuevo o nunca publicó)
+
+                last_post = datetime.fromisoformat(last_post_iso)
+                dias_inactivo = (ahora - last_post).days
+
+                key_expulsado = f"inactividad:expulsado:{member.id}"
+                if self.redis.get(key_expulsado):
+                    continue  # Ya expulsado
+
+                # Lógica de reincidencia (baneo y luego expulsión)
+                key_reincidencia = f"inactividad:reincidencia:{member.id}"
+                reincidencias = int(self.redis.get(key_reincidencia) or 0)
+
+                if dias_inactivo >= DIAS_LIMITE_INACTIVIDAD:
+                    if reincidencias == 0:
+                        # 1ra vez: Baneo automático
+                        try:
+                            await guild.ban(member, reason="Inactividad superior a 3 días (automatizado)", delete_message_days=0)
+                            self.redis.set(key_ban, ahora.isoformat())
+                            self.redis.incr(key_reincidencia)
+                            print(f"⛔ [INACTIVIDAD] Usuario {member} ({member.id}) baneado por inactividad.")
+                            try:
+                                await member.send(AVISO_BANEO)
+                            except Exception:
+                                pass
+                            if canal_faltas:
+                                await canal_faltas.send(f"⛔ Usuario baneado automáticamente por inactividad: {member.mention}")
+                            if canal_logs:
+                                await canal_logs.send(f"⛔ [INACTIVIDAD] Usuario baneado: {member.mention} ({member.id})")
+                        except Exception as e:
+                            print(f"❌ [INACTIVIDAD] Error baneando a {member}: {e}")
+                    else:
+                        # 2da vez: Expulsión permanente
+                        try:
+                            await guild.kick(member, reason="Expulsión por inactividad reincidente (automatizado)")
+                            self.redis.set(key_expulsado, "1")
+                            print(f"🚫 [INACTIVIDAD] Usuario {member} ({member.id}) EXPULSADO por reincidencia de inactividad.")
+                            try:
+                                await member.send(AVISO_EXPULSION)
+                            except Exception:
+                                pass
+                            if canal_faltas:
+                                await canal_faltas.send(f"🚫 Usuario EXPULSADO permanentemente por reincidencia de inactividad: {member.mention}")
+                            if canal_logs:
+                                await canal_logs.send(f"🚫 [INACTIVIDAD] Usuario EXPULSADO: {member.mention} ({member.id})")
+                        except Exception as e:
+                            print(f"❌ [INACTIVIDAD] Error expulsando a {member}: {e}")
 
         print("✅ [INACTIVIDAD] Verificación automática completada.")
 
 async def setup(bot):
     await bot.add_cog(Inactividad(bot))
-
