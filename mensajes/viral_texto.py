@@ -1,5 +1,6 @@
 # mensajes/viral_texto.py
 
+# --- MENSAJE FIJO (para fijar como reglas en el canal) ---
 TITULO_FIJO = "🧵 ¡Bienvenido a GO-VIRAL!"
 IMAGEN_URL = "https://drive.google.com/uc?export=download&id=1LGwse5dI_Q_PpQhhfpLBudteATKoy4Hj"
 
@@ -16,11 +17,11 @@ DESCRIPCION_FIJO = (
     "• Reacciona con 👍 a tu propio post *en los primeros 2 minutos*.\n"
     "• Si no reaccionas a tiempo, el bot eliminará tu mensaje automáticamente.\n\n"
     "3️⃣ **Apoya antes de publicar de nuevo:**\n"
-    "• Debes dar **apoyo genuino** (🔥 RT + Like + Comentario) a los **9 compañeros anteriores** antes de volver a publicar.\n"
-    "• Si hay menos de 9 publicaciones, apoya a todas las disponibles.\n\n"
+    "• Debes dar **apoyo genuino** (🔥 RT + Like + Comentario) a los anteriores disponibles (**hasta 9**). "
+    "Si hay menos desde tu último post, apoya a esos.\n\n"
     "4️⃣ **Intervalo entre publicaciones:**\n"
     "• Espera al menos **2 publicaciones válidas** de otros miembros antes de volver a publicar.\n"
-    "• Si solo hay 2 publicaciones después de la tuya (y ya las apoyaste), puedes volver a publicar aunque haya pasado 1 día.\n\n"
+    "• Si pasan **24h** desde tu último post y nadie publica, puedes volver a publicar.\n\n"
     "5️⃣ **Importante:**\n"
     "• No uses 🔥 en tu propio post.\n"
     "• No recicles hilos sin permiso.\n"
@@ -39,13 +40,15 @@ DESCRIPCION_FIJO = (
     "*Mensaje automatizado por VXbot — actualizado al {fecha}*"
 )
 
+# --- MENSAJE BIENVENIDA PRIMERA PUBLICACIÓN ---
 TITULO_BIENVENIDA = "🎉 ¡Bienvenido/a a tu primera publicación en GO-VIRAL!"
 DESCRIPCION_BIENVENIDA = (
     "👏 Te acabas de unir al sistema de apoyo viral de la comunidad. Aquí, cada publicación cuenta y cada miembro suma.\n\n"
     "**¿Qué debes saber a partir de ahora?**\n"
-    "• Recuerda apoyar con 🔥 (RT + LIKE + Comentario) a los 9 compañeros anteriores antes de tu próxima publicación.\n"
+    "• Recuerda apoyar con 🔥 (RT + LIKE + Comentario) a los anteriores disponibles (hasta 9) antes de tu próxima publicación. "
+    "Si hay menos desde tu última publicación, solo apoya esas.\n"
     "• Siempre reacciona con 👍 a tus propios posts en los primeros 2 minutos.\n"
-    "• Entre cada publicación tuya, espera que al menos 2 personas publiquen después.\n"
+    "• Entre cada publicación tuya, espera que al menos 2 personas publiquen después, o 24h si nadie publica.\n"
     "• Usa solo enlaces limpios como este:\n"
     "`https://x.com/usuario/status/1234567890`\n\n"
     "🤖 *El bot automatizará todo el proceso, te avisará si algo no está bien y te ayudará a aprender cada paso.*\n\n"
@@ -54,8 +57,9 @@ DESCRIPCION_BIENVENIDA = (
     "¡Gracias por ser parte del crecimiento colectivo!"
 )
 
-# ---------- NOTIFICACIONES EDUCATIVAS EMBED ----------
+# --------------------- NOTIFICACIONES EDUCATIVAS EMBED -----------------------
 
+# URL
 TITULO_URL_EDU = "⚠️ Enlace corregido automáticamente"
 DESCRIPCION_URL_EDU = (
     "Tu enlace tenía un formato incorrecto y ha sido corregido automáticamente por el sistema.\n"
@@ -73,6 +77,7 @@ DESCRIPCION_URL_DM = (
     "¡Gracias por tu atención! — VXbot"
 )
 
+# LIKE
 TITULO_SIN_LIKE_EDU = "❗ Publicación eliminada por no validar con 👍"
 DESCRIPCION_SIN_LIKE_EDU = (
     "{usuario}, no reaccionaste con 👍 a tu propio post en los primeros 2 minutos. "
@@ -86,26 +91,29 @@ DESCRIPCION_SIN_LIKE_DM = (
     "Si tienes dudas, revisa las reglas en #✅normas-generales o pregunta en #👨🔧soporte."
 )
 
-TITULO_APOYO_9_EDU = "🚨 Falta de apoyo a los 9 anteriores"
+# APOYO ANTERIORES (hasta 9)
+TITULO_APOYO_9_EDU = "🚨 Falta de apoyo a los anteriores disponibles"
 DESCRIPCION_APOYO_9_EDU = (
-    "{usuario}, antes de volver a publicar debes apoyar con 🔥 a los 9 compañeros anteriores. "
-    "Por favor apoya a los demás para poder compartir tu contenido."
+    "{usuario}, antes de volver a publicar debes apoyar con 🔥 a los anteriores disponibles (hasta 9). "
+    "Si hay menos, solo apoya a esas publicaciones. Por favor apoya a los demás para poder compartir tu contenido."
 )
 
-TITULO_APOYO_9_DM = "Aviso: No apoyaste a los 9 anteriores"
+TITULO_APOYO_9_DM = "Aviso: No apoyaste a los anteriores disponibles"
 DESCRIPCION_APOYO_9_DM = (
-    "Hola, tu última publicación en 🧵go-viral fue eliminada porque no diste apoyo a los 9 anteriores. "
-    "Recuerda: solo puedes volver a publicar después de apoyar con 🔥 (RT + Like + Comentario) a los 9 anteriores."
+    "Hola, tu última publicación en 🧵go-viral fue eliminada porque no diste apoyo a los anteriores disponibles (hasta 9). "
+    "Recuerda: solo puedes volver a publicar después de apoyar con 🔥 (RT + Like + Comentario) a esas publicaciones."
 )
 
+# INTERVALO ENTRE PUBLICACIONES
 TITULO_INTERVALO_EDU = "⏳ Intervalo insuficiente entre publicaciones"
 DESCRIPCION_INTERVALO_EDU = (
-    "{usuario}, debes esperar al menos que **2 miembros diferentes** publiquen antes de volver a compartir. "
-    "¡Apoya, espera y sigue creciendo! Publica de nuevo cuando cumplas el intervalo."
+    "{usuario}, debes esperar al menos que **2 miembros diferentes** publiquen antes de volver a compartir, "
+    "o 24h si nadie publica. ¡Apoya, espera y sigue creciendo! Publica de nuevo cuando cumplas el intervalo."
 )
 
 TITULO_INTERVALO_DM = "Aviso: No esperaste el intervalo mínimo"
 DESCRIPCION_INTERVALO_DM = (
     "Hola, tu publicación fue eliminada porque no esperaste que al menos 2 miembros publicaran después de tu último post. "
-    "Recuerda: después de tu publicación, deben pasar 2 publicaciones válidas de otros antes de volver a publicar."
+    "Recuerda: después de tu publicación, deben pasar 2 publicaciones válidas de otros antes de volver a publicar. "
+    "Si pasan 24h y nadie publica, puedes volver a participar."
 )
