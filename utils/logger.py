@@ -4,9 +4,11 @@ import os
 import aiohttp
 from discord import Webhook
 from datetime import datetime, timezone
+import redis
 
-# URL del webhook desde variable de entorno
+# Variables de entorno
 WEB_HOOKS_CANAL_LOGS = os.getenv("WEB_HOOKS_CANAL_LOGS")
+REDIS_URL = os.getenv("REDIS_URL")
 
 # Configuración del logger de consola (para Railway)
 logger = logging.getLogger("discord")
@@ -21,13 +23,12 @@ formatter = logging.Formatter(
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
-# Mensaje persistente para editar si es necesario
-log_message_id = None
+# Conexión a Redis
+redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+REDIS_LOG_MESSAGE_KEY = "vxbot:logs:last_message_id"
 
 # ✅ FUNCIÓN PRINCIPAL: Log en Discord vía Webhook + consola
 async def log_discord(bot, message: str, status: str = "Cargando", title: str = "Resumen de inicio del bot"):
-    global log_message_id
-
     # Log en consola (Railway)
     print(f"[{status}] {title}: {message}")
 
@@ -45,20 +46,19 @@ async def log_discord(bot, message: str, status: str = "Cargando", title: str = 
         async with aiohttp.ClientSession() as session:
             webhook = Webhook.from_url(WEB_HOOKS_CANAL_LOGS, session=session)
 
+            log_message_id = redis_client.get(REDIS_LOG_MESSAGE_KEY)
+
             if log_message_id:
                 try:
-                    await webhook.edit_message(log_message_id, embed=embed)
+                    await webhook.edit_message(int(log_message_id), embed=embed)
                 except:
-                    # Si falló editar, crea uno nuevo y actualiza log_message_id
                     msg = await webhook.send(embed=embed, wait=True)
-                    log_message_id = msg.id
+                    redis_client.set(REDIS_LOG_MESSAGE_KEY, msg.id)
             else:
                 msg = await webhook.send(embed=embed, wait=True)
-                log_message_id = msg.id
+                redis_client.set(REDIS_LOG_MESSAGE_KEY, msg.id)
     except Exception as e:
         print(f"❌ Error enviando log a Discord vía webhook: {e}")
-
-    return log_message_id
 
 # ✅ OPCIONAL: Log desde otros lugares (automático en Discord y consola)
 def custom_log(bot, level: str, message: str, title: str = "Log"):
