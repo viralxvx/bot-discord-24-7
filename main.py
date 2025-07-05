@@ -39,10 +39,13 @@ async def on_ready():
     logs.append(f"Bot conectado como **{bot.user}**\nHora: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
 
     # Actualizar el status mientras se carga el bot
+    logs_message = "\n".join(logs)  # Unir todos los logs en un solo mensaje
+
     if log_message is None:
-        logs_message = "\n".join(logs)  # Unir todos los logs en un solo mensaje
-        await custom_log(bot, "Cargando el bot", logs_message, "🔄 Resumen de inicio del bot")
+        # Si no existe el mensaje, crear uno nuevo
+        log_message = await custom_log(bot, "Cargando el bot", logs_message, "🔄 Resumen de inicio del bot")
     else:
+        # Si el mensaje ya existe, actualizarlo
         await log_message.edit(content=logs_message)
 
     # Cargar extensiones y agregar logs correspondientes
