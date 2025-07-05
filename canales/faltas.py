@@ -35,14 +35,14 @@ class Faltas(commands.Cog):
 
     async def inicializar_panel_faltas(self):
         await self.bot.wait_until_ready()
-        await log_discord(self.bot, "Iniciando módulo de faltas...")
+        await log_discord(self.bot, "Iniciando módulo de faltas...", titulo="Faltas")
 
         canal = self.bot.get_channel(CANAL_FALTAS_ID)
         if not canal:
-            await log_discord(self.bot, "❌ Error: no se encontró el canal de faltas.", nivel="error", titulo="Faltas")
+            await log_discord(self.bot, "❌ Error: no se encontró el canal de faltas.", titulo="Faltas")
             return
 
-        await log_discord(self.bot, "Cargando mensajes existentes del canal #📤faltas...", nivel="info", titulo="Faltas")
+        await log_discord(self.bot, "Cargando mensajes existentes del canal #📤faltas...", titulo="Faltas")
         registros = {}
 
         try:
@@ -54,10 +54,10 @@ class Faltas(commands.Cog):
                         user_mention = titulo.split("📤 REGISTRO DE ")[1].strip()
                         registros[user_mention] = mensaje
         except Exception as e:
-            await log_discord(self.bot, f"❌ Error al leer mensajes del canal: {e}", nivel="error", titulo="Faltas")
+            await log_discord(self.bot, f"❌ Error al leer mensajes del canal: {e}", titulo="Faltas")
             return
 
-        await log_discord(self.bot, "Sincronizando mensajes por miembro...", nivel="info", titulo="Faltas")
+        await log_discord(self.bot, "Sincronizando mensajes por miembro...", titulo="Faltas")
 
         try:
             guild = canal.guild
@@ -95,18 +95,18 @@ class Faltas(commands.Cog):
                     try:
                         await registros[user_mention].edit(embed=embed)
                     except Exception as e:
-                        await log_discord(self.bot, f"❌ Error al editar mensaje de {miembro.display_name}: {e}", nivel="error", titulo="Faltas")
+                        await log_discord(self.bot, f"❌ Error al editar mensaje de {miembro.display_name}: {e}", titulo="Faltas")
                 else:
                     try:
                         await canal.send(embed=embed)
                     except Exception as e:
-                        await log_discord(self.bot, f"❌ Error al enviar mensaje para {miembro.display_name}: {e}", nivel="error", titulo="Faltas")
+                        await log_discord(self.bot, f"❌ Error al enviar mensaje para {miembro.display_name}: {e}", titulo="Faltas")
                 total += 1
 
-            await log_discord(self.bot, f"✅ Panel público actualizado. Total miembros sincronizados: {total}", nivel="success", titulo="Faltas")
+            await log_discord(self.bot, f"✅ Panel público actualizado. Total miembros sincronizados: {total}", titulo="Faltas")
 
         except Exception as e:
-            await log_discord(self.bot, f"❌ Error al sincronizar faltas: {e}", nivel="error", titulo="Faltas")
+            await log_discord(self.bot, f"❌ Error al sincronizar faltas: {e}", titulo="Faltas")
 
     async def get_user_safe(self, guild, user_id):
         try:
