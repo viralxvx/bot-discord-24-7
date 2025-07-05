@@ -3,8 +3,25 @@ from discord.ext import commands
 from config import CANAL_FALTAS_ID, CANAL_LOGS_ID, REDIS_URL
 import redis
 from datetime import datetime, timezone
-from utils.logger import log_discord  # <--- Aquí el import del logger
+from utils.logger import log_discord  # Aquí el import del logger
 import asyncio
+
+# Función para manejar el rate limiting y enviar mensajes con reintentos
+async def enviar_mensaje_con_reintento(canal, embed):
+    # Intentamos enviar el mensaje varias veces en caso de rate limiting
+    for intento in range(5):  # Intentar hasta 5 veces
+        try:
+            await canal.send(embed=embed)
+            return  # Si el mensaje se envía correctamente, salimos
+        except discord.errors.HTTPException as e:
+            if e.code == 429:  # Si el error es rate limiting (429)
+                wait_time = 2 ** intento  # Exponential backoff
+                await log_discord(self.bot, f"Rate limiting detectado. Esperando {wait_time} segundos...")
+                await asyncio.sleep(wait_time)  # Esperamos antes de reintentar
+            else:
+                # Si es otro error, lo registramos y salimos
+                await log_discord(self.bot, f"Error inesperado al enviar mensaje: {e}")
+                break
 
 def obtener_estado(redis, user_id):
     estado = redis.hget(f"usuario:{user_id}", "estado")
@@ -28,22 +45,6 @@ def obtener_faltas(redis, user_id):
     except:
         return 0, 0
 
-async def enviar_mensaje_con_reintento(canal, embed):
-    # Intentamos enviar el mensaje varias veces en caso de rate limiting
-    for intento in range(5):  # Intentar hasta 5 veces
-        try:
-            await canal.send(embed=embed)
-            return  # Si el mensaje se envía correctamente, salimos
-        except discord.errors.HTTPException as e:
-            if e.code == 429:  # Si el error es rate limiting (429)
-                wait_time = 2 ** intento  # Exponential backoff
-                await log_discord(self.bot, f"Rate limiting detectado. Esperando {wait_time} segundos...")
-                await asyncio.sleep(wait_time)  # Esperamos antes de reintentar
-            else:
-                # Si es otro error, lo registramos y salimos
-                await log_discord(self.bot, f"Error inesperado al enviar mensaje: {e}")
-                break
-
 class Faltas(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -52,14 +53,14 @@ class Faltas(commands.Cog):
 
     async def inicializar_panel_faltas(self):
         await self.bot.wait_until_ready()
-        await log_discord(self.bot, "Iniciando módulo de faltas...")  # Eliminado 'titulo'
+        await log_discord(self.bot, "Iniciando módulo de faltas...")
 
         canal = self.bot.get_channel(CANAL_FALTAS_ID)
         if not canal:
-            await log_discord(self.bot, "❌ Error: no se encontró el canal de faltas.")  # Eliminado 'titulo'
+            await log_discord(self.bot, "❌ Error: no se encontró el canal de faltas.")
             return
 
-        await log_discord(self.bot, "Cargando mensajes existentes del canal #📤faltas...")  # Eliminado 'titulo'
+        await log_discord(self.bot, "Cargando mensajes existentes del canal #📤faltas...")
         registros = {}
 
         try:
@@ -71,10 +72,10 @@ class Faltas(commands.Cog):
                         user_mention = titulo.split("📤 REGISTRO DE ")[1].strip()
                         registros[user_mention] = mensaje
         except Exception as e:
-            await log_discord(self.bot, f"❌ Error al leer mensajes del canal: {e}")  # Eliminado 'titulo'
+            await log_discord(self.bot, f"❌ Error al leer mensajes del canal: {e}")
             return
 
-        await log_discord(self.bot, "Sincronizando mensajes por miembro...")  # Eliminado 'titulo'
+        await log_discord(self.bot, "Sincronizando mensajes por miembro...")
 
         try:
             guild = canal.guild
@@ -111,17 +112,17 @@ class Faltas(commands.Cog):
                 if user_mention in registros:
                     try:
                         await registros[user_mention].edit(embed=embed)
-                        await asyncio.sleep(1)  # Espera 1 segundo
+                        await asyncio.sleep(1)  # Espera 1 segundo entre ediciones
                     except Exception as e:
-                        await log_discord(self.bot, f"❌ Error al editar mensaje de {miembro.display_name}: {e}")  # Eliminado 'titulo'
+                        await log_discord(self.bot, f"❌ Error al editar mensaje de {miembro.display_name}: {e}")
                 else:
                     await enviar_mensaje_con_reintento(canal, embed)  # Usamos la nueva función con reintentos
                     total += 1
 
-            await log_discord(self.bot, f"✅ Panel público actualizado. Total miembros sincronizados: {total}")  # Eliminado 'titulo'
+            await log_discord(self.bot, f"✅ Panel público actualizado. Total miembros sincronizados: {total}")
 
         except Exception as e:
-            await log_discord(self.bot, f"❌ Error al sincronizar faltas: {e}")  # Eliminado 'titulo'
+            await log_discord(self.bot, f"❌ Error al sincronizar faltas: {e}")
 
     async def get_user_safe(self, guild, user_id):
         try:
