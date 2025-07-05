@@ -322,7 +322,7 @@ class GoViral(commands.Cog):
             )
             try:
                 await message.author.send(embed=embed_dm)
-            except Exception:
+            except Exception as e:
                 pass
             await log_discord(self.bot, f"❌ [GO-VIRAL] Mensaje eliminado por intervalo insuficiente de {message.author.display_name}", "warning", "GoViral")
             return False
@@ -437,3 +437,7 @@ class GoViral(commands.Cog):
             except Exception as e:
                 pass
             await log_discord(self.bot, f"⛔ [GO-VIRAL] Eliminada publicación sin like de {autor.display_name}", "warning", "GoViral")
+
+# Asegúrate de agregar la función setup
+async def setup(bot):
+    await bot.add_cog(GoViral(bot))
