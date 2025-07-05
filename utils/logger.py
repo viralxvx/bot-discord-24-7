@@ -49,16 +49,16 @@ async def log_discord(bot, message, status="Cargando el bot", title="Resumen de 
     return log_message  # Devolvemos el mensaje creado o editado
 
 # Función para manejar los logs de Railway y Discord
-def custom_log(bot, status, message, title=""):
-    if status == "warning":
+def custom_log(bot, level, message, title=""):
+    if level == "warning":
         logger.warning(message)
-    elif status == "info":
+    elif level == "info":
         logger.info(message)
-    elif status == "error":
+    elif level == "error":
         logger.error(message)
     else:
         logger.debug(message)
 
     # Loguear en Discord también si el bot está disponible
     if bot:
-        return bot.loop.create_task(log_discord(bot, message, status, title))  # Devolver la tarea que se crea
+        return bot.loop.create_task(log_discord(bot, message, level, title))  # Devolver la tarea que se crea
