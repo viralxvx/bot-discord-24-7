@@ -35,7 +35,7 @@ class Faltas(commands.Cog):
 
     async def inicializar_panel_faltas(self):
         await self.bot.wait_until_ready()
-        await log_discord(self.bot, "Iniciando módulo de faltas...", titulo="Faltas")
+        await log_discord(self.bot, "Iniciando módulo de faltas...")
 
         canal = self.bot.get_channel(CANAL_FALTAS_ID)
         if not canal:
