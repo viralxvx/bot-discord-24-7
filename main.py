@@ -15,16 +15,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 EXTENSIONES = [
     "canales.presentate",
-    "canales.normas_generales",
-    "canales.faltas",
-    "canales.comandos",
-    "canales.inactividad",
-    "canales.soporte_prorroga",
-    "canales.go_viral",
-    "comandos.prorroga",
-    "comandos.override",
-    "canales.reporte_incumplimiento",
-    "comandos",
 ]
 
 log_message = None  # Variable para almacenar el mensaje de log
