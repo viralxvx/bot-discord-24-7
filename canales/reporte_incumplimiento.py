@@ -4,7 +4,7 @@ from discord import ui
 from datetime import datetime, timezone
 import redis
 from config import CANAL_REPORTE_ID, CANAL_LOGS_ID, REDIS_URL
-from utils.logger import log_discord  # ← NUEVO para centralizar logs
+from utils.logger import log_discord  # <--- Aquí el import del logger
 
 # ---------------------- TEXTOS ----------------------
 TITULO_INSTRUCCIONES = "🚨 Reporte de Incumplimiento"
@@ -217,6 +217,8 @@ class ReporteMotivoSelect(ui.Select):
     async def callback(self, interaction: discord.Interaction):
         motivo = self.values[0]
         await self.cog.crear_reporte(interaction.user, motivo)
+
+# El resto del código permanece igual...
 
 async def setup(bot):
     await bot.add_cog(ReporteIncumplimiento(bot))
