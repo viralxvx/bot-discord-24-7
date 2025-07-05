@@ -61,16 +61,11 @@ class Presentate(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        mensaje = "✅ Módulo `canales.presentate` cargado correctamente."
-        await log_discord(self.bot, mensaje, CANAL_LOGS_ID, "info", "Presentate")
-        print(mensaje)
-
 async def enviar_bienvenida(member: discord.Member, bot):
     canal = bot.get_channel(CANAL_PRESENTATE_ID)
     if not canal:
         await log_discord(bot, f"❌ Canal de presentación no encontrado: {CANAL_PRESENTATE_ID}", CANAL_LOGS_ID, "error", "Presentate")
+        print(f"❌ Canal de presentación no encontrado: {CANAL_PRESENTATE_ID}")
         return
 
     embed = discord.Embed(
@@ -95,8 +90,16 @@ async def enviar_bienvenida(member: discord.Member, bot):
     try:
         await canal.send(content=member.mention, embed=embed, view=MenuInicio())
         await log_discord(bot, f"👤 Bienvenida enviada a {member.mention} en #preséntate", CANAL_LOGS_ID, "success", "Presentate")
+        print(f"👤 Bienvenida enviada a {member.display_name} ({member.id})")
     except Exception as e:
         await log_discord(bot, f"❌ Error enviando bienvenida a {member.display_name}: {e}", CANAL_LOGS_ID, "error", "Presentate")
+        print(f"❌ Error enviando bienvenida a {member.display_name}: {e}")
 
 async def setup(bot):
     await bot.add_cog(Presentate(bot))
+    await log_discord(bot, "✅ Módulo canales.presentate cargado correctamente.", CANAL_LOGS_ID, "success", "Presentate")
+    print("✅ Módulo canales.presentate cargado correctamente.")
+
+    num_comandos = len(await bot.tree.sync())
+    await log_discord(bot, f"✅ {num_comandos} comandos sincronizados.", CANAL_LOGS_ID, "success", "Presentate")
+    print(f"✅ {num_comandos} comandos sincronizados.")
