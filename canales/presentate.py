@@ -7,7 +7,6 @@ from config import (
     CANAL_VICTORIAS_ID,
     CANAL_ESTRATEGIAS_ID,
     CANAL_ENTRENAMIENTO_ID,
-    CANAL_LOGS_ID,
 )
 from utils.logger import log_discord
 
@@ -46,7 +45,7 @@ class MenuSelect(discord.ui.Select):
             await interaction.response.defer()
         except discord.Forbidden:
             await interaction.response.send_message("❌ No pude enviarte un mensaje privado. Activa tus DMs.", ephemeral=True)
-            await log_discord(interaction.client, f"❌ No se pudo enviar DM a {interaction.user} desde el menú de presentación.", CANAL_LOGS_ID, "warning", "Presentate")
+            await log_discord(interaction.client, "❌ No se pudo enviar DM a un usuario desde el menú de presentación.", status="warning", title="Presentate")
 
 class IrAlCanalButton(discord.ui.View):
     def __init__(self, canal_id):
@@ -64,8 +63,7 @@ class Presentate(commands.Cog):
 async def enviar_bienvenida(member: discord.Member, bot):
     canal = bot.get_channel(CANAL_PRESENTATE_ID)
     if not canal:
-        await log_discord(bot, f"❌ Canal de presentación no encontrado: {CANAL_PRESENTATE_ID}", CANAL_LOGS_ID, "error", "Presentate")
-        print(f"❌ Canal de presentación no encontrado: {CANAL_PRESENTATE_ID}")
+        await log_discord(bot, f"❌ Canal de presentación no encontrado: {CANAL_PRESENTATE_ID}", status="error", title="Presentate")
         return
 
     embed = discord.Embed(
@@ -89,17 +87,9 @@ async def enviar_bienvenida(member: discord.Member, bot):
 
     try:
         await canal.send(content=member.mention, embed=embed, view=MenuInicio())
-        await log_discord(bot, f"👤 Bienvenida enviada a {member.mention} en #preséntate", CANAL_LOGS_ID, "success", "Presentate")
-        print(f"👤 Bienvenida enviada a {member.display_name} ({member.id})")
+        await log_discord(bot, f"👤 Bienvenida enviada a {member.mention} en #preséntate", status="success", title="Presentate")
     except Exception as e:
-        await log_discord(bot, f"❌ Error enviando bienvenida a {member.display_name}: {e}", CANAL_LOGS_ID, "error", "Presentate")
-        print(f"❌ Error enviando bienvenida a {member.display_name}: {e}")
+        await log_discord(bot, f"❌ Error enviando bienvenida a {member.display_name}: {e}", status="error", title="Presentate")
 
 async def setup(bot):
     await bot.add_cog(Presentate(bot))
-    await log_discord(bot, "✅ Módulo canales.presentate cargado correctamente.", CANAL_LOGS_ID, "success", "Presentate")
-    print("✅ Módulo canales.presentate cargado correctamente.")
-
-    num_comandos = len(await bot.tree.sync())
-    await log_discord(bot, f"✅ {num_comandos} comandos sincronizados.", CANAL_LOGS_ID, "success", "Presentate")
-    print(f"✅ {num_comandos} comandos sincronizados.")
