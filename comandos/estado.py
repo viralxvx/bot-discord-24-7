@@ -23,13 +23,13 @@ class Estado(commands.Cog):
             return
 
         try:
-            # Obtener datos desde Redis
-            data = self.redis.hgetall(f"faltas:{usuario.id}")
+            # Busca datos en la clave estándar de usuarios
+            data = self.redis.hgetall(f"usuario:{usuario.id}")
 
             # Establecer valores por defecto si faltan
-            faltas_total = int(data.get("faltas_total", 0))
+            faltas_total = int(data.get("faltas_totales", 0))
             faltas_mes = int(data.get("faltas_mes", 0))
-            estado = data.get("estado", "Activo")
+            estado = data.get("estado", "Activo").capitalize()
 
             data_usuario = {
                 "estado": estado,
@@ -41,9 +41,10 @@ class Estado(commands.Cog):
 
             await interaction.response.send_message(embed=embed, delete_after=600)
 
+            # También lo envía por DM
             try:
                 await usuario.send(embed=embed)
-            except:
+            except Exception:
                 logging.warning(f"⚠️ No se pudo enviar DM a {usuario.name}.")
 
         except Exception as e:
