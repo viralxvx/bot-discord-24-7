@@ -27,8 +27,7 @@ EXTENSIONES = [
     "comandos",
 ]
 
-# Mensaje de log global (lo vamos a actualizar)
-log_message = None
+log_message = None  # Variable para almacenar el mensaje de log
 
 @bot.event
 async def on_ready():
@@ -36,16 +35,10 @@ async def on_ready():
 
     logs = []
 
-    # Primer log (bot conectado)
+    # Crear el primer mensaje de log en Discord
     logs.append(f"Bot conectado como **{bot.user}**\nHora: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
 
-    # Crear el mensaje inicial
-    if not log_message:
-        log_channel = bot.get_channel(int(os.getenv("CANAL_LOGS")))  # Usamos la variable de entorno para obtener el canal
-        if log_channel:
-            log_message = await log_channel.send("🔄 **Resumen de inicio del bot**: Cargando...")
-
-    # Actualizar el mensaje de log
+    # Cargar extensiones y agregar logs correspondientes
     for ext in EXTENSIONES:
         try:
             await bot.load_extension(ext)
@@ -53,19 +46,24 @@ async def on_ready():
         except Exception as e:
             logs.append(f"Error al cargar **{ext}**:\n{e}")
 
+    # Sincronizar comandos y agregar logs correspondientes
     try:
         synced = await bot.tree.sync()
         logs.append(f"{len(synced)} comandos sincronizados.")
     except Exception as e:
         logs.append(f"Error al sincronizar comandos: {e}")
     
-    # Unir los logs y actualizar el mensaje en Discord
+    # Unir todos los logs en un solo mensaje
     logs_message = "\n".join(logs)
     
-    if log_message:
-        await log_message.edit(content=f"🔄 **Resumen de inicio del bot**:\n{logs_message}")
+    if log_message is None:
+        # Enviar el primer mensaje de logs
+        log_message = await custom_log(bot, "info", logs_message, "🔄 Resumen de inicio del bot")
+    else:
+        # Actualizar el mensaje de logs
+        await log_message.edit(content=logs_message)
 
-    # Prevenir apagado por inactividad
+    # Previene apagado por inactividad
     while True:
         await asyncio.sleep(60)
         print("⏳ Bot sigue vivo...")
