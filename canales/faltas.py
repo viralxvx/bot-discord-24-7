@@ -97,27 +97,32 @@ class Faltas(commands.Cog):
                     continue
 
             total = 0
-            for user_id in user_ids:
-                miembro = guild.get_member(user_id)
-                if not miembro:
-                    miembro = await self.get_user_safe(guild, user_id)
+            # Dividir los usuarios en bloques pequeños para reducir la sobrecarga
+            bloques = [list(user_ids)[i:i+10] for i in range(0, len(user_ids), 10)]  # Dividimos en bloques de 10
+
+            for bloque in bloques:
+                for user_id in bloque:
+                    miembro = guild.get_member(user_id)
                     if not miembro:
-                        continue
+                        miembro = await self.get_user_safe(guild, user_id)
+                        if not miembro:
+                            continue
 
-                estado = obtener_estado(self.redis, user_id)
-                faltas_total, faltas_mes = obtener_faltas(self.redis, user_id)
-                embed = self.generar_embed_faltas(miembro, estado, faltas_total, faltas_mes)
+                    estado = obtener_estado(self.redis, user_id)
+                    faltas_total, faltas_mes = obtener_faltas(self.redis, user_id)
+                    embed = self.generar_embed_faltas(miembro, estado, faltas_total, faltas_mes)
 
-                user_mention = miembro.mention
-                if user_mention in registros:
-                    try:
-                        await registros[user_mention].edit(embed=embed)
-                        await asyncio.sleep(2)  # Aumento el tiempo de espera a 2 segundos entre ediciones
-                    except Exception as e:
-                        await log_discord(self.bot, f"❌ Error al editar mensaje de {miembro.display_name}: {e}")
-                else:
-                    await enviar_mensaje_con_reintento(canal, embed)  # Usamos la nueva función con reintentos
-                    total += 1
+                    user_mention = miembro.mention
+                    if user_mention in registros:
+                        try:
+                            await registros[user_mention].edit(embed=embed)
+                            await asyncio.sleep(2)  # Aumento el tiempo de espera a 2 segundos entre ediciones
+                        except Exception as e:
+                            await log_discord(self.bot, f"❌ Error al editar mensaje de {miembro.display_name}: {e}")
+                    else:
+                        await enviar_mensaje_con_reintento(canal, embed)  # Usamos la nueva función con reintentos
+                        total += 1
+                await asyncio.sleep(2)  # Añadir espera entre bloques para no sobrecargar la API
 
             await log_discord(self.bot, f"✅ Panel público actualizado. Total miembros sincronizados: {total}")
 
