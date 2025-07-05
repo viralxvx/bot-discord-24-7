@@ -61,6 +61,10 @@ class Presentate(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
+    @commands.Cog.listener()
+    async def on_ready(self):
+        await log_discord(self.bot, "✅ Módulo `presentate` cargado correctamente.", CANAL_LOGS_ID, "info", "Presentate")
+
 async def enviar_bienvenida(member: discord.Member, bot):
     canal = bot.get_channel(CANAL_PRESENTATE_ID)
     if not canal:
