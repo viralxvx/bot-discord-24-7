@@ -14,7 +14,7 @@ Este documento resume todas las funcionalidades implementadas en **VXbot**, la i
 * **Deploy:** Railway (plan pago, always-on)
 * **Gestión de secretos:** Variables de entorno (Railway)
 * **Estructura:** Modular (`canales/`, `comandos/`, `mensajes/`)
-* **Persistencia total:** Redis (historial y estado nunca se pierden, inmune a reinicios)
+* **Persistencia total:** Redis (historial y estado nunca se pierde, inmune a reinicios)
 
 ---
 
@@ -103,13 +103,15 @@ Este documento resume todas las funcionalidades implementadas en **VXbot**, la i
 
   * Corrige automáticamente enlaces mal formateados, simula publicación limpia, avisa por embed educativo (canal) y DM (embed)
   * Elimina cualquier mensaje que no sea un enlace válido de X, notificando al usuario (embed en canal + DM)
-  * **Solo permite reacciones** 🔥 y 👍 (todas las demás se eliminan con aviso profesional)
+  * **Solo permite reacciones** 🔥 y 👍 (todas las demás se eliminan — también en mensajes antiguos, gracias a la limpieza de reacciones automática en el arranque)
   * Verifica que se reaccione con 👍 en 2 minutos o elimina (embed educativo + DM)
   * No permite publicar si no hay **2 posts válidos** de otros miembros tras la última publicación del usuario (**override de 24h:** si pasan 24h sin actividad, permite publicar)
   * **Control de apoyo adaptativo:** exige haber apoyado (🔥) a los 9 anteriores SOLO si hay suficiente volumen; si no, solo a los disponibles
+  * **Las reglas y validaciones se aplican SIEMPRE incluso tras reinicio**: el bot **limpia** todas las reacciones inválidas de mensajes antiguos, y sincroniza apoyos en Redis para que nada se pierda.
   * Mensajes educativos, avisos y bienvenidas siempre en embed (profesional), todo centralizado en `/mensajes/viral_texto.py`
   * **Registra en Redis todos los usuarios** que ya publicaron al menos una vez (para evitar confusiones tras reinicio)
 * **Totalmente modular:** todos los textos y notificaciones son editables desde `/mensajes/viral_texto.py`
+* **Sistema de excepciones:** Comando override para permitir publicar a un usuario sin restricciones si lo necesita un admin/mod
 
 ---
 
@@ -122,11 +124,12 @@ Este documento resume todas las funcionalidades implementadas en **VXbot**, la i
 
 ## 🔧 Comandos slash activos
 
-| Comando         | Quién puede usarlo | Dónde se usa | Respuesta                  |
-| --------------- | ------------------ | ------------ | -------------------------- |
-| `/estado`       | Todos los miembros | #💻comandos  | Estado y faltas personales |
-| `/estadisticas` | Solo admins/mods   | #💻comandos  | Totales, estado general    |
-| `/prorroga`     | Solo admins/mods   | #💻comandos  | Da prórroga a miembros     |
+| Comando         | Quién puede usarlo | Dónde se usa | Respuesta                                             |
+| --------------- | ------------------ | ------------ | ----------------------------------------------------- |
+| `/estado`       | Todos los miembros | #💻comandos  | Estado y faltas personales                            |
+| `/estadisticas` | Solo admins/mods   | #💻comandos  | Totales, estado general                               |
+| `/prorroga`     | Solo admins/mods   | #💻comandos  | Da prórroga a miembros                                |
+| `/override`     | Solo admins/mods   | #💻comandos  | Permite publicar a un usuario aunque no cumpla reglas |
 
 ---
 
@@ -139,6 +142,7 @@ Este documento resume todas las funcionalidades implementadas en **VXbot**, la i
 * Panel de faltas y reputación siempre actualizado, **sin duplicados ni pérdidas**
 * Sistema de automatización y reglas adaptativas en `#🧵go-viral` centralizado y editable (no requiere tocar código)
 * El bot **registra el historial completo** del canal para evitar confusiones de usuarios nuevos/antiguos tras reinicio
+* **Sincronización de reacciones y apoyos:** Toda reacción válida o inválida se analiza y limpia incluso en mensajes anteriores a cualquier reinicio, garantizando memoria larga y reglas inviolables.
 
 ---
 
@@ -152,3 +156,7 @@ Este documento resume todas las funcionalidades implementadas en **VXbot**, la i
 ---
 
 *Última actualización: 2025-07-04 — 23:56*
+
+---
+
+
