@@ -22,11 +22,11 @@ console_handler.setFormatter(formatter)
 # Agregar el manejador a nuestro logger
 logger.addHandler(console_handler)
 
-# Variable para almacenar el mensaje de log
+# Variable global para almacenar el mensaje de log
 log_message = None
 
 # Función para loguear los mensajes en el canal de Discord
-async def log_discord(bot, message, level="info", title="Log"):
+async def log_discord(bot, message, status="Cargando el bot", title="Resumen de inicio del bot"):
     global log_message
 
     # Obtener el canal de logs usando la variable de entorno
@@ -35,9 +35,9 @@ async def log_discord(bot, message, level="info", title="Log"):
         embed = discord.Embed(
             title=title,
             description=message,
-            color=discord.Color.green() if level == "info" else discord.Color.red()
+            color=discord.Color.green() if status == "Activo" else discord.Color.red()
         )
-        embed.set_footer(text=f"Nivel: {level}")
+        embed.set_footer(text=f"Status: {status}")
 
         if log_message is None:
             # Si no existe el mensaje, crear uno nuevo
@@ -47,16 +47,16 @@ async def log_discord(bot, message, level="info", title="Log"):
             await log_message.edit(embed=embed)
 
 # Función para manejar los logs de Railway y Discord
-def custom_log(bot, level, message, title=""):
-    if level == "warning":
+def custom_log(bot, status, message, title=""):
+    if status == "warning":
         logger.warning(message)
-    elif level == "info":
+    elif status == "info":
         logger.info(message)
-    elif level == "error":
+    elif status == "error":
         logger.error(message)
     else:
         logger.debug(message)
 
     # Loguear en Discord también si el bot está disponible
     if bot:
-        bot.loop.create_task(log_discord(bot, message, level, title))
+        bot.loop.create_task(log_discord(bot, message, status, title))
