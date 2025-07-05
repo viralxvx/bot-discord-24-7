@@ -63,7 +63,6 @@ class GoViral(commands.Cog):
             print(f"❌ [GO-VIRAL] Error cargando historial: {e}")
 
     async def preload_apoyos_reacciones(self):
-        """Lee el historial del canal y guarda los apoyos (🔥) en Redis para mantener memoria aunque el bot se reinicie."""
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
@@ -71,8 +70,8 @@ class GoViral(commands.Cog):
             return
         print("🔄 [GO-VIRAL] Sincronizando reacciones 🔥 antiguas en Redis...")
         try:
-            async for msg in canal.history(limit=100, oldest_first=True):
-                # Limita a los últimos 100 mensajes para velocidad, puedes subir si quieres
+            mensajes = [msg async for msg in canal.history(limit=100, oldest_first=False)]
+            for msg in mensajes:
                 for reaction in msg.reactions:
                     if str(reaction.emoji) == "🔥":
                         async for user in reaction.users():
@@ -345,20 +344,30 @@ class GoViral(commands.Cog):
         posts_previos = []
         for msg in mensajes[:idx]:
             autor_id = str(msg.author.id)
-            # Solo cuenta mensajes de miembros actuales (no expulsados, no bots)
             if autor_id in miembros_actuales:
                 posts_previos.append(msg)
 
-        # Adaptativo: Si hay menos de 9, exige todos; si hay más, solo los últimos 9
         revisar_posts = posts_previos if len(posts_previos) <= 9 else posts_previos[-9:]
         if len(revisar_posts) < 2:
-            return True  # Solo exige apoyos si hay al menos 2 previos
+            return True
 
         apoyo_faltante = []
         for post in revisar_posts:
             apoyaron = self.redis.smembers(f"go_viral:apoyos:{post.id}")
             if str(message.author.id) not in apoyaron:
-                apoyo_faltante.append(post)
+                # Si Redis no lo tiene, revisa en tiempo real en Discord:
+                tiene_fuego = False
+                for reaction in post.reactions:
+                    if str(reaction.emoji) == "🔥":
+                        async for user in reaction.users():
+                            if user.id == message.author.id:
+                                tiene_fuego = True
+                                self.redis.sadd(f"go_viral:apoyos:{post.id}", str(user.id))
+                                break
+                    if tiene_fuego:
+                        break
+                if not tiene_fuego:
+                    apoyo_faltante.append(post)
 
         if apoyo_faltante:
             print(f"⛔ [{message.author.display_name}] le falta dar 🔥 a los siguientes mensajes:")
