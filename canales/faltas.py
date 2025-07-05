@@ -35,14 +35,14 @@ class Faltas(commands.Cog):
 
     async def inicializar_panel_faltas(self):
         await self.bot.wait_until_ready()
-        await log_discord(self.bot, "Iniciando módulo de faltas...", titulo="Faltas")
+        await log_discord(self.bot, "Iniciando módulo de faltas...")  # Eliminado 'titulo'
 
         canal = self.bot.get_channel(CANAL_FALTAS_ID)
         if not canal:
-            await log_discord(self.bot, "❌ Error: no se encontró el canal de faltas.", titulo="Faltas")
+            await log_discord(self.bot, "❌ Error: no se encontró el canal de faltas.")  # Eliminado 'titulo'
             return
 
-        await log_discord(self.bot, "Cargando mensajes existentes del canal #📤faltas...", titulo="Faltas")
+        await log_discord(self.bot, "Cargando mensajes existentes del canal #📤faltas...")  # Eliminado 'titulo'
         registros = {}
 
         try:
@@ -54,10 +54,10 @@ class Faltas(commands.Cog):
                         user_mention = titulo.split("📤 REGISTRO DE ")[1].strip()
                         registros[user_mention] = mensaje
         except Exception as e:
-            await log_discord(self.bot, f"❌ Error al leer mensajes del canal: {e}", titulo="Faltas")
+            await log_discord(self.bot, f"❌ Error al leer mensajes del canal: {e}")  # Eliminado 'titulo'
             return
 
-        await log_discord(self.bot, "Sincronizando mensajes por miembro...", titulo="Faltas")
+        await log_discord(self.bot, "Sincronizando mensajes por miembro...")  # Eliminado 'titulo'
 
         try:
             guild = canal.guild
@@ -95,18 +95,18 @@ class Faltas(commands.Cog):
                     try:
                         await registros[user_mention].edit(embed=embed)
                     except Exception as e:
-                        await log_discord(self.bot, f"❌ Error al editar mensaje de {miembro.display_name}: {e}", titulo="Faltas")
+                        await log_discord(self.bot, f"❌ Error al editar mensaje de {miembro.display_name}: {e}")  # Eliminado 'titulo'
                 else:
                     try:
                         await canal.send(embed=embed)
                     except Exception as e:
-                        await log_discord(self.bot, f"❌ Error al enviar mensaje para {miembro.display_name}: {e}", titulo="Faltas")
+                        await log_discord(self.bot, f"❌ Error al enviar mensaje para {miembro.display_name}: {e}")  # Eliminado 'titulo'
                 total += 1
 
-            await log_discord(self.bot, f"✅ Panel público actualizado. Total miembros sincronizados: {total}", titulo="Faltas")
+            await log_discord(self.bot, f"✅ Panel público actualizado. Total miembros sincronizados: {total}")  # Eliminado 'titulo'
 
         except Exception as e:
-            await log_discord(self.bot, f"❌ Error al sincronizar faltas: {e}", titulo="Faltas")
+            await log_discord(self.bot, f"❌ Error al sincronizar faltas: {e}")  # Eliminado 'titulo'
 
     async def get_user_safe(self, guild, user_id):
         try:
