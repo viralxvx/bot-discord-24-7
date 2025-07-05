@@ -1,5 +1,6 @@
 import logging
 import sys
+import discord
 
 # Crear un logger centralizado
 logger = logging.getLogger("discord")
@@ -43,4 +44,3 @@ def custom_log(level, message, bot=None, title=""):
     # Loguear en Discord también si el bot está disponible
     if bot:
         bot.loop.create_task(log_discord(bot, message, level, title))
-
