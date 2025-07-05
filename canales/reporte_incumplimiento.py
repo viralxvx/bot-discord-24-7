@@ -95,7 +95,7 @@ class ReporteIncumplimiento(commands.Cog):
             try:
                 mensaje = await canal.fetch_message(int(msg_id_guardado))
                 if mensaje and mensaje.embeds and mensaje.embeds[0].description == DESCRIPCION_INSTRUCCIONES:
-                    await log_discord(self.bot, "Mensaje de instrucciones ya está actualizado.", nivel="info", titulo="Reporte incumplimiento")
+                    await log_discord(self.bot, "Mensaje de instrucciones ya está actualizado.", titulo="Reporte incumplimiento")
                     return
             except Exception as e:
                 await log_discord(self.bot, f"No se pudo recuperar mensaje anterior: {e}", nivel="warning", titulo="Reporte incumplimiento")
