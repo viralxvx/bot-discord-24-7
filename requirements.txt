@@ -4,3 +4,4 @@ python-dotenv
 pytz
 aiohttp
 pynacl
+aiolimiter
