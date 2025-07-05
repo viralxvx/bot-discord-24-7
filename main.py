@@ -15,6 +15,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 EXTENSIONES = [
     "canales.presentate",
     "canales.normas_generales",
+    "canales.faltas",
 ]
 
 log_message = None  # Mensaje embed en canal de logs
