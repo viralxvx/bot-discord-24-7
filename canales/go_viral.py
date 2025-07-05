@@ -68,16 +68,25 @@ class GoViral(commands.Cog):
         if not canal:
             print("❌ [GO-VIRAL] No se encontró el canal para cargar reacciones.")
             return
-        print("🔄 [GO-VIRAL] Sincronizando reacciones 🔥 antiguas en Redis...")
+        print("🔄 [GO-VIRAL] Sincronizando reacciones 🔥 antiguas en Redis y limpiando reacciones no permitidas...")
         try:
             mensajes = [msg async for msg in canal.history(limit=100, oldest_first=False)]
             for msg in mensajes:
                 for reaction in msg.reactions:
-                    if str(reaction.emoji) == "🔥":
+                    # Limpia cualquier reacción que NO sea 🔥 o 👍
+                    if str(reaction.emoji) not in ["🔥", "👍"]:
+                        async for user in reaction.users():
+                            try:
+                                await reaction.remove(user)
+                                print(f"🚫 [GO-VIRAL] Reacción '{reaction.emoji}' eliminada en {msg.id} de {user.display_name}")
+                            except Exception:
+                                pass
+                    # Mantiene las 🔥 para Redis
+                    elif str(reaction.emoji) == "🔥":
                         async for user in reaction.users():
                             if not user.bot:
                                 self.redis.sadd(f"go_viral:apoyos:{msg.id}", str(user.id))
-            print("✅ [GO-VIRAL] Apoyos sincronizados en Redis.")
+            print("✅ [GO-VIRAL] Apoyos sincronizados y reacciones limpiadas.")
         except Exception as e:
             print(f"❌ [GO-VIRAL] Error sincronizando reacciones: {e}")
 
