@@ -1,25 +1,26 @@
-import discord
+import os
 from discord.ext import commands
-from config import CANAL_FALTAS_ID, CANAL_LOGS_ID, REDIS_URL
+from discord import Webhook, AsyncWebhookAdapter
+import discord
+import aiohttp
+import asyncio
 import redis
 from datetime import datetime, timezone
+from aiolimiter import AsyncLimiter
+from discord.errors import HTTPException
+from config import CANAL_FALTAS_ID, REDIS_URL
 from utils.logger import log_discord
-import asyncio
-import random
 
 def obtener_estado(redis, user_id):
     estado = redis.hget(f"usuario:{user_id}", "estado")
     if not estado:
         return "Activo"
     estado = estado.lower()
-    if estado == "baneado":
-        return "Baneado"
-    elif estado == "expulsado":
-        return "Expulsado"
-    elif estado == "desercion":
-        return "Deserción"
-    else:
-        return "Activo"
+    return {
+        "baneado": "Baneado",
+        "expulsado": "Expulsado",
+        "desercion": "Deserción"
+    }.get(estado, "Activo")
 
 def obtener_faltas(redis, user_id):
     try:
@@ -29,46 +30,36 @@ def obtener_faltas(redis, user_id):
     except:
         return 0, 0
 
+def generar_hash_datos(estado, faltas_total, faltas_mes):
+    return f"{estado}:{faltas_total}:{faltas_mes}"
+
 class Faltas(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+        self.limiter = AsyncLimiter(40, 1)  # 40 req/seg
+        self.webhook_url = os.getenv("WEB_HOOKS_FALTAS")
         bot.loop.create_task(self.inicializar_panel_faltas())
 
     async def inicializar_panel_faltas(self):
         await self.bot.wait_until_ready()
         await log_discord(self.bot, "Iniciando módulo de faltas...")
+
         canal = self.bot.get_channel(CANAL_FALTAS_ID)
         if not canal:
             await log_discord(self.bot, "❌ Error: no se encontró el canal de faltas.")
             return
 
-        await log_discord(self.bot, "🧹 Cargando mensajes existentes del canal #📤faltas...")
-        registros = {}
-
-        try:
-            async for mensaje in canal.history(limit=None):
-                if mensaje.author.bot and mensaje.embeds:
-                    embed = mensaje.embeds[0]
-                    titulo = embed.title
-                    if titulo and titulo.startswith("📤 REGISTRO DE "):
-                        user_mention = titulo.split("📤 REGISTRO DE ")[1].strip()
-                        registros[user_mention] = mensaje
-        except Exception as e:
-            await log_discord(self.bot, f"❌ Error al leer mensajes del canal: {e}")
-            return
-
         await log_discord(self.bot, "🔄 Sincronizando registros públicos de usuarios...")
-
         try:
             guild = canal.guild
             user_ids = set()
-            for miembro in guild.members:
-                if not miembro.bot:
-                    user_ids.add(miembro.id)
 
-            keys = self.redis.keys("usuario:*")
-            for key in keys:
+            async for member in guild.fetch_members(limit=None):
+                if not member.bot:
+                    user_ids.add(member.id)
+
+            for key in self.redis.scan_iter("usuario:*"):
                 try:
                     user_id = int(key.split(":")[1])
                     user_ids.add(user_id)
@@ -76,54 +67,58 @@ class Faltas(commands.Cog):
                     continue
 
             total = 0
-            bloques = [list(user_ids)[i:i+5] for i in range(0, len(user_ids), 5)]
+            bloques = [list(user_ids)[i:i + 5] for i in range(0, len(user_ids), 5)]
+            async with aiohttp.ClientSession() as session:
+                webhook = Webhook.from_url(self.webhook_url, adapter=AsyncWebhookAdapter(session))
+                for bloque in bloques:
+                    for user_id in bloque:
+                        async with self.limiter:
+                            miembro = guild.get_member(user_id)
+                            if not miembro:
+                                continue
 
-            for bloque in bloques:
-                for user_id in bloque:
-                    miembro = guild.get_member(user_id)
-                    if not miembro:
-                        miembro = await self.get_user_safe(guild, user_id)
-                        if not miembro:
-                            continue
+                            estado = obtener_estado(self.redis, user_id)
+                            faltas_total, faltas_mes = obtener_faltas(self.redis, user_id)
+                            embed = self.generar_embed_faltas(miembro, estado, faltas_total, faltas_mes)
+                            current_hash = generar_hash_datos(estado, faltas_total, faltas_mes)
 
-                    estado = obtener_estado(self.redis, user_id)
-                    faltas_total, faltas_mes = obtener_faltas(self.redis, user_id)
-                    embed_nuevo = self.generar_embed_faltas(miembro, estado, faltas_total, faltas_mes)
-                    user_mention = miembro.mention
+                            panel_key = f"panel:{user_id}"
+                            hash_key = f"hash:{user_id}"
+                            mensaje_id = self.redis.get(panel_key)
+                            previous_hash = self.redis.get(hash_key)
 
-                    mensaje_existente = registros.get(user_mention)
-                    if mensaje_existente:
-                        embed_viejo = mensaje_existente.embeds[0].to_dict()
-                        embed_nuevo_dict = embed_nuevo.to_dict()
-                        if embed_viejo != embed_nuevo_dict:
+                            if current_hash == previous_hash:
+                                continue
+
                             try:
-                                await mensaje_existente.edit(embed=embed_nuevo)
+                                if mensaje_id:
+                                    await webhook.edit_message(int(mensaje_id), embed=embed)
+                                else:
+                                    mensaje = await webhook.send(embed=embed, wait=True)
+                                    self.redis.set(panel_key, mensaje.id)
+                                self.redis.set(hash_key, current_hash)
                                 total += 1
-                                await asyncio.sleep(random.uniform(1.5, 2.5))
-                            except Exception as e:
-                                await log_discord(self.bot, f"❌ Error al editar mensaje de {miembro.display_name}: {e}")
-                    else:
-                        try:
-                            await canal.send(embed=embed_nuevo)
-                            total += 1
-                            await asyncio.sleep(random.uniform(1.5, 2.5))
-                        except Exception as e:
-                            await log_discord(self.bot, f"❌ Error al enviar mensaje de {miembro.display_name}: {e}")
-                await asyncio.sleep(3)
+                            except HTTPException as e:
+                                if e.status == 429:
+                                    retry_after = float(e.response.headers.get("Retry-After", 1))
+                                    await log_discord(self.bot, f"⚠️ Rate limit alcanzado, esperando {retry_after}s")
+                                    await asyncio.sleep(retry_after)
+                                    try:
+                                        if mensaje_id:
+                                            await webhook.edit_message(int(mensaje_id), embed=embed)
+                                        else:
+                                            mensaje = await webhook.send(embed=embed, wait=True)
+                                            self.redis.set(panel_key, mensaje.id)
+                                        self.redis.set(hash_key, current_hash)
+                                    except Exception as retry_error:
+                                        await log_discord(self.bot, f"❌ Error tras reintento con {user_id}: {retry_error}")
+                                else:
+                                    await log_discord(self.bot, f"❌ Error con {user_id}: {e}")
+                    await asyncio.sleep(1)
 
             await log_discord(self.bot, f"✅ Panel público actualizado. Total miembros sincronizados: {total}")
-
         except Exception as e:
             await log_discord(self.bot, f"❌ Error al sincronizar faltas: {e}")
-
-    async def get_user_safe(self, guild, user_id):
-        try:
-            return await guild.fetch_member(user_id)
-        except:
-            try:
-                return await self.bot.fetch_user(user_id)
-            except:
-                return None
 
     def generar_embed_faltas(self, miembro, estado, faltas_total, faltas_mes):
         now = datetime.now(timezone.utc)
