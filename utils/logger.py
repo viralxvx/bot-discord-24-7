@@ -49,6 +49,7 @@ async def log_discord(bot, message: str, status: str = "Cargando", title: str = 
                 try:
                     await webhook.edit_message(log_message_id, embed=embed)
                 except:
+                    # Si falló editar, crea uno nuevo y actualiza log_message_id
                     msg = await webhook.send(embed=embed, wait=True)
                     log_message_id = msg.id
             else:
