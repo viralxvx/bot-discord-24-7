@@ -26,16 +26,19 @@ logger.addHandler(console_handler)
 log_message = None
 
 # Función para loguear los mensajes en el canal de Discord
-async def log_discord(bot, message, status="Cargando el bot", title="Resumen de inicio del bot"):
+async def log_discord(bot, message, status="Cargando", title="Resumen de inicio del bot"):
     global log_message
 
     # Obtener el canal de logs usando la variable de entorno
     log_channel = bot.get_channel(CANAL_LOGS)  # Usará el ID del canal de logs desde la variable de entorno
     if log_channel:
+        # Si el estado es "Activo", usaremos un color verde, si hay "Error", usaremos rojo
+        embed_color = discord.Color.green() if status == "Activo" else discord.Color.red()
+
         embed = discord.Embed(
             title=title,
             description=message,
-            color=discord.Color.green() if status == "Activo" else discord.Color.red()
+            color=embed_color
         )
         embed.set_footer(text=f"Status: {status}")
 
@@ -45,6 +48,8 @@ async def log_discord(bot, message, status="Cargando el bot", title="Resumen de 
         else:
             # Si el mensaje ya existe, actualizarlo
             await log_message.edit(embed=embed)
+
+    return log_message  # Devolvemos el mensaje creado o editado
 
 # Función para manejar los logs de Railway y Discord
 def custom_log(bot, level, message, title=""):
@@ -59,11 +64,6 @@ def custom_log(bot, level, message, title=""):
 
     # Loguear en Discord también si el bot está disponible
     if bot:
-        status = "Cargando el bot"  # Asumimos que siempre está cargando, este debe ser el status predeterminado
-        if level == "info":
-            status = "Activo"  # Si todo está bien, cambiamos el status a "Activo"
-        elif level == "warning" or level == "error":
-            status = "Error"  # Si hay fallos, el status será "Error"
-
-        # Llamamos a log_discord para que haga el log con el status adecuado
-        bot.loop.create_task(log_discord(bot, message, status, title))
+        # El "status" se pasa a través de la llamada, ajustamos el nivel de logs
+        status = "Cargando" if level == "info" else "Error" if level == "warning" or level == "error" else "Activo"
+        return bot.loop.create_task(log_discord(bot, message, status, title))  # Devolver la tarea que se crea
