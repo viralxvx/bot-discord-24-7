@@ -1,8 +1,9 @@
 import discord
 from discord.ext import commands
-from config import CANAL_NORMAS_ID
+from config import CANAL_NORMAS_ID, CANAL_LOGS_ID
 from mensajes import normas_texto as texto
 from mensajes import normas_config as config
+from utils.logger import log_discord  # <-- Logger universal
 
 class NormasGenerales(commands.Cog):
     def __init__(self, bot):
@@ -10,24 +11,22 @@ class NormasGenerales(commands.Cog):
 
     @commands.Cog.listener()
     async def on_ready(self):
-        print("🔧 Iniciando módulo de normas generales...")
+        await log_discord(self.bot, "🔧 Iniciando módulo de normas generales...", CANAL_LOGS_ID, "info", "NormasGenerales")
         canal = self.bot.get_channel(CANAL_NORMAS_ID)
         if not canal:
-            print(f"❌ No se encontró el canal con ID: {CANAL_NORMAS_ID}")
+            await log_discord(self.bot, f"❌ No se encontró el canal con ID: {CANAL_NORMAS_ID}", CANAL_LOGS_ID, "error", "NormasGenerales")
             return
 
         try:
-            # Buscar mensajes anteriores del bot
             mensajes_existentes = []
             async for msg in canal.history(limit=10):
                 if msg.author == self.bot.user and msg.embeds:
                     mensajes_existentes.append(msg)
-            mensajes_existentes = list(reversed(mensajes_existentes))  # Orden correcto
+            mensajes_existentes = list(reversed(mensajes_existentes))
         except Exception as e:
-            print(f"❌ Error al buscar mensajes previos: {e}")
+            await log_discord(self.bot, f"❌ Error al buscar mensajes previos: {e}", CANAL_LOGS_ID, "error", "NormasGenerales")
             mensajes_existentes = []
 
-        # Crear los 2 embeds
         embeds = []
 
         embed1 = discord.Embed(
@@ -46,39 +45,39 @@ class NormasGenerales(commands.Cog):
         embeds.append(embed2)
 
         if len(mensajes_existentes) >= 2:
-            print("✏️ Editando mensajes anteriores...")
+            await log_discord(self.bot, "✏️ Editando mensajes anteriores...", CANAL_LOGS_ID, "info", "NormasGenerales")
             for i in range(2):
                 try:
                     await mensajes_existentes[i].edit(embed=embeds[i])
-                    print(f"✅ Embed {i+1} editado.")
+                    await log_discord(self.bot, f"✅ Embed {i+1} editado.", CANAL_LOGS_ID, "success", "NormasGenerales")
                 except Exception as e:
-                    print(f"❌ Error al editar el embed {i+1}: {e}")
+                    await log_discord(self.bot, f"❌ Error al editar el embed {i+1}: {e}", CANAL_LOGS_ID, "error", "NormasGenerales")
         else:
-            print("🧹 No se encontraron suficientes mensajes. Limpiando canal...")
+            await log_discord(self.bot, "🧹 No se encontraron suficientes mensajes. Limpiando canal...", CANAL_LOGS_ID, "warning", "NormasGenerales")
             try:
                 async for msg in canal.history(limit=None):
                     await msg.delete()
-                print("✅ Canal limpiado.")
+                await log_discord(self.bot, "✅ Canal limpiado.", CANAL_LOGS_ID, "success", "NormasGenerales")
             except Exception as e:
-                print(f"❌ Error al borrar mensajes: {e}")
+                await log_discord(self.bot, f"❌ Error al borrar mensajes: {e}", CANAL_LOGS_ID, "error", "NormasGenerales")
                 return
 
-            print("📤 Publicando nuevos embeds...")
+            await log_discord(self.bot, "📤 Publicando nuevos embeds...", CANAL_LOGS_ID, "info", "NormasGenerales")
             for i, embed in enumerate(embeds):
                 try:
                     await canal.send(embed=embed)
-                    print(f"✅ Embed {i+1} publicado.")
+                    await log_discord(self.bot, f"✅ Embed {i+1} publicado.", CANAL_LOGS_ID, "success", "NormasGenerales")
                 except Exception as e:
-                    print(f"❌ Error al publicar el embed {i+1}: {e}")
+                    await log_discord(self.bot, f"❌ Error al publicar el embed {i+1}: {e}", CANAL_LOGS_ID, "error", "NormasGenerales")
 
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.channel.id == CANAL_NORMAS_ID and not message.author.bot:
             try:
                 await message.delete()
-                print(f"🗑️ Mensaje eliminado de {message.author} en #normas-generales")
+                await log_discord(self.bot, f"🗑️ Mensaje eliminado de {message.author} en #normas-generales", CANAL_LOGS_ID, "info", "NormasGenerales")
             except Exception as e:
-                print(f"❌ No se pudo borrar mensaje no autorizado: {e}")
+                await log_discord(self.bot, f"❌ No se pudo borrar mensaje no autorizado: {e}", CANAL_LOGS_ID, "error", "NormasGenerales")
 
 async def setup(bot):
     await bot.add_cog(NormasGenerales(bot))
