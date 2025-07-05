@@ -1,7 +1,10 @@
+# main.py (fragmentos importantes)
 import discord
 from discord.ext import commands
 import os
 import asyncio
+
+from utils.logger import log_discord  # <-- Agrega esta línea
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -14,34 +17,59 @@ EXTENSIONES = [
     "canales.presentate",
     "canales.normas_generales",
     "canales.faltas",
-    "canales.comandos",   # ← para configurar el canal 💻comandos
-    "canales.inactividad",    # ← AGREGA ESTA LÍNEA
-    "canales.soporte_prorroga",  # <-- aquí
+    "canales.comandos",
+    "canales.inactividad",
+    "canales.soporte_prorroga",
     "canales.go_viral",
-    "comandos.prorroga",    # ← NUEVO comando aquí
+    "comandos.prorroga",
     "comandos.override",
     "canales.reporte_incumplimiento",
-    "comandos",           # ← para registrar /estado y /estadisticas
+    "comandos",  # para /estado y /estadisticas
 ]
 
 @bot.event
 async def on_ready():
-    print(f"✅ Bot conectado como {bot.user}")
+    await log_discord(
+        bot,
+        mensaje=f"Bot conectado como **{bot.user}**\nHora: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+        nivel="success",
+        titulo="✅ Bot iniciado correctamente"
+    )
 
     for ext in EXTENSIONES:
         try:
             await bot.load_extension(ext)
-            print(f"✅ Módulo cargado: {ext}")
+            await log_discord(
+                bot,
+                mensaje=f"Módulo **{ext}** cargado correctamente.",
+                nivel="success",
+                titulo="Módulo cargado"
+            )
         except Exception as e:
-            print(f"❌ Error al cargar {ext}: {e}")
+            await log_discord(
+                bot,
+                mensaje=f"Error al cargar **{ext}**:\n{e}",
+                nivel="error",
+                titulo="❌ Error al cargar módulo"
+            )
 
     try:
         synced = await bot.tree.sync()
-        print(f"🔁 {len(synced)} comandos sincronizados.")
+        await log_discord(
+            bot,
+            mensaje=f"{len(synced)} comandos sincronizados.",
+            nivel="info",
+            titulo="🔁 Comandos slash sincronizados"
+        )
     except Exception as e:
-        print(f"❌ Error al sincronizar comandos: {e}")
+        await log_discord(
+            bot,
+            mensaje=f"Error al sincronizar comandos: {e}",
+            nivel="error",
+            titulo="❌ Error al sincronizar comandos"
+        )
 
-    # 🛡️ Previene que Railway apague el bot por inactividad
+    # Previene apagado por inactividad (no es log importante)
     while True:
         await asyncio.sleep(60)
         print("⏳ Bot sigue vivo...")
@@ -50,10 +78,8 @@ async def on_ready():
 async def on_message(message):
     if message.author.bot:
         return
-
     if message.content.lower() == "hola bot":
         await message.channel.send("👋 ¡Hola, soy VXbot y estoy vivo!")
-
     await bot.process_commands(message)
 
 if __name__ == "__main__":
