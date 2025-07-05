@@ -3,6 +3,7 @@ from discord.ext import commands
 from config import CANAL_FALTAS_ID, REDIS_URL
 import redis
 from datetime import datetime, timezone
+from utils.logger import log_discord  # ← NUEVO
 
 # Puedes adaptar estas funciones si cambian los nombres de las claves en Redis
 def obtener_estado(redis, user_id):
@@ -35,14 +36,14 @@ class Faltas(commands.Cog):
 
     async def inicializar_panel_faltas(self):
         await self.bot.wait_until_ready()
-        print("⚙️ Iniciando módulo de faltas...")
+        await log_discord(self.bot, "Iniciando módulo de faltas...", nivel="info", titulo="⚙️ Módulo faltas")
 
         canal = self.bot.get_channel(CANAL_FALTAS_ID)
         if not canal:
-            print("❌ Error: no se encontró el canal de faltas.")
+            await log_discord(self.bot, "❌ Error: no se encontró el canal de faltas.", nivel="error", titulo="Canal faltas no encontrado")
             return
 
-        print("🔍 Cargando mensajes existentes del canal #📤faltas...")
+        await log_discord(self.bot, "Cargando mensajes existentes del canal #📤faltas...", nivel="info")
         registros = {}
 
         try:
@@ -54,10 +55,10 @@ class Faltas(commands.Cog):
                         user_mention = titulo.split("📤 REGISTRO DE ")[1].strip()
                         registros[user_mention] = mensaje
         except Exception as e:
-            print(f"❌ Error al leer mensajes del canal: {e}")
+            await log_discord(self.bot, f"❌ Error al leer mensajes del canal: {e}", nivel="error", titulo="Lectura historial faltas")
             return
 
-        print("♻️ Sincronizando mensajes por miembro...")
+        await log_discord(self.bot, "Sincronizando mensajes por miembro...", nivel="info")
 
         try:
             # Recopilar todos los usuarios relevantes (actuales y antiguos)
@@ -97,19 +98,24 @@ class Faltas(commands.Cog):
                     try:
                         await registros[user_mention].edit(embed=embed)
                     except Exception as e:
-                        print(f"❌ Error al editar mensaje de {miembro.display_name}: {e}")
+                        await log_discord(self.bot, f"❌ Error al editar mensaje de {miembro.display_name}: {e}", nivel="error")
                 else:
                     try:
                         await canal.send(embed=embed)
                     except Exception as e:
-                        print(f"❌ Error al enviar mensaje para {miembro.display_name}: {e}")
+                        await log_discord(self.bot, f"❌ Error al enviar mensaje para {miembro.display_name}: {e}", nivel="error")
 
                 total += 1
 
-            print(f"✅ Panel público actualizado. Total miembros sincronizados: {total}")
+            await log_discord(
+                self.bot,
+                f"Panel público actualizado. Total miembros sincronizados: {total}",
+                nivel="success",
+                titulo="✅ Panel faltas sincronizado"
+            )
 
         except Exception as e:
-            print(f"❌ Error al sincronizar faltas: {e}")
+            await log_discord(self.bot, f"❌ Error al sincronizar faltas: {e}", nivel="error", titulo="Error sincronizando faltas")
 
     async def get_user_safe(self, guild, user_id):
         try:
