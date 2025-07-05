@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import redis
 import asyncio
 import logging
-from config import CANAL_REPORTE, CANAL_LOGS, REDIS_URL
+from config import CANAL_REPORTE_ID, CANAL_LOGS_ID, REDIS_URL
 
 # ----- Configura tu logger para Railway y consola -----
 logger = logging.getLogger("reporte_incumplimiento")
@@ -73,7 +73,7 @@ def ahora_dt():
     return datetime.now(timezone.utc)
 
 def fecha_str():
-    dt = ahora_dt().astimezone()  # Tu zona horaria real la puedes ajustar si quieres
+    dt = ahora_dt().astimezone()  # Puedes adaptar zona horaria aquí si lo deseas
     return dt.strftime('%Y-%m-%d %H:%M:%S')
 
 # -------------- COG PRINCIPAL --------------
@@ -86,7 +86,7 @@ class ReporteIncumplimiento(commands.Cog):
 
     async def init_mensaje_instrucciones(self):
         await self.bot.wait_until_ready()
-        canal = self.bot.get_channel(CANAL_REPORTE)
+        canal = self.bot.get_channel(CANAL_REPORTE_ID)
         if not canal:
             logger.error("No se encontró el canal de reportes.")
             return
@@ -137,8 +137,8 @@ class ReporteIncumplimiento(commands.Cog):
 
     # --- Método para crear reporte (llamado desde el menú) ---
     async def crear_reporte(self, reportante: discord.Member, motivo: str, explicacion: str = None):
-        canal = self.bot.get_channel(CANAL_REPORTE)
-        canal_logs = self.bot.get_channel(CANAL_LOGS)
+        canal = self.bot.get_channel(CANAL_REPORTE_ID)
+        canal_logs = self.bot.get_channel(CANAL_LOGS_ID)
         report_id = self.redis.incr("reporte_incumplimiento:contador")
         clave_reporte = f"reporte_incumplimiento:reporte:{report_id}"
 
@@ -270,7 +270,7 @@ class ReporteControlView(ui.View):
         await reportado.send(AGRADECIMIENTO_REPORTADO)
 
         # Logs
-        canal_logs = self.cog.bot.get_channel(CANAL_LOGS)
+        canal_logs = self.cog.bot.get_channel(CANAL_LOGS_ID)
         embed = discord.Embed(
             title=f"✅ Reporte #{self.report_id} cerrado",
             description=f"El reporte fue resuelto satisfactoriamente y cerrado por {reportante.mention}.",
@@ -295,7 +295,7 @@ class ReporteControlView(ui.View):
         # Notificar por DM y logs
         reportante = await self.cog.bot.fetch_user(int(self.reportante_id))
         await reportante.send("Reporte cancelado por ti. No se tomaron acciones.")
-        canal_logs = self.cog.bot.get_channel(CANAL_LOGS)
+        canal_logs = self.cog.bot.get_channel(CANAL_LOGS_ID)
         embed = discord.Embed(
             title=f"❌ Reporte #{self.report_id} cancelado",
             description=f"El reporte fue cancelado por el reportante {reportante.mention}.",
@@ -366,7 +366,7 @@ class ReportadoControlView(ui.View):
         # Notificar al reportado (y logs)
         reportado = await self.cog.bot.fetch_user(int(self.reportado_id))
         await reportado.send(msg)
-        canal_logs = self.cog.bot.get_channel(CANAL_LOGS)
+        canal_logs = self.cog.bot.get_channel(CANAL_LOGS_ID)
         embed = discord.Embed(
             title=f"🚨 Reporte #{self.report_id} - Acción tomada",
             description=f"{msg}\n(Reporte #{self.report_id} - Intentos: {self.intentos})",
