@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands
-from discord import app_commands
 from config import (
     CANAL_PRESENTATE_ID,
     CANAL_GUIAS_ID,
@@ -8,7 +7,9 @@ from config import (
     CANAL_VICTORIAS_ID,
     CANAL_ESTRATEGIAS_ID,
     CANAL_ENTRENAMIENTO_ID,
+    CANAL_LOGS_ID,
 )
+from utils.logger import log_discord
 
 class MenuInicio(discord.ui.View):
     def __init__(self):
@@ -45,6 +46,7 @@ class MenuSelect(discord.ui.Select):
             await interaction.response.defer()
         except discord.Forbidden:
             await interaction.response.send_message("❌ No pude enviarte un mensaje privado. Activa tus DMs.", ephemeral=True)
+            await log_discord(interaction.client, f"❌ No se pudo enviar DM a {interaction.user} desde el menú de presentación.", CANAL_LOGS_ID, "warning", "Presentate")
 
 class IrAlCanalButton(discord.ui.View):
     def __init__(self, canal_id):
@@ -62,7 +64,7 @@ class Presentate(commands.Cog):
 async def enviar_bienvenida(member: discord.Member, bot):
     canal = bot.get_channel(CANAL_PRESENTATE_ID)
     if not canal:
-        print(f"❌ Canal de presentación no encontrado: {CANAL_PRESENTATE_ID}")
+        await log_discord(bot, f"❌ Canal de presentación no encontrado: {CANAL_PRESENTATE_ID}", CANAL_LOGS_ID, "error", "Presentate")
         return
 
     embed = discord.Embed(
@@ -79,9 +81,16 @@ async def enviar_bienvenida(member: discord.Member, bot):
         ),
         color=0x2ecc71
     )
-    embed.set_thumbnail(url=member.display_avatar.url)
+    try:
+        embed.set_thumbnail(url=member.display_avatar.url)
+    except Exception:
+        pass
 
-    await canal.send(content=member.mention, embed=embed, view=MenuInicio())
+    try:
+        await canal.send(content=member.mention, embed=embed, view=MenuInicio())
+        await log_discord(bot, f"👤 Bienvenida enviada a {member.mention} en #preséntate", CANAL_LOGS_ID, "success", "Presentate")
+    except Exception as e:
+        await log_discord(bot, f"❌ Error enviando bienvenida a {member.display_name}: {e}", CANAL_LOGS_ID, "error", "Presentate")
 
 async def setup(bot):
     await bot.add_cog(Presentate(bot))
