@@ -4,8 +4,7 @@ from discord import ui
 from datetime import datetime, timezone
 import redis
 from config import CANAL_REPORTE_ID, CANAL_LOGS_ID, REDIS_URL
-from utils.logger import log_discord  # <--- Aquí el import del logger
-import asyncio
+from utils.logger import log_discord  # Aquí el import del logger
 
 # ---------------------- TEXTOS ----------------------
 TITULO_INSTRUCCIONES = "🚨 Reporte de Incumplimiento"
@@ -38,11 +37,11 @@ async def enviar_mensaje_con_reintento(canal, embed):
         except discord.errors.HTTPException as e:
             if e.code == 429:  # Si el error es rate limiting (429)
                 wait_time = 2 ** intento  # Exponential backoff
-                await log_discord(self.bot, f"Rate limiting detectado. Esperando {wait_time} segundos...", nivel="warning", titulo="Reporte Incumplimiento")
+                await log_discord(self.bot, f"Rate limiting detectado. Esperando {wait_time} segundos...", nivel="warning")
                 await asyncio.sleep(wait_time)  # Esperamos antes de reintentar
             else:
                 # Si es otro error, lo registramos y salimos
-                await log_discord(self.bot, f"Error inesperado al enviar mensaje: {e}", nivel="error", titulo="Reporte Incumplimiento")
+                await log_discord(self.bot, f"Error inesperado al enviar mensaje: {e}", nivel="error")
                 break
 
 # ---------------------- CLASES ----------------------
@@ -57,7 +56,7 @@ class ReporteIncumplimiento(commands.Cog):
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_REPORTE_ID)
         if not canal:
-            await log_discord(self.bot, "❌ No se encontró el canal de reportes.", nivel="error", titulo="Reporte Incumplimiento")
+            await log_discord(self.bot, "❌ No se encontró el canal de reportes.", nivel="error")
             return
 
         hash_key = "reporte_incumplimiento:instrucciones_hash"
@@ -79,10 +78,10 @@ class ReporteIncumplimiento(commands.Cog):
             try:
                 mensaje = await canal.fetch_message(int(msg_id_guardado))
                 if mensaje and mensaje.embeds and mensaje.embeds[0].description == DESCRIPCION_INSTRUCCIONES:
-                    await log_discord(self.bot, "✅ Mensaje de instrucciones ya está actualizado.", nivel="info", titulo="Reporte Incumplimiento")
+                    await log_discord(self.bot, "✅ Mensaje de instrucciones ya está actualizado.", nivel="info")
                     return
             except Exception as e:
-                await log_discord(self.bot, f"❌ No se pudo recuperar mensaje anterior: {e}", nivel="warning", titulo="Reporte Incumplimiento")
+                await log_discord(self.bot, f"❌ No se pudo recuperar mensaje anterior: {e}", nivel="warning")
 
         msg = None
         if msg_id_guardado:
@@ -92,9 +91,9 @@ class ReporteIncumplimiento(commands.Cog):
                     await mensaje.edit(embed=embed, view=ReporteMenuView(self))
                     msg = mensaje
                 else:
-                    await log_discord(self.bot, "Mensaje anterior no encontrado, enviando nuevo.", nivel="warning", titulo="Reporte Incumplimiento")
+                    await log_discord(self.bot, "Mensaje anterior no encontrado, enviando nuevo.", nivel="warning")
             except Exception as e:
-                await log_discord(self.bot, f"❌ No se pudo editar mensaje anterior: {e}", nivel="error", titulo="Reporte Incumplimiento")
+                await log_discord(self.bot, f"❌ No se pudo editar mensaje anterior: {e}", nivel="error")
 
         if not msg:
             msg = await canal.send(embed=embed, view=ReporteMenuView(self))
@@ -102,7 +101,7 @@ class ReporteIncumplimiento(commands.Cog):
 
         self.redis.set(hash_key, hash_actual)
         self.redis.set(msg_id_key, str(msg.id))
-        await log_discord(self.bot, "✅ Instrucciones del canal de reporte actualizadas y fijadas.", nivel="success", titulo="Reporte Incumplimiento")
+        await log_discord(self.bot, "✅ Instrucciones del canal de reporte actualizadas y fijadas.", nivel="success")
 
 # ---------------------- CONTROLES DE REACCIONES Y VIEWS ----------------------
 
