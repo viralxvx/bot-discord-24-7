@@ -42,12 +42,16 @@ class GoViral(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+        self.tareas_ejecutadas = set()  # Mantener un registro de las tareas realizadas
         bot.loop.create_task(self.preload_historial_miembros())
         bot.loop.create_task(self.preload_apoyos_reacciones())
         bot.loop.create_task(self.init_mensaje_fijo())
 
     async def preload_historial_miembros(self):
-        await self.bot.wait_until_ready()
+        if 'preload_historial_miembros' in self.tareas_ejecutadas:
+            return
+        self.tareas_ejecutadas.add('preload_historial_miembros')  # Marca esta tarea como ejecutada
+
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
             await log_discord(self.bot, "❌ [GO-VIRAL] No se encontró el canal para cargar historial.", "error", "GoViral")
@@ -64,6 +68,10 @@ class GoViral(commands.Cog):
             await log_discord(self.bot, f"❌ [GO-VIRAL] Error cargando historial: {e}", "error", "GoViral")
 
     async def preload_apoyos_reacciones(self):
+        if 'preload_apoyos_reacciones' in self.tareas_ejecutadas:
+            return
+        self.tareas_ejecutadas.add('preload_apoyos_reacciones')  # Marca esta tarea como ejecutada
+
         await self.bot.wait_until_ready()
         await asyncio.sleep(5)
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
@@ -90,6 +98,10 @@ class GoViral(commands.Cog):
             await log_discord(self.bot, f"❌ [GO-VIRAL] Error sincronizando reacciones: {e}", "error", "GoViral")
 
     async def init_mensaje_fijo(self):
+        if 'init_mensaje_fijo' in self.tareas_ejecutadas:
+            return
+        self.tareas_ejecutadas.add('init_mensaje_fijo')  # Marca esta tarea como ejecutada
+
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
