@@ -1,11 +1,10 @@
 import discord
 from discord.ext import commands
-from config import CANAL_FALTAS_ID, REDIS_URL
+from config import CANAL_FALTAS_ID, CANAL_LOGS_ID, REDIS_URL
 import redis
 from datetime import datetime, timezone
-from utils.logger import log_discord  # ← NUEVO
+from utils.logger import log_discord  # <--- Aquí el import del logger
 
-# Puedes adaptar estas funciones si cambian los nombres de las claves en Redis
 def obtener_estado(redis, user_id):
     estado = redis.hget(f"usuario:{user_id}", "estado")
     if not estado:
@@ -36,14 +35,14 @@ class Faltas(commands.Cog):
 
     async def inicializar_panel_faltas(self):
         await self.bot.wait_until_ready()
-        await log_discord(self.bot, "Iniciando módulo de faltas...", nivel="info", titulo="⚙️ Módulo faltas")
+        await log_discord(self.bot, "Iniciando módulo de faltas...", nivel="info", titulo="Faltas")
 
         canal = self.bot.get_channel(CANAL_FALTAS_ID)
         if not canal:
-            await log_discord(self.bot, "❌ Error: no se encontró el canal de faltas.", nivel="error", titulo="Canal faltas no encontrado")
+            await log_discord(self.bot, "❌ Error: no se encontró el canal de faltas.", nivel="error", titulo="Faltas")
             return
 
-        await log_discord(self.bot, "Cargando mensajes existentes del canal #📤faltas...", nivel="info")
+        await log_discord(self.bot, "Cargando mensajes existentes del canal #📤faltas...", nivel="info", titulo="Faltas")
         registros = {}
 
         try:
@@ -55,13 +54,12 @@ class Faltas(commands.Cog):
                         user_mention = titulo.split("📤 REGISTRO DE ")[1].strip()
                         registros[user_mention] = mensaje
         except Exception as e:
-            await log_discord(self.bot, f"❌ Error al leer mensajes del canal: {e}", nivel="error", titulo="Lectura historial faltas")
+            await log_discord(self.bot, f"❌ Error al leer mensajes del canal: {e}", nivel="error", titulo="Faltas")
             return
 
-        await log_discord(self.bot, "Sincronizando mensajes por miembro...", nivel="info")
+        await log_discord(self.bot, "Sincronizando mensajes por miembro...", nivel="info", titulo="Faltas")
 
         try:
-            # Recopilar todos los usuarios relevantes (actuales y antiguos)
             guild = canal.guild
             user_ids = set()
 
@@ -83,7 +81,6 @@ class Faltas(commands.Cog):
             total = 0
             for user_id in user_ids:
                 miembro = guild.get_member(user_id)
-                # Si ya no está, crear objeto "dummy" para mostrar su registro
                 if not miembro:
                     miembro = await self.get_user_safe(guild, user_id)
                     if not miembro:
@@ -98,24 +95,18 @@ class Faltas(commands.Cog):
                     try:
                         await registros[user_mention].edit(embed=embed)
                     except Exception as e:
-                        await log_discord(self.bot, f"❌ Error al editar mensaje de {miembro.display_name}: {e}", nivel="error")
+                        await log_discord(self.bot, f"❌ Error al editar mensaje de {miembro.display_name}: {e}", nivel="error", titulo="Faltas")
                 else:
                     try:
                         await canal.send(embed=embed)
                     except Exception as e:
-                        await log_discord(self.bot, f"❌ Error al enviar mensaje para {miembro.display_name}: {e}", nivel="error")
-
+                        await log_discord(self.bot, f"❌ Error al enviar mensaje para {miembro.display_name}: {e}", nivel="error", titulo="Faltas")
                 total += 1
 
-            await log_discord(
-                self.bot,
-                f"Panel público actualizado. Total miembros sincronizados: {total}",
-                nivel="success",
-                titulo="✅ Panel faltas sincronizado"
-            )
+            await log_discord(self.bot, f"✅ Panel público actualizado. Total miembros sincronizados: {total}", nivel="success", titulo="Faltas")
 
         except Exception as e:
-            await log_discord(self.bot, f"❌ Error al sincronizar faltas: {e}", nivel="error", titulo="Error sincronizando faltas")
+            await log_discord(self.bot, f"❌ Error al sincronizar faltas: {e}", nivel="error", titulo="Faltas")
 
     async def get_user_safe(self, guild, user_id):
         try:
@@ -129,7 +120,6 @@ class Faltas(commands.Cog):
 
     def generar_embed_faltas(self, miembro, estado, faltas_total, faltas_mes):
         now = datetime.now(timezone.utc)
-        # Obtener avatar de manera segura
         avatar_url = ""
         if hasattr(miembro, "display_avatar"):
             try:
