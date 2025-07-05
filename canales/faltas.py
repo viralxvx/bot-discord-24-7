@@ -4,6 +4,7 @@ from config import CANAL_FALTAS_ID, CANAL_LOGS_ID, REDIS_URL
 import redis
 from datetime import datetime, timezone
 from utils.logger import log_discord  # <--- Aquí el import del logger
+import asyncio  # Agregamos asyncio para poder usar sleep
 
 def obtener_estado(redis, user_id):
     estado = redis.hget(f"usuario:{user_id}", "estado")
@@ -94,11 +95,13 @@ class Faltas(commands.Cog):
                 if user_mention in registros:
                     try:
                         await registros[user_mention].edit(embed=embed)
+                        await asyncio.sleep(1)  # Espera 1 segundo
                     except Exception as e:
                         await log_discord(self.bot, f"❌ Error al editar mensaje de {miembro.display_name}: {e}")  # Eliminado 'titulo'
                 else:
                     try:
                         await canal.send(embed=embed)
+                        await asyncio.sleep(1)  # Espera 1 segundo
                     except Exception as e:
                         await log_discord(self.bot, f"❌ Error al enviar mensaje para {miembro.display_name}: {e}")  # Eliminado 'titulo'
                 total += 1
