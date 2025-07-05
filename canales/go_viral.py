@@ -17,6 +17,22 @@ import re
 import hashlib
 from utils.logger import log_discord  # 👈 IMPORTANTE
 
+# Función para manejar el rate limiting y enviar mensajes con reintentos
+async def enviar_mensaje_con_reintento(canal, embed):
+    for intento in range(5):  # Intentar hasta 5 veces
+        try:
+            await canal.send(embed=embed)  # Intentamos enviar el mensaje
+            return  # Si el mensaje se envía correctamente, salimos
+        except discord.errors.HTTPException as e:
+            if e.code == 429:  # Si el error es rate limiting (429)
+                wait_time = 2 ** intento  # Exponential backoff (espera más tiempo con cada intento)
+                await log_discord(self.bot, f"Rate limiting detectado. Esperando {wait_time} segundos...")
+                await asyncio.sleep(wait_time)  # Esperamos antes de reintentar
+            else:
+                # Si es otro error, lo registramos y salimos
+                await log_discord(self.bot, f"Error inesperado al enviar mensaje: {e}")
+                break
+
 def limpiar_url_tweet(texto):
     match = re.search(r"https?://x\.com/\w+/status/(\d+)", texto)
     if match:
@@ -141,7 +157,7 @@ class GoViral(commands.Cog):
             color=discord.Color.blurple()
         )
         embed_fijo.set_image(url=IMAGEN_URL)
-        msg = await canal.send(embed=embed_fijo)
+        msg = await enviar_mensaje_con_reintento(canal, embed_fijo)  # Reemplazar por la nueva función
         await msg.pin()
         self.redis.set("go_viral:mensaje_fijo_id", str(msg.id))
         self.redis.set("go_viral:mensaje_fijo_hash", hash_nuevo)
@@ -156,10 +172,9 @@ class GoViral(commands.Cog):
 
         # Verificar si el usuario tiene override
         if self.redis.get(f"go_viral:override:{message.author.id}") == "1":
-            # Si tiene override, permitir la publicación sin restricciones
             await log_discord(self.bot, f"✅ [GO-VIRAL] {message.author} tiene override y su mensaje fue permitido.", "info", "GoViral")
             return
-
+            
         # Resto de las validaciones del mensaje (URL mal formateada, etc.)
 
     # Asegúrate de agregar la función setup
