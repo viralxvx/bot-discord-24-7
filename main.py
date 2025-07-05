@@ -31,9 +31,9 @@ EXTENSIONES = [
 async def on_ready():
     await log_discord(
         bot,
-        mensaje=f"Bot conectado como **{bot.user}**\nHora: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
-        nivel="success",
-        titulo="✅ Bot iniciado correctamente"
+        message=f"Bot conectado como **{bot.user}**\nHora: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+        level="success",
+        title="✅ Bot iniciado correctamente"
     )
 
     for ext in EXTENSIONES:
@@ -41,32 +41,32 @@ async def on_ready():
             await bot.load_extension(ext)
             await log_discord(
                 bot,
-                mensaje=f"Módulo **{ext}** cargado correctamente.",
-                nivel="success",
-                titulo="Módulo cargado"
+                message=f"Módulo **{ext}** cargado correctamente.",
+                level="success",
+                title="Módulo cargado"
             )
         except Exception as e:
             await log_discord(
                 bot,
-                mensaje=f"Error al cargar **{ext}**:\n{e}",
-                nivel="error",
-                titulo="❌ Error al cargar módulo"
+                message=f"Error al cargar **{ext}**:\n{e}",
+                level="error",
+                title="❌ Error al cargar módulo"
             )
 
     try:
         synced = await bot.tree.sync()
         await log_discord(
             bot,
-            mensaje=f"{len(synced)} comandos sincronizados.",
-            nivel="info",
-            titulo="🔁 Comandos slash sincronizados"
+            message=f"{len(synced)} comandos sincronizados.",
+            level="info",
+            title="🔁 Comandos slash sincronizados"
         )
     except Exception as e:
         await log_discord(
             bot,
-            mensaje=f"Error al sincronizar comandos: {e}",
-            nivel="error",
-            titulo="❌ Error al sincronizar comandos"
+            message=f"Error al sincronizar comandos: {e}",
+            level="error",
+            title="❌ Error al sincronizar comandos"
         )
 
     # Previene apagado por inactividad
