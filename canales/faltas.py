@@ -112,7 +112,7 @@ class Faltas(commands.Cog):
                 if user_mention in registros:
                     try:
                         await registros[user_mention].edit(embed=embed)
-                        await asyncio.sleep(1)  # Espera 1 segundo entre ediciones
+                        await asyncio.sleep(2)  # Aumento el tiempo de espera a 2 segundos entre ediciones
                     except Exception as e:
                         await log_discord(self.bot, f"❌ Error al editar mensaje de {miembro.display_name}: {e}")
                 else:
