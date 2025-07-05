@@ -28,7 +28,7 @@ redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 REDIS_LOG_MESSAGE_KEY = "vxbot:logs:last_message_id"
 
 # ✅ FUNCIÓN PRINCIPAL: Log en Discord vía Webhook + consola
-async def log_discord(bot, message: str, status: str = "Cargando", title: str = "Resumen de inicio del bot"):
+async def log_discord(bot, message: str, status: str = "Activo", title: str = "Resumen de inicio del bot"):
     # Log en consola (Railway)
     print(f"[{status}] {title}: {message}")
 
