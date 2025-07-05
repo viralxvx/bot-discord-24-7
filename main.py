@@ -28,25 +28,33 @@ EXTENSIONES = [
 ]
 
 log_message = None  # Variable para almacenar el mensaje de log
+logs = []  # Lista para guardar todos los logs
+
+# Función para generar un timestamp con formato
+def get_current_time():
+    return datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
 
 @bot.event
 async def on_ready():
-    global log_message
+    global log_message, logs
 
-    logs = []
+    # Agregar la información básica del bot al log
+    logs.append(f"✅ Bot conectado como **{bot.user}**")
+    logs.append(f"Hora: {get_current_time()}")
+    logs.append("Status: Cargando")
 
-    # Agregar la información básica del bot
-    logs.append(f"Bot conectado como **{bot.user}**\nHora: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    # Unir todos los logs en un solo mensaje
+    logs_message = "\n".join(logs)
 
-    # Actualizar el status mientras se carga el bot
-    logs_message = "\n".join(logs)  # Unir todos los logs en un solo mensaje
-
+    # Si no existe el mensaje, crear uno nuevo
     if log_message is None:
-        # Si no existe el mensaje, crear uno nuevo
         log_message = await custom_log(bot, "Cargando el bot", logs_message, "🔄 Resumen de inicio del bot")
     else:
         # Si el mensaje ya existe, actualizarlo
         await log_message.edit(content=logs_message)
+
+    # Lista para almacenar los errores
+    errores = []
 
     # Cargar extensiones y agregar logs correspondientes
     for ext in EXTENSIONES:
@@ -54,14 +62,16 @@ async def on_ready():
             await bot.load_extension(ext)
             logs.append(f"Módulo **{ext}** cargado correctamente.")
         except Exception as e:
-            logs.append(f"Error al cargar **{ext}**:\n{e}")
+            errores.append(f"Error al cargar **{ext}**:\n{e}")
+            logs.append(f"❌ Error al cargar **{ext}**")
 
     # Sincronizar comandos y agregar logs correspondientes
     try:
         synced = await bot.tree.sync()
         logs.append(f"{len(synced)} comandos sincronizados.")
     except Exception as e:
-        logs.append(f"Error al sincronizar comandos: {e}")
+        errores.append(f"Error al sincronizar comandos: {e}")
+        logs.append(f"❌ Error al sincronizar comandos: {e}")
 
     # Unir todos los logs en un solo mensaje
     logs_message = "\n".join(logs)
@@ -72,8 +82,19 @@ async def on_ready():
     else:
         await log_message.edit(content=logs_message)
 
-    # Si todo está bien, actualizar el Status a "Activo"
-    await custom_log(bot, "Activo", "Todos los módulos cargados correctamente.", "✅ Resumen de inicio del bot")
+    # Si hay errores, cambiar el status a "Fallas pendientes"
+    if errores:
+        await custom_log(bot, "Fallas pendientes", "\n".join(errores), "❌ Resumen de inicio del bot")
+    else:
+        # Si todo está bien, cambiar el status a "Activo"
+        await custom_log(bot, "Activo", "Todos los módulos cargados correctamente.", "✅ Resumen de inicio del bot")
+
+    # Actualizar el status
+    logs.append("Status: Activo")
+
+    # Unir todos los logs en un solo mensaje y actualizar
+    logs_message = "\n".join(logs)
+    await log_message.edit(content=logs_message)
 
     # Previene apagado por inactividad
     while True:
