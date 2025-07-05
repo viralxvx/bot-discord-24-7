@@ -18,10 +18,10 @@ class Inactividad(commands.Cog):
 
     async def registrar_actividad(self):
         await self.bot.wait_until_ready()
-        await log_discord(self.bot, "🔎 [INACTIVIDAD] Escaneando TODO el historial en 🧵go-viral...", CANAL_LOGS_ID, "info", "Inactividad")
+        await log_discord(self.bot, "🔎 [INACTIVIDAD] Escaneando TODO el historial en 🧵go-viral...", "info", "Inactividad")
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
-            await log_discord(self.bot, f"❌ [INACTIVIDAD] No se encontró el canal 🧵go-viral (ID {CANAL_OBJETIVO_ID})", CANAL_LOGS_ID, "error", "Inactividad")
+            await log_discord(self.bot, f"❌ [INACTIVIDAD] No se encontró el canal 🧵go-viral (ID {CANAL_OBJETIVO_ID})", "error", "Inactividad")
             return
 
         ultimos_mensajes = {}
@@ -33,19 +33,19 @@ class Inactividad(commands.Cog):
                 user_id = str(autor.id)
                 if user_id not in ultimos_mensajes or mensaje.created_at > ultimos_mensajes[user_id]:
                     ultimos_mensajes[user_id] = mensaje.created_at
-            await log_discord(self.bot, f"🔢 [INACTIVIDAD] Usuarios únicos detectados: {len(ultimos_mensajes)}", CANAL_LOGS_ID, "info", "Inactividad")
+            await log_discord(self.bot, f"🔢 [INACTIVIDAD] Usuarios únicos detectados: {len(ultimos_mensajes)}", "info", "Inactividad")
             for user_id, fecha in ultimos_mensajes.items():
                 fecha_iso = fecha.astimezone(timezone.utc).isoformat()
                 self.redis.set(f"inactividad:{user_id}", fecha_iso)
-                await log_discord(self.bot, f"✅ [INACTIVIDAD] Usuario {user_id} — Última actividad: {fecha_iso}", CANAL_LOGS_ID, "success", "Inactividad")
-            await log_discord(self.bot, "✅ [INACTIVIDAD] Registro de actividad inicial completado.", CANAL_LOGS_ID, "success", "Inactividad")
+                await log_discord(self.bot, f"✅ [INACTIVIDAD] Usuario {user_id} — Última actividad: {fecha_iso}", "success", "Inactividad")
+            await log_discord(self.bot, "✅ [INACTIVIDAD] Registro de actividad inicial completado.", "success", "Inactividad")
         except Exception as e:
-            await log_discord(self.bot, f"❌ [INACTIVIDAD] Error escaneando mensajes: {e}", CANAL_LOGS_ID, "error", "Inactividad")
+            await log_discord(self.bot, f"❌ [INACTIVIDAD] Error escaneando mensajes: {e}", "error", "Inactividad")
 
     @tasks.loop(hours=6)
     async def verificar_inactivos(self):
         await self.bot.wait_until_ready()
-        await log_discord(self.bot, "⏰ [INACTIVIDAD] Ejecutando verificación automática de inactivos...", CANAL_LOGS_ID, "info", "Inactividad")
+        await log_discord(self.bot, "⏰ [INACTIVIDAD] Ejecutando verificación automática de inactivos...", "info", "Inactividad")
 
         ahora = datetime.now(timezone.utc)
 
@@ -65,17 +65,17 @@ class Inactividad(commands.Cog):
                             await guild.unban(user, reason="Baneo de inactividad vencido, reintegrado automáticamente")
                             self.redis.delete(key_ban)
                             self.redis.hset(f"usuario:{user.id}", "estado", "activo")
-                            await log_discord(self.bot, f"🔓 [INACTIVIDAD] Usuario {user} ({user.id}) desbaneado automáticamente tras 7 días.", CANAL_LOGS_ID, "success", "Inactividad")
+                            await log_discord(self.bot, f"🔓 [INACTIVIDAD] Usuario {user} ({user.id}) desbaneado automáticamente tras 7 días.", "success", "Inactividad")
                             try:
                                 await user.send("🔓 Tu baneo por inactividad ha vencido y ya puedes volver a la comunidad. ¡Sé más activo para evitar nuevas sanciones!")
                             except Exception as e:
-                                await log_discord(self.bot, f"⚠️ [INACTIVIDAD] No se pudo enviar DM de desbaneo a {user}: {e}", CANAL_LOGS_ID, "warning", "Inactividad")
+                                await log_discord(self.bot, f"⚠️ [INACTIVIDAD] No se pudo enviar DM de desbaneo a {user}: {e}", "warning", "Inactividad")
                             if canal_faltas:
                                 await canal_faltas.send(f"🔓 Usuario desbaneado automáticamente tras 7 días de inactividad: {user.mention}")
                             if canal_logs:
                                 await canal_logs.send(f"🔓 [INACTIVIDAD] Usuario desbaneado tras 7 días: {user.mention} ({user.id})")
             except Exception as e:
-                await log_discord(self.bot, f"❌ [INACTIVIDAD] Error al obtener baneos: {e}", CANAL_LOGS_ID, "error", "Inactividad")
+                await log_discord(self.bot, f"❌ [INACTIVIDAD] Error al obtener baneos: {e}", "error", "Inactividad")
 
             # 2. Limpieza de prórrogas vencidas
             for member in guild.members:
@@ -87,7 +87,7 @@ class Inactividad(commands.Cog):
                     fecha_prorroga = datetime.fromisoformat(prorroga_iso)
                     if ahora >= fecha_prorroga:
                         self.redis.delete(key_prorroga)
-                        await log_discord(self.bot, f"🧹 [INACTIVIDAD] Prórroga vencida y eliminada para {member.display_name} ({member.id})", CANAL_LOGS_ID, "info", "Inactividad")
+                        await log_discord(self.bot, f"🧹 [INACTIVIDAD] Prórroga vencida y eliminada para {member.display_name} ({member.id})", "info", "Inactividad")
 
             # 3. Baneo/expulsión por inactividad
             for member in guild.members:
@@ -124,7 +124,7 @@ class Inactividad(commands.Cog):
                             self.redis.set(key_ban, ahora.isoformat())
                             self.redis.incr(key_reincidencia)
                             self.redis.hset(f"usuario:{member.id}", "estado", "baneado")
-                            await log_discord(self.bot, f"⛔ [INACTIVIDAD] Usuario {member} ({member.id}) baneado por inactividad.", CANAL_LOGS_ID, "warning", "Inactividad")
+                            await log_discord(self.bot, f"⛔ [INACTIVIDAD] Usuario {member} ({member.id}) baneado por inactividad.", "warning", "Inactividad")
                             try:
                                 await member.send(AVISO_BANEO)
                             except Exception:
@@ -134,13 +134,13 @@ class Inactividad(commands.Cog):
                             if canal_logs:
                                 await canal_logs.send(f"⛔ [INACTIVIDAD] Usuario baneado: {member.mention} ({member.id})")
                         except Exception as e:
-                            await log_discord(self.bot, f"❌ [INACTIVIDAD] Error baneando a {member}: {e}", CANAL_LOGS_ID, "error", "Inactividad")
+                            await log_discord(self.bot, f"❌ [INACTIVIDAD] Error baneando a {member}: {e}", "error", "Inactividad")
                     else:
                         try:
                             await guild.kick(member, reason="Expulsión por inactividad reincidente (automatizado)")
                             self.redis.set(key_expulsado, "1")
                             self.redis.hset(f"usuario:{member.id}", "estado", "expulsado")
-                            await log_discord(self.bot, f"🚫 [INACTIVIDAD] Usuario {member} ({member.id}) EXPULSADO por reincidencia de inactividad.", CANAL_LOGS_ID, "error", "Inactividad")
+                            await log_discord(self.bot, f"🚫 [INACTIVIDAD] Usuario {member} ({member.id}) EXPULSADO por reincidencia de inactividad.", "error", "Inactividad")
                             try:
                                 await member.send(AVISO_EXPULSION)
                             except Exception:
@@ -150,9 +150,9 @@ class Inactividad(commands.Cog):
                             if canal_logs:
                                 await canal_logs.send(f"🚫 [INACTIVIDAD] Usuario EXPULSADO: {member.mention} ({member.id})")
                         except Exception as e:
-                            await log_discord(self.bot, f"❌ [INACTIVIDAD] Error expulsando a {member}: {e}", CANAL_LOGS_ID, "error", "Inactividad")
+                            await log_discord(self.bot, f"❌ [INACTIVIDAD] Error expulsando a {member}: {e}", "error", "Inactividad")
 
-        await log_discord(self.bot, "✅ [INACTIVIDAD] Verificación automática completada.", CANAL_LOGS_ID, "success", "Inactividad")
+        await log_discord(self.bot, "✅ [INACTIVIDAD] Verificación automática completada.", "success", "Inactividad")
 
 # =============== LISTENERS UNIVERSALES DE ESTADO ===============
 
