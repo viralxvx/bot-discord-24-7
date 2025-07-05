@@ -31,8 +31,10 @@ EXTENSIONES = [
 async def on_ready():
     logs = []
     
+    # Agregar información básica del bot al log
     logs.append(f"Bot conectado como **{bot.user}**\nHora: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
 
+    # Cargar extensiones y agregar logs correspondientes
     for ext in EXTENSIONES:
         try:
             await bot.load_extension(ext)
@@ -40,17 +42,20 @@ async def on_ready():
         except Exception as e:
             logs.append(f"Error al cargar **{ext}**:\n{e}")
 
+    # Sincronizar comandos y agregar logs correspondientes
     try:
         synced = await bot.tree.sync()
         logs.append(f"{len(synced)} comandos sincronizados.")
     except Exception as e:
         logs.append(f"Error al sincronizar comandos: {e}")
     
-    # Enviar todos los logs en un solo mensaje
-    logs_message = "\n".join(logs)  # Unir todos los logs en un solo mensaje
+    # Unir todos los logs en un solo mensaje
+    logs_message = "\n".join(logs)
+    
+    # Enviar el mensaje de logs completo en Discord
     await custom_log(bot, "info", logs_message, "🔄 Resumen de inicio del bot")
 
-    # Previene apagado por inactividad
+    # Prevenir apagado por inactividad
     while True:
         await asyncio.sleep(60)
         print("⏳ Bot sigue vivo...")
