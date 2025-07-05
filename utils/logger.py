@@ -1,49 +1,46 @@
 # utils/logger.py
-import discord
-from datetime import datetime, timezone
+
 import logging
+import discord
 from config import CANAL_LOGS_ID
 
-logger = logging.getLogger("VXbot")
-logger.setLevel(logging.INFO)
-if not logger.hasHandlers():
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s'))
-    logger.addHandler(handler)
+def log_to_railway(mensaje, nivel="info", titulo=None):
+    # Nivel puede ser "info", "success", "warning", "error"
+    prefijo = {
+        "info": "ℹ️",
+        "success": "✅",
+        "warning": "⚠️",
+        "error": "❌"
+    }.get(nivel, "ℹ️")
+    texto = f"{prefijo} {titulo + ': ' if titulo else ''}{mensaje}"
+    if nivel == "error":
+        logging.error(texto)
+    elif nivel == "warning":
+        logging.warning(texto)
+    else:
+        logging.info(texto)
 
-async def log_discord(bot, mensaje, nivel="info", titulo=None, extra=None):
-    color_map = {
-        "info": discord.Color.blurple(),
+async def log_discord(bot, mensaje, nivel="info", titulo=None):
+    log_to_railway(mensaje, nivel, titulo)  # Siempre log en consola/Railway
+
+    canal = bot.get_channel(CANAL_LOGS_ID)
+    if canal is None:
+        # Espera si aún no está listo el bot
+        await bot.wait_until_ready()
+        canal = bot.get_channel(CANAL_LOGS_ID)
+        if canal is None:
+            return  # Si aun así no existe, omitir
+
+    color = {
+        "info": discord.Color.blue(),
         "success": discord.Color.green(),
         "warning": discord.Color.orange(),
-        "error": discord.Color.red(),
-        "critical": discord.Color.dark_red(),
-    }
-    color = color_map.get(nivel, discord.Color.greyple())
+        "error": discord.Color.red()
+    }.get(nivel, discord.Color.blue())
+
     embed = discord.Embed(
-        title=titulo or "Log del sistema",
-        description=mensaje,
-        color=color,
-        timestamp=datetime.now(timezone.utc)
+        title=titulo or "Log de sistema",
+        description=str(mensaje),
+        color=color
     )
-    if extra:
-        for k, v in extra.items():
-            embed.add_field(name=k, value=v, inline=False)
-
-    # Railway/Consola
-    if nivel == "error":
-        logger.error(mensaje)
-    elif nivel == "warning":
-        logger.warning(mensaje)
-    elif nivel == "success":
-        logger.info(mensaje)
-    else:
-        logger.info(mensaje)
-
-    # Discord (canal logs)
-    canal_logs = bot.get_channel(CANAL_LOGS_ID)
-    if canal_logs:
-        try:
-            await canal_logs.send(embed=embed)
-        except Exception as e:
-            logger.error(f"❌ No se pudo enviar log a Discord: {e}")
+    await canal.send(embed=embed)
