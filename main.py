@@ -4,7 +4,7 @@ import os
 import asyncio
 from datetime import datetime, timezone
 
-from utils.logger import log_discord
+from utils.logger import custom_log
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -29,45 +29,26 @@ EXTENSIONES = [
 
 @bot.event
 async def on_ready():
-    await log_discord(
-        bot,
-        message=f"Bot conectado como **{bot.user}**\nHora: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
-        level="success",
-        title="✅ Bot iniciado correctamente"
-    )
+    logs = []
+    
+    logs.append(f"Bot conectado como **{bot.user}**\nHora: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
 
     for ext in EXTENSIONES:
         try:
             await bot.load_extension(ext)
-            await log_discord(
-                bot,
-                message=f"Módulo **{ext}** cargado correctamente.",
-                level="success",
-                title="Módulo cargado"
-            )
+            logs.append(f"Módulo **{ext}** cargado correctamente.")
         except Exception as e:
-            await log_discord(
-                bot,
-                message=f"Error al cargar **{ext}**:\n{e}",
-                level="error",
-                title="❌ Error al cargar módulo"
-            )
+            logs.append(f"Error al cargar **{ext}**:\n{e}")
 
     try:
         synced = await bot.tree.sync()
-        await log_discord(
-            bot,
-            message=f"{len(synced)} comandos sincronizados.",
-            level="info",
-            title="🔁 Comandos slash sincronizados"
-        )
+        logs.append(f"{len(synced)} comandos sincronizados.")
     except Exception as e:
-        await log_discord(
-            bot,
-            message=f"Error al sincronizar comandos: {e}",
-            level="error",
-            title="❌ Error al sincronizar comandos"
-        )
+        logs.append(f"Error al sincronizar comandos: {e}")
+    
+    # Enviar todos los logs en un solo mensaje
+    logs_message = "\n".join(logs)  # Unir todos los logs en un solo mensaje
+    await custom_log(bot, "info", logs_message, "🔄 Resumen de inicio del bot")
 
     # Previene apagado por inactividad
     while True:
