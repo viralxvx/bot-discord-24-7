@@ -22,8 +22,13 @@ console_handler.setFormatter(formatter)
 # Agregar el manejador a nuestro logger
 logger.addHandler(console_handler)
 
+# Variable para almacenar el mensaje de log
+log_message = None
+
 # Función para loguear los mensajes en el canal de Discord
 async def log_discord(bot, message, level="info", title="Log"):
+    global log_message
+
     # Obtener el canal de logs usando la variable de entorno
     log_channel = bot.get_channel(CANAL_LOGS)  # Usará el ID del canal de logs desde la variable de entorno
     if log_channel:
@@ -33,7 +38,13 @@ async def log_discord(bot, message, level="info", title="Log"):
             color=discord.Color.green() if level == "info" else discord.Color.red()
         )
         embed.set_footer(text=f"Nivel: {level}")
-        await log_channel.send(embed=embed)
+
+        if log_message is None:
+            # Si no existe el mensaje, crear uno nuevo
+            log_message = await log_channel.send(embed=embed)
+        else:
+            # Si el mensaje ya existe, actualizarlo
+            await log_message.edit(embed=embed)
 
 # Función para manejar los logs de Railway y Discord
 def custom_log(bot, level, message, title=""):
