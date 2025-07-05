@@ -1,10 +1,11 @@
-# main.py (fragmentos importantes)
+# main.py
 import discord
 from discord.ext import commands
 import os
 import asyncio
+from datetime import datetime, timezone
 
-from utils.logger import log_discord  # <-- Agrega esta línea
+from utils.logger import log_discord
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -24,7 +25,7 @@ EXTENSIONES = [
     "comandos.prorroga",
     "comandos.override",
     "canales.reporte_incumplimiento",
-    "comandos",  # para /estado y /estadisticas
+    "comandos",
 ]
 
 @bot.event
@@ -69,7 +70,7 @@ async def on_ready():
             titulo="❌ Error al sincronizar comandos"
         )
 
-    # Previene apagado por inactividad (no es log importante)
+    # Previene apagado por inactividad
     while True:
         await asyncio.sleep(60)
         print("⏳ Bot sigue vivo...")
