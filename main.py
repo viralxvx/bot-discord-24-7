@@ -41,7 +41,6 @@ async def on_ready():
     # Agregar la información básica del bot al log
     logs.append(f"✅ Bot conectado como **{bot.user}**")
     logs.append(f"Hora: {get_current_time()}")
-    logs.append("Status: Cargando")
 
     # Unir todos los logs en un solo mensaje
     logs_message = "\n".join(logs)
@@ -55,22 +54,24 @@ async def on_ready():
 
     # Lista para almacenar los errores
     errores = []
+    success_modules = []  # Para guardar módulos cargados correctamente
 
     # Cargar extensiones y agregar logs correspondientes
     for ext in EXTENSIONES:
         try:
             await bot.load_extension(ext)
-            logs.append(f"Módulo **{ext}** cargado correctamente.")
+            logs.append(f"✅ Módulo **{ext}** cargado correctamente.")
+            success_modules.append(ext)
         except Exception as e:
-            errores.append(f"Error al cargar **{ext}**:\n{e}")
+            errores.append(f"❌ Error al cargar **{ext}**:\n{e}")
             logs.append(f"❌ Error al cargar **{ext}**")
 
     # Sincronizar comandos y agregar logs correspondientes
     try:
         synced = await bot.tree.sync()
-        logs.append(f"{len(synced)} comandos sincronizados.")
+        logs.append(f"✅ {len(synced)} comandos sincronizados.")
     except Exception as e:
-        errores.append(f"Error al sincronizar comandos: {e}")
+        errores.append(f"❌ Error al sincronizar comandos: {e}")
         logs.append(f"❌ Error al sincronizar comandos: {e}")
 
     # Unir todos los logs en un solo mensaje
@@ -82,13 +83,13 @@ async def on_ready():
     else:
         await log_message.edit(content=logs_message)
 
-    # Si hay errores, cambiar el status a "Fallas pendientes"
+    # Si hay errores, cambiar el status a "Error"
     if errores:
-        logs.append(f"Status: Fallas pendientes")
-        await custom_log(bot, "Fallas pendientes", "\n".join(errores), "❌ Resumen de inicio del bot")
+        logs.append("Status: Error")
+        await custom_log(bot, "Error", "\n".join(errores), "❌ Resumen de inicio del bot")
     else:
         # Si todo está bien, cambiar el status a "Activo"
-        logs.append(f"Status: Activo")
+        logs.append("Status: Activo")
         await custom_log(bot, "Activo", "Todos los módulos cargados correctamente.", "✅ Resumen de inicio del bot")
 
     # Unir todos los logs en un solo mensaje y actualizar
