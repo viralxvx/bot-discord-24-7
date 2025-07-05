@@ -3,6 +3,7 @@ from discord.ext import commands
 import os
 from config import CANAL_COMANDOS_ID
 from mensajes.comandos_texto import INSTRUCCIONES_COMANDOS
+import asyncio
 
 class CanalComandos(commands.Cog):
     def __init__(self, bot):
@@ -20,13 +21,32 @@ class CanalComandos(commands.Cog):
 
         try:
             print("🧹 Limpiando mensajes antiguos del canal de comandos...")
-            await canal.purge(limit=None)
+
+            # Limitar la cantidad de mensajes que se eliminan a la vez para evitar el rate limit
+            await canal.purge(limit=50)  # Limita a borrar 50 mensajes por vez
             print("✅ Canal de comandos limpio.")
 
-            await canal.send(INSTRUCCIONES_COMANDOS)
+            # Intentar enviar las instrucciones, con reintentos en caso de rate limiting
+            await self.enviar_mensaje_con_reintento(canal, INSTRUCCIONES_COMANDOS)
             print("📌 Instrucciones de uso enviadas.")
         except Exception as e:
             print(f"❌ Error al configurar el canal de comandos: {e}")
+
+    async def enviar_mensaje_con_reintento(self, canal, mensaje):
+        # Intentamos enviar el mensaje varias veces en caso de rate limiting
+        for intento in range(5):  # Intentar hasta 5 veces
+            try:
+                await canal.send(mensaje)
+                return  # Si el mensaje se envía correctamente, salimos
+            except discord.errors.HTTPException as e:
+                if e.code == 429:  # Si el error es rate limiting (429)
+                    wait_time = 2 ** intento  # Exponential backoff
+                    print(f"Rate limiting detectado. Esperando {wait_time} segundos...")
+                    await asyncio.sleep(wait_time)  # Esperamos antes de reintentar
+                else:
+                    # Si es otro error, lo registramos y salimos
+                    print(f"Error inesperado al enviar mensaje: {e}")
+                    break
 
 # 👉 Formato asincrónico requerido por discord.py 2.0+
 async def setup(bot):
