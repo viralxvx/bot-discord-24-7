@@ -52,7 +52,7 @@ class Inactividad(commands.Cog):
             canal_logs = self.bot.get_channel(CANAL_LOGS_ID)
 
             # 1. Revisión de baneos vencidos
-            for ban_entry in await guild.bans():
+            async for ban_entry in guild.bans():  # Cambio: usar async for aquí
                 user = ban_entry.user
                 key_ban = f"inactividad:ban:{user.id}"
                 ban_fecha_iso = self.redis.get(key_ban)
