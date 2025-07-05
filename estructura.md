@@ -30,25 +30,26 @@ Este archivo documenta la estructura **real y actual** del bot, el estado de cad
 
 ## 📂 `/canales/` — Módulos por canal
 
-| Archivo               | Estado         | Propósito                                                                   |
-| --------------------- | -------------- | --------------------------------------------------------------------------- |
-| `presentate.py`       | ✅ Ya trabajado | Bienvenida automática en `#👋preséntate` con menú interactivo               |
-| `normas_generales.py` | ✅ Ya trabajado | Limpia y mantiene el mensaje fijo de normas                                 |
-| `faltas.py`           | ✅ Ya trabajado | Genera y sincroniza el panel público en `#📤faltas`                         |
-| `comandos.py`         | ✅ Ya trabajado | Limpia y configura instrucciones en `#💻comandos`                           |
-| `inactividad.py`      | ✅ Ya trabajado | Detecta inactividad, ejecuta baneos y expulsiones automáticas               |
-| `soporte_prorroga.py` | ✅ Ya trabajado | Gestiona solicitudes de prórroga de usuarios en `#👨🔧soporte`              |
-| `go_viral.py`         | ✅ Ya trabajado | **Automatiza todo en `#🧵go-viral`: reglas, control, embeds, validaciones** |
+| Archivo               | Estado         | Propósito                                                                                                                                   |
+| --------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `presentate.py`       | ✅ Ya trabajado | Bienvenida automática en `#👋preséntate` con menú interactivo                                                                               |
+| `normas_generales.py` | ✅ Ya trabajado | Limpia y mantiene el mensaje fijo de normas                                                                                                 |
+| `faltas.py`           | ✅ Ya trabajado | Genera y sincroniza el panel público en `#📤faltas`                                                                                         |
+| `comandos.py`         | ✅ Ya trabajado | Limpia y configura instrucciones en `#💻comandos`                                                                                           |
+| `inactividad.py`      | ✅ Ya trabajado | Detecta inactividad, ejecuta baneos y expulsiones automáticas                                                                               |
+| `soporte_prorroga.py` | ✅ Ya trabajado | Gestiona solicitudes de prórroga de usuarios en `#👨🔧soporte`                                                                              |
+| `go_viral.py`         | ✅ Ya trabajado | **Automatiza todo en `#🧵go-viral`: reglas, control, embeds, validaciones, override, sincronización total de reacciones y apoyos en Redis** |
 
 ---
 
 ## 📂 `/comandos/` — Comandos slash
 
-| Archivo           | Estado         | Propósito                                                      |
-| ----------------- | -------------- | -------------------------------------------------------------- |
-| `estado.py`       | ✅ Ya trabajado | Consulta de faltas y estado individual                         |
-| `estadisticas.py` | ✅ Ya trabajado | Estadísticas globales del servidor para admins/mods            |
-| `prorroga.py`     | ✅ Ya trabajado | Comando para que admins/mods den prórrogas a cualquier usuario |
+| Archivo           | Estado         | Propósito                                                                                |
+| ----------------- | -------------- | ---------------------------------------------------------------------------------------- |
+| `estado.py`       | ✅ Ya trabajado | Consulta de faltas y estado individual                                                   |
+| `estadisticas.py` | ✅ Ya trabajado | Estadísticas globales del servidor para admins/mods                                      |
+| `prorroga.py`     | ✅ Ya trabajado | Comando para que admins/mods den prórrogas a cualquier usuario                           |
+| `override.py`     | ✅ Ya trabajado | **Permite publicar en go-viral a un usuario aunque no cumpla reglas (emergencia/admin)** |
 
 ---
 
@@ -71,9 +72,10 @@ Este archivo documenta la estructura **real y actual** del bot, el estado de cad
 * Sistemas de **inactividad, faltas, go-viral y prórrogas** 100% automáticos, seguros y auditables.
 * Todos los embeds y mensajes públicos son profesionales, educativos y pueden editarse en caliente.
 * El bot registra el **historial completo del canal** `#🧵go-viral` en Redis para evitar confusiones de usuarios nuevos o antiguos tras reinicio.
+* **Las reglas de reacciones, apoyos, intervalos y overrides se aplican siempre** — incluso a mensajes anteriores al reinicio gracias a la limpieza/sincronización de reacciones y apoyos en Redis.
 
 ---
 
-*Última actualización: 2025-07-04  — 12:01am*
+*Última actualización: 2025-07-05  — 00:15am*
 
 ---
