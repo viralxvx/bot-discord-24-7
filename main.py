@@ -84,13 +84,12 @@ async def on_ready():
 
     # Si hay errores, cambiar el status a "Fallas pendientes"
     if errores:
+        logs.append(f"Status: Fallas pendientes")
         await custom_log(bot, "Fallas pendientes", "\n".join(errores), "❌ Resumen de inicio del bot")
     else:
         # Si todo está bien, cambiar el status a "Activo"
+        logs.append(f"Status: Activo")
         await custom_log(bot, "Activo", "Todos los módulos cargados correctamente.", "✅ Resumen de inicio del bot")
-
-    # Actualizar el status
-    logs.append("Status: Activo")
 
     # Unir todos los logs en un solo mensaje y actualizar
     logs_message = "\n".join(logs)
