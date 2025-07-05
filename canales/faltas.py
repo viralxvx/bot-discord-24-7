@@ -116,8 +116,7 @@ class Faltas(commands.Cog):
                                     await log_discord(self.bot, f"❌ Error con {user_id}: {e}")
                     await asyncio.sleep(1)
 
-            await log_discord(self.bot, f"✅ Panel público actualizado. Total usuarios verificados: {len(user_ids)}. Actualizados: {total}")
-            await log_discord(self.bot, f"[Activo] ✅ Panel público actualizado. Total usuarios verificados: {len(user_ids)}. Actualizados: {total}")
+            await log_discord(self.bot, f"✅ Panel público actualizado. Total usuarios verificados: {len(user_ids)}. Actualizados: {total}", status="Activo")            
         except Exception as e:
             await log_discord(self.bot, f"❌ Error al sincronizar faltas: {e}")
 
