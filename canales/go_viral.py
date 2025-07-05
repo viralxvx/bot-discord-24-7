@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from config import CANAL_OBJETIVO_ID, REDIS_URL
+from config import CANAL_OBJETIVO_ID, CANAL_LOGS_ID, REDIS_URL
 from mensajes.viral_texto import (
     TITULO_FIJO, DESCRIPCION_FIJO, IMAGEN_URL,
     TITULO_BIENVENIDA, DESCRIPCION_BIENVENIDA,
@@ -22,6 +22,7 @@ import redis
 import asyncio
 import re
 import hashlib
+from utils.logger import log_discord  # 👈 IMPORTANTE
 
 def limpiar_url_tweet(texto):
     match = re.search(r"https?://x\.com/\w+/status/(\d+)", texto)
@@ -49,53 +50,50 @@ class GoViral(commands.Cog):
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
-            print("❌ [GO-VIRAL] No se encontró el canal para cargar historial.")
+            await log_discord(self.bot, "❌ [GO-VIRAL] No se encontró el canal para cargar historial.", CANAL_LOGS_ID, "error", "GoViral")
             return
-        print("🔍 [GO-VIRAL] Cargando historial y usuarios antiguos...")
+        await log_discord(self.bot, "🔍 [GO-VIRAL] Cargando historial y usuarios antiguos...", CANAL_LOGS_ID, "info", "GoViral")
         try:
             async for msg in canal.history(limit=None, oldest_first=True):
                 if msg.author.bot: continue
                 uid = str(msg.author.id)
                 self.redis.set(f"go_viral:primera_pub:{uid}", "1")
                 self.redis.set(f"go_viral:bienvenida:{uid}", "1")
-            print("✅ [GO-VIRAL] Historial de usuarios antiguos sincronizado en Redis.")
+            await log_discord(self.bot, "✅ [GO-VIRAL] Historial de usuarios antiguos sincronizado en Redis.", CANAL_LOGS_ID, "success", "GoViral")
         except Exception as e:
-            print(f"❌ [GO-VIRAL] Error cargando historial: {e}")
+            await log_discord(self.bot, f"❌ [GO-VIRAL] Error cargando historial: {e}", CANAL_LOGS_ID, "error", "GoViral")
 
     async def preload_apoyos_reacciones(self):
         await self.bot.wait_until_ready()
-        await asyncio.sleep(5)  # Espera 5 segundos para asegurar que todo esté cargado
+        await asyncio.sleep(5)
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
-            print("❌ [GO-VIRAL] No se encontró el canal para cargar reacciones.")
+            await log_discord(self.bot, "❌ [GO-VIRAL] No se encontró el canal para cargar reacciones.", CANAL_LOGS_ID, "error", "GoViral")
             return
-        print("🔄 [GO-VIRAL] Sincronizando reacciones 🔥 antiguas en Redis y limpiando reacciones no permitidas...")
+        await log_discord(self.bot, "🔄 [GO-VIRAL] Sincronizando reacciones 🔥 antiguas en Redis y limpiando reacciones no permitidas...", CANAL_LOGS_ID, "info", "GoViral")
         try:
             mensajes = [msg async for msg in canal.history(limit=None, oldest_first=False)]
             for msg in mensajes:
                 for reaction in msg.reactions:
-                    # Limpia cualquier reacción que NO sea 🔥 o 👍
                     if str(reaction.emoji) not in ["🔥", "👍"]:
                         async for user in reaction.users():
                             try:
                                 await reaction.remove(user)
-                                print(f"🚫 [GO-VIRAL] Reacción '{reaction.emoji}' eliminada en {msg.id} de {user.display_name}")
                             except Exception:
                                 pass
-                    # Mantiene las 🔥 para Redis
                     elif str(reaction.emoji) == "🔥":
                         async for user in reaction.users():
                             if not user.bot:
                                 self.redis.sadd(f"go_viral:apoyos:{msg.id}", str(user.id))
-            print("✅ [GO-VIRAL] Apoyos sincronizados y reacciones limpiadas.")
+            await log_discord(self.bot, "✅ [GO-VIRAL] Apoyos sincronizados y reacciones limpiadas.", CANAL_LOGS_ID, "success", "GoViral")
         except Exception as e:
-            print(f"❌ [GO-VIRAL] Error sincronizando reacciones: {e}")
+            await log_discord(self.bot, f"❌ [GO-VIRAL] Error sincronizando reacciones: {e}", CANAL_LOGS_ID, "error", "GoViral")
 
     async def init_mensaje_fijo(self):
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
-            print(f"❌ [GO-VIRAL] No se encontró el canal (ID {CANAL_OBJETIVO_ID})")
+            await log_discord(self.bot, f"❌ [GO-VIRAL] No se encontró el canal (ID {CANAL_OBJETIVO_ID})", CANAL_LOGS_ID, "error", "GoViral")
             return
 
         fecha = datetime.now().strftime("%Y-%m-%d")
@@ -116,7 +114,7 @@ class GoViral(commands.Cog):
                         embed_actual.image.url if embed_actual.image else ""
                     )
                     if hash_actual == hash_nuevo:
-                        print("✅ [GO-VIRAL] Mensaje fijo ya existe y está actualizado.")
+                        await log_discord(self.bot, "✅ [GO-VIRAL] Mensaje fijo ya existe y está actualizado.", CANAL_LOGS_ID, "success", "GoViral")
                         return
                     else:
                         embed_fijo = discord.Embed(
@@ -127,10 +125,10 @@ class GoViral(commands.Cog):
                         embed_fijo.set_image(url=IMAGEN_URL)
                         await mensaje.edit(embed=embed_fijo)
                         self.redis.set("go_viral:mensaje_fijo_hash", hash_nuevo)
-                        print("🔄 [GO-VIRAL] Mensaje fijo actualizado.")
+                        await log_discord(self.bot, "🔄 [GO-VIRAL] Mensaje fijo actualizado.", CANAL_LOGS_ID, "info", "GoViral")
                         return
             except Exception as e:
-                print(f"⚠️ [GO-VIRAL] No se pudo recuperar el mensaje guardado: {e}")
+                await log_discord(self.bot, f"⚠️ [GO-VIRAL] No se pudo recuperar el mensaje guardado: {e}", CANAL_LOGS_ID, "warning", "GoViral")
 
         embed_fijo = discord.Embed(
             title=TITULO_FIJO,
@@ -142,7 +140,7 @@ class GoViral(commands.Cog):
         await msg.pin()
         self.redis.set("go_viral:mensaje_fijo_id", str(msg.id))
         self.redis.set("go_viral:mensaje_fijo_hash", hash_nuevo)
-        print("✅ [GO-VIRAL] Mensaje fijo publicado y registrado.")
+        await log_discord(self.bot, "✅ [GO-VIRAL] Mensaje fijo publicado y registrado.", CANAL_LOGS_ID, "success", "GoViral")
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -153,7 +151,6 @@ class GoViral(commands.Cog):
         key_bienvenida = f"go_viral:bienvenida:{user_id}"
         key_primera_publicacion = f"go_viral:primera_pub:{user_id}"
 
-        # Solo permitir mensajes que sean URL válidas de x.com
         url_limpia = limpiar_url_tweet(message.content)
         if not url_limpia:
             try:
@@ -178,9 +175,9 @@ class GoViral(commands.Cog):
                 await message.author.send(embed=embed_dm)
             except Exception:
                 pass
+            await log_discord(self.bot, f"❌ [GO-VIRAL] {message.author} intentó publicar algo no permitido.", CANAL_LOGS_ID, "warning", "GoViral")
             return
 
-        # --- Bienvenida SOLO si no se ha enviado antes
         if not self.redis.get(key_bienvenida):
             self.redis.set(key_bienvenida, "1")
             embed = discord.Embed(
@@ -191,11 +188,10 @@ class GoViral(commands.Cog):
             embed.set_image(url=IMAGEN_URL)
             try:
                 await message.reply(embed=embed, mention_author=True, delete_after=120)
-                print(f"✅ [GO-VIRAL] Bienvenida enviada a {message.author.display_name} ({user_id})")
+                await log_discord(self.bot, f"✅ [GO-VIRAL] Bienvenida enviada a {message.author.display_name} ({user_id})", CANAL_LOGS_ID, "success", "GoViral")
             except Exception as e:
-                print(f"❌ [GO-VIRAL] Error enviando bienvenida a {user_id}: {e}")
+                await log_discord(self.bot, f"❌ [GO-VIRAL] Error enviando bienvenida a {user_id}: {e}", CANAL_LOGS_ID, "error", "GoViral")
 
-        # --- Corrección automática de URLs mal formateadas ---
         if url_limpia != message.content.strip():
             try:
                 await message.delete()
@@ -223,35 +219,28 @@ class GoViral(commands.Cog):
                 await message.author.send(embed=embed_dm)
             except Exception:
                 pass
+            await log_discord(self.bot, f"⚠️ [GO-VIRAL] Corrigiendo URL mal formateada de {message.author.display_name}", CANAL_LOGS_ID, "warning", "GoViral")
             return
 
-        # --- Lógica para permitir PRIMERA publicación sin restricciones ---
         if not self.redis.get(key_primera_publicacion):
             self.redis.set(key_primera_publicacion, "1")
-            # ACTUALIZAR FECHA ÚLTIMA PUBLICACIÓN PARA INACTIVIDAD:
             fecha_iso = datetime.now(timezone.utc).isoformat()
             self.redis.set(f"inactividad:{user_id}", fecha_iso)
             self.bot.loop.create_task(self.verificar_reaccion_like(message))
             return
 
-        # --- Control de intervalo entre publicaciones ---
         if not await self.verificar_intervalo_entre_publicaciones(message):
             return
 
-        # --- Verificación de apoyo a los 9 anteriores ---
         if not await self.verificar_apoyo_nueve_anteriores(message):
             return
 
-        # ACTUALIZAR FECHA ÚLTIMA PUBLICACIÓN PARA INACTIVIDAD:
         fecha_iso = datetime.now(timezone.utc).isoformat()
         self.redis.set(f"inactividad:{user_id}", fecha_iso)
-
-        # Inicia verificación de reacción 👍 del autor a su propio mensaje
         self.bot.loop.create_task(self.verificar_reaccion_like(message))
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
-        # Permitir solo 👍 y 🔥 en el canal GO-VIRAL
         if reaction.message.channel.id != CANAL_OBJETIVO_ID or user.bot:
             return
         if str(reaction.emoji) not in ["🔥", "👍"]:
@@ -277,9 +266,11 @@ class GoViral(commands.Cog):
                 await user.send(embed=embed_dm)
             except Exception:
                 pass
-        # SI ES 🔥, ACTUALIZA MEMORIA EN REDIS
+            await log_discord(self.bot, f"❌ [GO-VIRAL] Reacción no permitida eliminada de {user.display_name}", CANAL_LOGS_ID, "warning", "GoViral")
         if str(reaction.emoji) == "🔥" and not user.bot:
             self.redis.sadd(f"go_viral:apoyos:{reaction.message.id}", str(user.id))
+
+    # Las siguientes funciones no cambian, puedes mantenerlas igual.
 
     async def verificar_intervalo_entre_publicaciones(self, message):
         canal = message.channel
@@ -313,9 +304,8 @@ class GoViral(commands.Cog):
         if len(publicaciones_otros) < 2:
             try:
                 await message.delete()
-                print(f"❌ [GO-VIRAL] Publicación de {message.author.display_name} eliminada por INTERVALO insuficiente.")
             except Exception as e:
-                print(f"❌ [GO-VIRAL] Error eliminando mensaje (intervalo): {e}")
+                pass
             embed = discord.Embed(
                 title=TITULO_INTERVALO_EDU,
                 description=DESCRIPCION_INTERVALO_EDU.format(usuario=message.author.mention),
@@ -332,8 +322,9 @@ class GoViral(commands.Cog):
             )
             try:
                 await message.author.send(embed=embed_dm)
-            except Exception as e:
-                print(f"⚠️ [GO-VIRAL] No se pudo enviar DM (intervalo) a {message.author.display_name}: {e}")
+            except Exception:
+                pass
+            await log_discord(self.bot, f"❌ [GO-VIRAL] Mensaje eliminado por intervalo insuficiente de {message.author.display_name}", CANAL_LOGS_ID, "warning", "GoViral")
             return False
         return True
 
@@ -365,7 +356,6 @@ class GoViral(commands.Cog):
         for post in revisar_posts:
             apoyaron = self.redis.smembers(f"go_viral:apoyos:{post.id}")
             if str(message.author.id) not in apoyaron:
-                # Si Redis no lo tiene, revisa en tiempo real en Discord:
                 tiene_fuego = False
                 for reaction in post.reactions:
                     if str(reaction.emoji) == "🔥":
@@ -380,14 +370,10 @@ class GoViral(commands.Cog):
                     apoyo_faltante.append(post)
 
         if apoyo_faltante:
-            print(f"⛔ [{message.author.display_name}] le falta dar 🔥 a los siguientes mensajes:")
-            for post in apoyo_faltante:
-                print(f"  - ID: {post.id} | Autor: {post.author.display_name} | Contenido: {post.content[:50]}")
             try:
                 await message.delete()
-                print(f"❌ [GO-VIRAL] Publicación de {message.author.display_name} eliminada por NO apoyar a los previos requeridos.")
             except Exception as e:
-                print(f"❌ [GO-VIRAL] Error eliminando mensaje (no apoyó): {e}")
+                pass
             embed = discord.Embed(
                 title=TITULO_APOYO_9_EDU,
                 description=DESCRIPCION_APOYO_9_EDU.format(usuario=message.author.mention),
@@ -405,7 +391,8 @@ class GoViral(commands.Cog):
             try:
                 await message.author.send(embed=embed_dm)
             except Exception as e:
-                print(f"⚠️ [GO-VIRAL] No se pudo enviar DM (apoyo 9) a {message.author.display_name}: {e}")
+                pass
+            await log_discord(self.bot, f"⛔ [GO-VIRAL] Eliminada publicación por no apoyar los 9 anteriores: {message.author.display_name}", CANAL_LOGS_ID, "warning", "GoViral")
             return False
         return True
 
@@ -429,9 +416,8 @@ class GoViral(commands.Cog):
         if not tiene_like:
             try:
                 await msg.delete()
-                print(f"❌ [GO-VIRAL] Publicación eliminada por no validar con 👍: {autor.display_name}")
             except Exception as e:
-                print(f"❌ [GO-VIRAL] Error eliminando mensaje sin like: {e}")
+                pass
             embed = discord.Embed(
                 title=TITULO_SIN_LIKE_EDU,
                 description=DESCRIPCION_SIN_LIKE_EDU.format(usuario=autor.mention),
@@ -449,7 +435,8 @@ class GoViral(commands.Cog):
             try:
                 await autor.send(embed=embed_dm)
             except Exception as e:
-                print(f"⚠️ [GO-VIRAL] No se pudo enviar DM (sin like) a {autor.display_name}: {e}")
+                pass
+            await log_discord(self.bot, f"⛔ [GO-VIRAL] Eliminada publicación sin like de {autor.display_name}", CANAL_LOGS_ID, "warning", "GoViral")
 
 async def setup(bot):
     await bot.add_cog(GoViral(bot))
