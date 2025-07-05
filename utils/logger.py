@@ -1,49 +1,46 @@
-# utils/logger.py
-
 import logging
-import discord
-from config import CANAL_LOGS_ID
+import sys
 
-def log_to_railway(mensaje, nivel="info", titulo=None):
-    # Nivel puede ser "info", "success", "warning", "error"
-    prefijo = {
-        "info": "ℹ️",
-        "success": "✅",
-        "warning": "⚠️",
-        "error": "❌"
-    }.get(nivel, "ℹ️")
-    texto = f"{prefijo} {titulo + ': ' if titulo else ''}{mensaje}"
-    if nivel == "error":
-        logging.error(texto)
-    elif nivel == "warning":
-        logging.warning(texto)
+# Crear un logger centralizado
+logger = logging.getLogger("discord")
+logger.setLevel(logging.INFO)  # Esto es para que los logs importantes se registren
+
+# Crear un manejador para logs de consola (Railway)
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+
+# Crear un formateador para los logs
+formatter = logging.Formatter(
+    "%(asctime)s - %(levelname)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S"
+)
+console_handler.setFormatter(formatter)
+
+# Agregar el manejador a nuestro logger
+logger.addHandler(console_handler)
+
+# Función para loguear los mensajes en el canal de Discord
+async def log_discord(bot, message, level="info", title="Log"):
+    log_channel = bot.get_channel(CANAL_LOGS)  # Cambia esto con el ID del canal de logs
+    embed = discord.Embed(
+        title=title,
+        description=message,
+        color=discord.Color.green() if level == "info" else discord.Color.red()
+    )
+    embed.set_footer(text=f"Nivel: {level}")
+    await log_channel.send(embed=embed)
+
+# Función para manejar los logs de Railway y Discord
+def custom_log(level, message, bot=None, title=""):
+    if level == "warning":
+        logger.warning(message)
+    elif level == "info":
+        logger.info(message)
+    elif level == "error":
+        logger.error(message)
     else:
-        logging.info(texto)
+        logger.debug(message)
 
-async def log_discord(bot, mensaje, nivel="info", titulo=None):
-    try:
-        log_to_railway(mensaje, nivel, titulo)  # Siempre log en consola/Railway
+    # Loguear en Discord también si el bot está disponible
+    if bot:
+        bot.loop.create_task(log_discord(bot, message, level, title))
 
-        canal = bot.get_channel(CANAL_LOGS_ID)
-        if canal is None:
-            await bot.wait_until_ready()
-            canal = bot.get_channel(CANAL_LOGS_ID)
-            if canal is None:
-                return  # Si no existe, omitir sin error
-
-        color = {
-            "info": discord.Color.blue(),
-            "success": discord.Color.green(),
-            "warning": discord.Color.orange(),
-            "error": discord.Color.red()
-        }.get(nivel, discord.Color.blue())
-
-        embed = discord.Embed(
-            title=titulo or "Log de sistema",
-            description=str(mensaje),
-            color=color
-        )
-        await canal.send(embed=embed)
-    except Exception as e:
-        # Solo imprimir en consola, nunca relanzar el error
-        print(f"[LOG ERROR] {e}")
