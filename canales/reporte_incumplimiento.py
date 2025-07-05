@@ -73,7 +73,7 @@ class ReporteIncumplimiento(commands.Cog):
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_REPORTE_ID)
         if not canal:
-            await log_discord(self.bot, "❌ No se encontró el canal de reportes.", nivel="error", titulo="Reporte incumplimiento")
+            await log_discord(self.bot, "❌ No se encontró el canal de reportes.")  # Eliminado 'titulo'
             return
 
         hash_key = "reporte_incumplimiento:instrucciones_hash"
@@ -95,10 +95,10 @@ class ReporteIncumplimiento(commands.Cog):
             try:
                 mensaje = await canal.fetch_message(int(msg_id_guardado))
                 if mensaje and mensaje.embeds and mensaje.embeds[0].description == DESCRIPCION_INSTRUCCIONES:
-                    await log_discord(self.bot, "Mensaje de instrucciones ya está actualizado.", titulo="Reporte incumplimiento")
+                    await log_discord(self.bot, "Mensaje de instrucciones ya está actualizado.")  # Eliminado 'titulo'
                     return
             except Exception as e:
-                await log_discord(self.bot, f"No se pudo recuperar mensaje anterior: {e}", nivel="warning", titulo="Reporte incumplimiento")
+                await log_discord(self.bot, f"No se pudo recuperar mensaje anterior: {e}")  # Eliminado 'titulo'
 
         msg = None
         if msg_id_guardado:
@@ -108,9 +108,9 @@ class ReporteIncumplimiento(commands.Cog):
                     await mensaje.edit(embed=embed, view=ReporteMenuView(self))
                     msg = mensaje
                 else:
-                    await log_discord(self.bot, "Mensaje anterior no encontrado, enviando nuevo.", nivel="warning", titulo="Reporte incumplimiento")
+                    await log_discord(self.bot, "Mensaje anterior no encontrado, enviando nuevo.")  # Eliminado 'titulo'
             except Exception as e:
-                await log_discord(self.bot, f"No se pudo editar mensaje anterior: {e}", nivel="error", titulo="Reporte incumplimiento")
+                await log_discord(self.bot, f"No se pudo editar mensaje anterior: {e}")  # Eliminado 'titulo'
 
         if not msg:
             msg = await canal.send(embed=embed, view=ReporteMenuView(self))
@@ -118,7 +118,7 @@ class ReporteIncumplimiento(commands.Cog):
 
         self.redis.set(hash_key, hash_actual)
         self.redis.set(msg_id_key, str(msg.id))
-        await log_discord(self.bot, "Instrucciones del canal de reporte actualizadas y fijadas.", nivel="success", titulo="Reporte incumplimiento")
+        await log_discord(self.bot, "Instrucciones del canal de reporte actualizadas y fijadas.")  # Eliminado 'titulo'
 
     async def crear_reporte(self, reportante: discord.Member, motivo: str, explicacion: str = None):
         canal = self.bot.get_channel(CANAL_REPORTE_ID)
@@ -175,7 +175,7 @@ class ReporteIncumplimiento(commands.Cog):
                 )
                 embed.set_footer(text="Este aviso se eliminará en 60s")
                 msg = await canal.send(embed=embed, delete_after=60)
-                await log_discord(self_cog.bot, f"Reporte #{report_id} abierto por {reportante.display_name} contra {target.display_name}", nivel="info", titulo="Reporte abierto")
+                await log_discord(self_cog.bot, f"Reporte #{report_id} abierto por {reportante.display_name} contra {target.display_name}")  # Eliminado 'titulo'
                 if canal_logs:
                     await canal_logs.send(embed=embed)
 
@@ -217,8 +217,6 @@ class ReporteMotivoSelect(ui.Select):
     async def callback(self, interaction: discord.Interaction):
         motivo = self.values[0]
         await self.cog.crear_reporte(interaction.user, motivo)
-
-# El resto del código permanece igual...
 
 async def setup(bot):
     await bot.add_cog(ReporteIncumplimiento(bot))
