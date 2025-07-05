@@ -1,5 +1,9 @@
 import discord
 import logging
+import os
+
+# Obtener el ID del canal de logs desde la variable de entorno
+CANAL_LOGS = int(os.getenv("CANAL_LOGS"))
 
 # Crear un logger centralizado
 logger = logging.getLogger("discord")
@@ -20,8 +24,8 @@ logger.addHandler(console_handler)
 
 # Función para loguear los mensajes en el canal de Discord
 async def log_discord(bot, message, level="info", title="Log"):
-    # Obtener el canal de logs desde las variables de entorno o como está configurado
-    log_channel = bot.get_channel(CANAL_LOGS)  # Cambia esto con el ID del canal de logs
+    # Obtener el canal de logs usando la variable de entorno
+    log_channel = bot.get_channel(CANAL_LOGS)  # Usará el ID del canal de logs desde la variable de entorno
     if log_channel:
         embed = discord.Embed(
             title=title,
