@@ -46,6 +46,8 @@ async def log_discord(bot, message, status="Cargando el bot", title="Resumen de 
             # Si el mensaje ya existe, actualizarlo
             await log_message.edit(embed=embed)
 
+    return log_message  # Devolvemos el mensaje creado o editado
+
 # Función para manejar los logs de Railway y Discord
 def custom_log(bot, status, message, title=""):
     if status == "warning":
@@ -59,4 +61,4 @@ def custom_log(bot, status, message, title=""):
 
     # Loguear en Discord también si el bot está disponible
     if bot:
-        bot.loop.create_task(log_discord(bot, message, status, title))
+        return bot.loop.create_task(log_discord(bot, message, status, title))  # Devolver la tarea que se crea
