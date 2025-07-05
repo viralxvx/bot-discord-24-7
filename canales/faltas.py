@@ -1,6 +1,6 @@
 import os
 from discord.ext import commands
-from discord import Webhook, AsyncWebhookAdapter
+from discord import Webhook
 import discord
 import aiohttp
 import asyncio
@@ -69,7 +69,7 @@ class Faltas(commands.Cog):
             total = 0
             bloques = [list(user_ids)[i:i + 5] for i in range(0, len(user_ids), 5)]
             async with aiohttp.ClientSession() as session:
-                webhook = Webhook.from_url(self.webhook_url, adapter=AsyncWebhookAdapter(session))
+                webhook = Webhook.from_url(self.webhook_url, session=session)
                 for bloque in bloques:
                     for user_id in bloque:
                         async with self.limiter:
