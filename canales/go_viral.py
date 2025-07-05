@@ -64,13 +64,14 @@ class GoViral(commands.Cog):
 
     async def preload_apoyos_reacciones(self):
         await self.bot.wait_until_ready()
+        await asyncio.sleep(5)  # Espera 5 segundos para asegurar que todo esté cargado
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
             print("❌ [GO-VIRAL] No se encontró el canal para cargar reacciones.")
             return
         print("🔄 [GO-VIRAL] Sincronizando reacciones 🔥 antiguas en Redis y limpiando reacciones no permitidas...")
         try:
-            mensajes = [msg async for msg in canal.history(limit=100, oldest_first=False)]
+            mensajes = [msg async for msg in canal.history(limit=None, oldest_first=False)]
             for msg in mensajes:
                 for reaction in msg.reactions:
                     # Limpia cualquier reacción que NO sea 🔥 o 👍
