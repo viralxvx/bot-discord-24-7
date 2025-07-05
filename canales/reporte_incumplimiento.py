@@ -3,17 +3,8 @@ from discord.ext import commands
 from discord import ui
 from datetime import datetime, timezone
 import redis
-import asyncio
-import logging
 from config import CANAL_REPORTE_ID, CANAL_LOGS_ID, REDIS_URL
-
-# ----- Configura tu logger para Railway y consola -----
-logger = logging.getLogger("reporte_incumplimiento")
-logger.setLevel(logging.INFO)
-if not logger.hasHandlers():
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter('[%(asctime)s][%(levelname)s] %(message)s'))
-    logger.addHandler(handler)
+from utils.logger import log_discord  # ← NUEVO para centralizar logs
 
 # ---------------------- TEXTOS ----------------------
 TITULO_INSTRUCCIONES = "🚨 Reporte de Incumplimiento"
@@ -30,13 +21,11 @@ DESCRIPCION_INSTRUCCIONES = (
 )
 FOOTER = "VXbot | Sistema automatizado de reportes"
 
-# Menú desplegable opciones
 REPORTE_MOTIVOS = [
     discord.SelectOption(label="No apoyó en 𝕏", description="No cumplió con el apoyo requerido", value="no_apoyo"),
     discord.SelectOption(label="Otro (explica abajo)", description="Otra causa, requiere explicación", value="otro"),
 ]
 
-# ----- ETAPAS Y MENSAJES (puedes mover a /mensajes/ luego) -----
 ADVERTENCIA_1 = (
     "🚨 **Advertencia oficial**\n"
     "Hemos recibido un reporte indicando que **no apoyaste correctamente** a un compañero en X.\n\n"
@@ -63,20 +52,16 @@ AGRADECIMIENTO_REPORTANTE = (
 AGRADECIMIENTO_REPORTADO = (
     "🤝 El reporte sobre tu apoyo en X ha sido cerrado. Recuerda siempre cumplir para evitar sanciones. ¡Estamos para crecer juntos!"
 )
-
 INSTRUCCIONES_DM_REPORTANTE = (
     "🔎 **Tu reporte ha sido abierto.**\nTe avisaremos de cada avance.\nCuando el usuario regularice, debes confirmar aquí."
 )
 
-# ---- Función util para fechas -----
 def ahora_dt():
     return datetime.now(timezone.utc)
 
 def fecha_str():
     dt = ahora_dt().astimezone()  # Puedes adaptar zona horaria aquí si lo deseas
     return dt.strftime('%Y-%m-%d %H:%M:%S')
-
-# -------------- COG PRINCIPAL --------------
 
 class ReporteIncumplimiento(commands.Cog):
     def __init__(self, bot):
@@ -88,7 +73,7 @@ class ReporteIncumplimiento(commands.Cog):
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_REPORTE_ID)
         if not canal:
-            logger.error("No se encontró el canal de reportes.")
+            await log_discord(self.bot, "❌ No se encontró el canal de reportes.", nivel="error", titulo="Reporte incumplimiento")
             return
 
         hash_key = "reporte_incumplimiento:instrucciones_hash"
@@ -109,14 +94,12 @@ class ReporteIncumplimiento(commands.Cog):
         if msg_id_guardado and hash_guardado == hash_actual:
             try:
                 mensaje = await canal.fetch_message(int(msg_id_guardado))
-                # Si todo coincide no hacemos nada
                 if mensaje and mensaje.embeds and mensaje.embeds[0].description == DESCRIPCION_INSTRUCCIONES:
-                    logger.info("Mensaje de instrucciones ya está actualizado.")
+                    await log_discord(self.bot, "Mensaje de instrucciones ya está actualizado.", nivel="info")
                     return
             except Exception as e:
-                logger.warning(f"No se pudo recuperar mensaje anterior de instrucciones: {e}")
+                await log_discord(self.bot, f"No se pudo recuperar mensaje anterior: {e}", nivel="warning")
 
-        # Editar si ya existe, sino crear y fijar
         msg = None
         if msg_id_guardado:
             try:
@@ -125,7 +108,7 @@ class ReporteIncumplimiento(commands.Cog):
                     await mensaje.edit(embed=embed, view=ReporteMenuView(self))
                     msg = mensaje
             except Exception as e:
-                logger.warning(f"No se pudo editar mensaje anterior: {e}")
+                await log_discord(self.bot, f"No se pudo editar mensaje anterior: {e}", nivel="warning")
 
         if not msg:
             msg = await canal.send(embed=embed, view=ReporteMenuView(self))
@@ -133,17 +116,14 @@ class ReporteIncumplimiento(commands.Cog):
 
         self.redis.set(hash_key, hash_actual)
         self.redis.set(msg_id_key, str(msg.id))
-        logger.info("Instrucciones del canal de reporte actualizadas y fijadas.")
+        await log_discord(self.bot, "Instrucciones del canal de reporte actualizadas y fijadas.", nivel="success")
 
-    # --- Método para crear reporte (llamado desde el menú) ---
     async def crear_reporte(self, reportante: discord.Member, motivo: str, explicacion: str = None):
         canal = self.bot.get_channel(CANAL_REPORTE_ID)
         canal_logs = self.bot.get_channel(CANAL_LOGS_ID)
         report_id = self.redis.incr("reporte_incumplimiento:contador")
         clave_reporte = f"reporte_incumplimiento:reporte:{report_id}"
 
-        # Paso 1: preguntar a quién reporta (solo miembros humanos)
-        # Utiliza un modal de Discord para pedir el @usuario (autocomplete sería más pro, pero así es seguro)
         class ModalUsuario(ui.Modal, title="¿A quién reportas?"):
             usuario = ui.TextInput(label="Menciona al usuario o pon su ID", style=discord.TextStyle.short)
             razon = None
@@ -172,7 +152,6 @@ class ReporteIncumplimiento(commands.Cog):
 
                 razon_text = self.razon.value.strip() if self.razon else explicacion
 
-                # Guardar el reporte en Redis
                 self_cog = self.children[0].cog_ref
                 data_reporte = {
                     "id": report_id,
@@ -187,7 +166,6 @@ class ReporteIncumplimiento(commands.Cog):
                 }
                 self_cog.redis.hset(clave_reporte, mapping=data_reporte)
 
-                # Notificar en canal (mensaje temporal)
                 embed = discord.Embed(
                     title=f"🔎 Reporte #{report_id} abierto",
                     description=f"{reportante.mention} ha reportado a {target.mention}\nMotivo: {motivo}\nFecha: {fecha_str()}",
@@ -195,11 +173,10 @@ class ReporteIncumplimiento(commands.Cog):
                 )
                 embed.set_footer(text="Este aviso se eliminará en 60s")
                 msg = await canal.send(embed=embed, delete_after=60)
-                logger.info(f"Reporte #{report_id} abierto por {reportante.display_name} contra {target.display_name}")
+                await log_discord(self_cog.bot, f"Reporte #{report_id} abierto por {reportante.display_name} contra {target.display_name}", nivel="info", titulo="Reporte abierto")
                 if canal_logs:
                     await canal_logs.send(embed=embed)
 
-                # DM al reportante (con botón de confirmar o cancelar)
                 embed_dm = discord.Embed(
                     title=f"🔎 Reporte #{report_id} abierto",
                     description=f"Has reportado a {target.mention} por: {motivo}\n\n{INSTRUCCIONES_DM_REPORTANTE}",
@@ -207,7 +184,6 @@ class ReporteIncumplimiento(commands.Cog):
                 )
                 await reportante.send(embed=embed_dm, view=ReporteControlView(self_cog, report_id, reportante.id, target.id))
 
-                # DM al reportado (advertencia y botón de confirmar que cumplió)
                 embed_advert = discord.Embed(
                     title="🚨 Has recibido un reporte de apoyo",
                     description=f"Motivo: {motivo}\n\n{ADVERTENCIA_1}",
@@ -215,14 +191,11 @@ class ReporteIncumplimiento(commands.Cog):
                 )
                 await target.send(embed=embed_advert, view=ReportadoControlView(self_cog, report_id, reportante.id, target.id))
 
-        # Lanza el modal
         modal = ModalUsuario()
-        # Hack para acceder a la cog en el modal
         modal.children[0].cog_ref = self
         await reportante.send("📝 Completa el reporte indicando a quién deseas reportar:")
         await reportante.send_modal(modal)
 
-# --- VIEW DEL MENÚ PRINCIPAL (instrucciones) ---
 class ReporteMenuView(ui.View):
     def __init__(self, cog):
         super().__init__(timeout=None)
@@ -243,7 +216,6 @@ class ReporteMotivoSelect(ui.Select):
         motivo = self.values[0]
         await self.cog.crear_reporte(interaction.user, motivo)
 
-# --- VIEW PARA EL REPORTANTE: Confirmar/Cerrar el reporte ---
 class ReporteControlView(ui.View):
     def __init__(self, cog, report_id, reportante_id, reportado_id):
         super().__init__(timeout=None)
@@ -263,13 +235,11 @@ class ReporteControlView(ui.View):
         self.cog.redis.hset(clave, "etapa", "resuelto")
         self.cog.redis.hset(clave, "historial", f"{self.cog.redis.hget(clave, 'historial')}\nCerrado: {fecha_str()}")
 
-        # Notificar a ambos por DM
         reportante = await self.cog.bot.fetch_user(int(self.reportante_id))
         reportado = await self.cog.bot.fetch_user(int(self.reportado_id))
         await reportante.send(AGRADECIMIENTO_REPORTANTE)
         await reportado.send(AGRADECIMIENTO_REPORTADO)
 
-        # Logs
         canal_logs = self.cog.bot.get_channel(CANAL_LOGS_ID)
         embed = discord.Embed(
             title=f"✅ Reporte #{self.report_id} cerrado",
@@ -279,6 +249,7 @@ class ReporteControlView(ui.View):
         )
         if canal_logs:
             await canal_logs.send(embed=embed)
+        await log_discord(self.cog.bot, f"Reporte #{self.report_id} cerrado por {reportante.display_name}.", nivel="success", titulo="Reporte cerrado")
         await interaction.response.send_message("Reporte cerrado y ambas partes notificadas.", ephemeral=True)
         self.stop()
 
@@ -292,7 +263,6 @@ class ReporteControlView(ui.View):
         self.cog.redis.hset(clave, "estado", "cancelado")
         self.cog.redis.hset(clave, "etapa", "cancelado")
         self.cog.redis.hset(clave, "historial", f"{self.cog.redis.hget(clave, 'historial')}\nCancelado: {fecha_str()}")
-        # Notificar por DM y logs
         reportante = await self.cog.bot.fetch_user(int(self.reportante_id))
         await reportante.send("Reporte cancelado por ti. No se tomaron acciones.")
         canal_logs = self.cog.bot.get_channel(CANAL_LOGS_ID)
@@ -304,10 +274,10 @@ class ReporteControlView(ui.View):
         )
         if canal_logs:
             await canal_logs.send(embed=embed)
+        await log_discord(self.cog.bot, f"Reporte #{self.report_id} cancelado.", nivel="warning", titulo="Reporte cancelado")
         await interaction.response.send_message("Reporte cancelado y registrado en logs.", ephemeral=True)
         self.stop()
 
-# --- VIEW PARA EL REPORTADO: Confirmar que cumplió (luego, el reportante debe validar) ---
 class ReportadoControlView(ui.View):
     def __init__(self, cog, report_id, reportante_id, reportado_id):
         super().__init__(timeout=None)
@@ -329,13 +299,13 @@ class ReportadoControlView(ui.View):
         self.cog.redis.hset(clave, "historial", f"{self.cog.redis.hget(clave, 'historial')}\nIntento de cumplimiento: {fecha_str()}")
         self.cog.redis.hset(clave, "intentos", str(self.intentos))
 
-        # Notificar al reportante para validar
         reportante = await self.cog.bot.fetch_user(int(self.reportante_id))
         await reportante.send(
             f"⚠️ El usuario {interaction.user.mention} dice que ya cumplió con el apoyo en X.\n\n"
             "¿Es correcto? Si es así, usa el botón de confirmar cumplimiento en tu DM para cerrar el reporte. "
             "Si no es así, puedes rechazar el intento."
         )
+        await log_discord(self.cog.bot, f"El usuario {interaction.user.display_name} afirma que cumplió con el apoyo (Intento {self.intentos}).", nivel="info")
         await interaction.response.send_message("Notificamos al reportante para que valide. Si acepta, se cerrará el reporte.", ephemeral=True)
 
     @ui.button(label="❌ Rechazar (no cumplió)", style=discord.ButtonStyle.danger)
@@ -348,22 +318,18 @@ class ReportadoControlView(ui.View):
         self.intentos = int(self.cog.redis.hget(clave, "intentos") or 1)
         self.cog.redis.hset(clave, "etapa", f"rechazo_{self.intentos}")
         self.cog.redis.hset(clave, "historial", f"{self.cog.redis.hget(clave, 'historial')}\nRechazo intento: {fecha_str()}")
-        # Lógica de advertencias/baneos/expulsión
-        # Si rechaza 3 veces: aplicar sanción progresiva
         if self.intentos == 1:
             msg = RECORDATORIO_2
         elif self.intentos == 2:
             msg = BANEO_24H
-            # Aquí puedes llamar lógica de ban temporal
         elif self.intentos == 3:
             msg = BANEO_7D
-            # Aquí puedes llamar lógica de ban 7d
         elif self.intentos >= 4:
             msg = EXPULSION_FINAL
             self.cog.redis.hset(clave, "estado", "expulsado")
-            # Aquí puedes llamar lógica de expulsión real
+        else:
+            msg = RECORDATORIO_2
 
-        # Notificar al reportado (y logs)
         reportado = await self.cog.bot.fetch_user(int(self.reportado_id))
         await reportado.send(msg)
         canal_logs = self.cog.bot.get_channel(CANAL_LOGS_ID)
@@ -375,8 +341,8 @@ class ReportadoControlView(ui.View):
         )
         if canal_logs:
             await canal_logs.send(embed=embed)
+        await log_discord(self.cog.bot, f"Acción tomada en reporte #{self.report_id}: {msg[:50]}", nivel="warning")
         await interaction.response.send_message("Has registrado el rechazo y se notificó al reportado. El caso sigue abierto.", ephemeral=True)
 
-# --- SETUP ---
 async def setup(bot):
     await bot.add_cog(ReporteIncumplimiento(bot))
