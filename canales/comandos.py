@@ -22,13 +22,18 @@ class CanalComandos(commands.Cog):
         try:
             print("🧹 Limpiando mensajes antiguos del canal de comandos...")
 
-            # Limitar la cantidad de mensajes que se eliminan a la vez para evitar el rate limit
+            # Limitar la cantidad de mensajes que se eliminan por vez para evitar rate limit
             await canal.purge(limit=50)  # Limita a borrar 50 mensajes por vez
             print("✅ Canal de comandos limpio.")
 
-            # Intentar enviar las instrucciones, con reintentos en caso de rate limiting
-            await self.enviar_mensaje_con_reintento(canal, INSTRUCCIONES_COMANDOS)
-            print("📌 Instrucciones de uso enviadas.")
+            # Verificar si el mensaje de instrucciones ya fue enviado
+            mensajes = [msg async for msg in canal.history(limit=10)]
+            if not any(msg.content == INSTRUCCIONES_COMANDOS for msg in mensajes):
+                # Si no hay un mensaje con las instrucciones, enviamos uno nuevo
+                await self.enviar_mensaje_con_reintento(canal, INSTRUCCIONES_COMANDOS)
+                print("📌 Instrucciones de uso enviadas.")
+            else:
+                print("📌 Las instrucciones ya están enviadas en el canal de comandos.")
         except Exception as e:
             print(f"❌ Error al configurar el canal de comandos: {e}")
 
