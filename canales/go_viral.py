@@ -34,7 +34,7 @@ class GoViral(commands.Cog):
         if not canal:
             await log_discord(self.bot, "❌ [GO-VIRAL] No se encontró el canal para limpiar reacciones.", "error", scope="go_viral")
             return
-        await log_discord(self.bot, "🔄 [GO-VIRAL] Limpiando reacciones no permitidas en los últimos mensajes...", "info", scope="go_viral")
+        await log_discord(self.bot, "🔄 [GO-VIRAL] Limpiando reacciones no permitidas en los últimos 100 mensajes...", "info", scope="go_viral")
         try:
             async for msg in canal.history(limit=100, oldest_first=False):
                 for reaction in msg.reactions:
@@ -45,7 +45,7 @@ class GoViral(commands.Cog):
                                     await reaction.remove(user)
                                 except Exception:
                                     pass
-            await log_discord(self.bot, "✅ [GO-VIRAL] Reacciones no permitidas eliminadas.", "success", scope="go_viral")
+            await log_discord(self.bot, "✅ [GO-VIRAL] Reacciones no permitidas eliminadas en los últimos 100 mensajes.", "success", scope="go_viral")
         except Exception as e:
             await log_discord(self.bot, f"❌ [GO-VIRAL] Error limpiando reacciones: {e}", "error", scope="go_viral")
 
