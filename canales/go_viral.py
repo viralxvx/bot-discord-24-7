@@ -10,7 +10,7 @@ from mensajes.viral_texto import (
     TITULO_SOLO_REACCION_EDU, DESCRIPCION_SOLO_REACCION_EDU,
     TITULO_SOLO_REACCION_DM, DESCRIPCION_SOLO_REACCION_DM
 )
-from datetime import datetime, timezone
+from datetime import datetime
 import redis
 import asyncio
 import re
@@ -27,9 +27,14 @@ async def validar_imagen_url(url):
         return False
 
 async def enviar_mensaje_con_reintento(canal, embed):
+    # Valida que solo se envíe UN embed
+    if isinstance(embed, list):
+        await log_discord(None, f"❌ [GO-VIRAL] ERROR: Se intentó enviar una lista de embeds en vez de uno solo.", "error", scope="go_viral")
+        return None
     for intento in range(5):
         try:
-            return await canal.send(embed=embed)
+            msg = await canal.send(embed=embed)
+            return msg
         except discord.errors.HTTPException as e:
             if e.code == 429:
                 wait_time = 2 ** intento
