@@ -202,7 +202,7 @@ async def on_reaction_add(self, reaction, user):
             await log_discord(self.bot, f"❌ [GO-VIRAL] {user.mention} intentó usar una reacción no permitida ({reaction.emoji}) en el mensaje {mensaje.id}. Se eliminó automáticamente.", "warning", scope="go_viral")
         except Exception as e:
             await log_discord(self.bot, f"⚠️ [GO-VIRAL] No se pudo eliminar reacción no permitida: {e}", "error", scope="go_viral")
-
+            
     # ------------ AUXILIARES ------------
     async def obtener_publicaciones_previas(self, message):
         """
