@@ -25,7 +25,12 @@ class GoViral(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+        # Tarea limpieza al arrancar
         bot.loop.create_task(self.limpiar_reacciones_no_permitidas())
+        # Tarea limpieza periódica (ajustable en minutos)
+        self.tiempo_limpiar_reacciones = 5 * 60  # 5 minutos (en segundos)
+        bot.loop.create_task(self.limpiar_reacciones_no_permitidas_periodicamente())
+        # Sincroniza apoyos en arranque
         bot.loop.create_task(self.preload_apoyos_reacciones())
 
     async def limpiar_reacciones_no_permitidas(self):
@@ -34,7 +39,7 @@ class GoViral(commands.Cog):
         if not canal:
             await log_discord(self.bot, "❌ [GO-VIRAL] No se encontró el canal para limpiar reacciones.", "error", scope="go_viral")
             return
-        await log_discord(self.bot, "🔄 [GO-VIRAL] Limpiando reacciones no permitidas en los últimos 100 mensajes...", "info", scope="go_viral")
+        await log_discord(self.bot, "🔄 [GO-VIRAL] Limpiando reacciones no permitidas en los últimos mensajes...", "info", scope="go_viral")
         try:
             async for msg in canal.history(limit=100, oldest_first=False):
                 for reaction in msg.reactions:
@@ -43,11 +48,35 @@ class GoViral(commands.Cog):
                             if not user.bot:
                                 try:
                                     await reaction.remove(user)
+                                    await log_discord(self.bot, f"🔴 [GO-VIRAL] Reacción {reaction.emoji} de {user.mention} eliminada (limpieza arranque).", "warning", scope="go_viral")
                                 except Exception:
                                     pass
             await log_discord(self.bot, "✅ [GO-VIRAL] Reacciones no permitidas eliminadas en los últimos 100 mensajes.", "success", scope="go_viral")
         except Exception as e:
             await log_discord(self.bot, f"❌ [GO-VIRAL] Error limpiando reacciones: {e}", "error", scope="go_viral")
+
+    async def limpiar_reacciones_no_permitidas_periodicamente(self):
+        await self.bot.wait_until_ready()
+        canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
+        if not canal:
+            await log_discord(self.bot, "❌ [GO-VIRAL] No se encontró el canal para limpieza periódica de reacciones.", "error", scope="go_viral")
+            return
+        while True:
+            try:
+                async for msg in canal.history(limit=100, oldest_first=False):
+                    for reaction in msg.reactions:
+                        if str(reaction.emoji) not in EMOJIS_PERMITIDOS:
+                            async for user in reaction.users():
+                                if not user.bot:
+                                    try:
+                                        await reaction.remove(user)
+                                        await log_discord(self.bot, f"🔴 [GO-VIRAL] Reacción {reaction.emoji} de {user.mention} eliminada (limpieza periódica).", "warning", scope="go_viral")
+                                    except Exception:
+                                        pass
+                await log_discord(self.bot, "✅ [GO-VIRAL] Reacciones no permitidas eliminadas (limpieza periódica).", "success", scope="go_viral")
+            except Exception as e:
+                await log_discord(self.bot, f"❌ [GO-VIRAL] Error en limpieza periódica: {e}", "error", scope="go_viral")
+            await asyncio.sleep(self.tiempo_limpiar_reacciones)  # Ajustable: 5 minutos
 
     async def preload_apoyos_reacciones(self):
         await self.bot.wait_until_ready()
@@ -77,13 +106,6 @@ class GoViral(commands.Cog):
             return
 
         user_id = str(message.author.id)
-
-        # 👇 OVERRIDE: Si el usuario tiene override, deja publicar (y lo borra para que sea de un solo uso)
-        if self.redis.get(f"go_viral:override:{user_id}") == "1":
-            await log_discord(self.bot, f"✅ [GO-VIRAL] {message.author} tiene override. Puede publicar sin restricciones.", "info", scope="go_viral")
-            self.redis.delete(f"go_viral:override:{user_id}")
-            await self.bot.process_commands(message)
-            return
 
         # 1️⃣ Verifica formato de URL
         url = limpiar_url_tweet(message.content)
@@ -186,21 +208,6 @@ class GoViral(commands.Cog):
 
         await log_discord(self.bot, f"✅ [GO-VIRAL] Mensaje válido de {message.author}: {url}", "info", scope="go_viral")
         await self.bot.process_commands(message)
-
-    @commands.Cog.listener()
-    async def on_reaction_add(self, reaction, user):
-        print(f"DEBUG: Se detectó reacción {reaction.emoji} de {user} en mensaje {reaction.message.id}")
-        if user.bot:
-            return
-        mensaje = reaction.message
-        if mensaje.channel.id != CANAL_OBJETIVO_ID:
-            return
-        if str(reaction.emoji) not in EMOJIS_PERMITIDOS:
-            try:
-                await reaction.remove(user)
-                await log_discord(self.bot, f"❌ [GO-VIRAL] {user.mention} intentó usar una reacción no permitida ({reaction.emoji}) en el mensaje {mensaje.id}. Se eliminó automáticamente.", "warning", scope="go_viral")
-            except Exception as e:
-                await log_discord(self.bot, f"⚠️ [GO-VIRAL] No se pudo eliminar reacción no permitida: {e}", "error", scope="go_viral")
 
     # ------------ AUXILIARES ------------
     async def obtener_publicaciones_previas(self, message):
