@@ -78,6 +78,13 @@ class GoViral(commands.Cog):
 
         user_id = str(message.author.id)
 
+        # 👇 OVERRIDE: Si el usuario tiene override, deja publicar (y lo borra para que sea de un solo uso)
+        if self.redis.get(f"go_viral:override:{user_id}") == "1":
+            await log_discord(self.bot, f"✅ [GO-VIRAL] {message.author} tiene override. Puede publicar sin restricciones.", "info", scope="go_viral")
+            self.redis.delete(f"go_viral:override:{user_id}")
+            await self.bot.process_commands(message)
+            return
+
         # 1️⃣ Verifica formato de URL
         url = limpiar_url_tweet(message.content)
         if not url:
