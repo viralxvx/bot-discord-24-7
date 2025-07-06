@@ -63,11 +63,13 @@ class ReporteMotivoSelect(ui.Select):
     def __init__(self, cog):
         super().__init__(
             placeholder="Selecciona el motivo del reporte...",
-            min_values=1, max_values=1,
+            min_values=1,
+            max_values=1,
             options=[
                 discord.SelectOption(label="No apoyó en 𝕏", description="No cumplió con el apoyo requerido", value="no_apoyo"),
                 discord.SelectOption(label="Otro (explica abajo)", description="Otra causa, requiere explicación", value="otro"),
             ],
+            custom_id="reporte_motivo_select_persistente"  # <-- FIX PERSISTENTE
         )
         self.cog = cog
 
