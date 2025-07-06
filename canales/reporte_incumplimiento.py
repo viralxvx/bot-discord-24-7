@@ -91,24 +91,34 @@ class ReporteIncumplimiento(commands.Cog):
 
     async def init_panel_instrucciones(self):
         await self.bot.wait_until_ready()
-        # Registro de View persistente para menú del canal (¡blindaje contra "interacción fallida"!)
         self.bot.add_view(ReporteMenuView(self))
         canal = self.bot.get_channel(CANAL_REPORTE_ID)
         if not canal:
             await log_discord(self.bot, "❌ No se encontró el canal de reportes.")
             return
 
-        # El panel de instrucciones se debe enviar o editar aquí. (Solo ejemplo, asume que ya existe el mensaje).
-        # Si quieres actualizar el mensaje de instrucciones, puedes hacerlo así:
-        """
+        # 1. Desfijar mensajes anteriores
+        pinned = await canal.pins()
+        for msg in pinned:
+            try:
+                await msg.unpin()
+            except Exception:
+                pass
+
+        # 2. Enviar mensaje de instrucciones y menú
         embed = discord.Embed(
             title=MSG.TITULO_PANEL_INSTRUCCIONES,
             description=MSG.DESCRIPCION_PANEL_INSTRUCCIONES,
             color=discord.Color.red()
         )
         embed.set_footer(text=MSG.FOOTER_GENERAL)
-        await canal.send(embed=embed, view=ReporteMenuView(self))
-        """
+        panel_msg = await canal.send(embed=embed, view=ReporteMenuView(self))
+
+        # 3. Fijar el nuevo mensaje
+        try:
+            await panel_msg.pin()
+        except Exception:
+            pass
 
     # --- CREAR REPORTE O AGRUPAR ---
     async def crear_o_agrup_reporte(self, reportante: discord.Member, reportado: discord.Member, motivo, explicacion):
