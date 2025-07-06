@@ -1,18 +1,24 @@
 import os
 from discord.ext import commands
-from discord import Webhook
 import discord
 import aiohttp
 import asyncio
 import redis
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from aiolimiter import AsyncLimiter
 from discord.errors import HTTPException
 from config import CANAL_FALTAS_ID, REDIS_URL
 from utils.logger import log_discord
+from mensajes.viral_texto import (
+    TITULO_SIN_LIKE_DM, DESCRIPCION_SIN_LIKE_DM,
+    TITULO_APOYO_9_DM, DESCRIPCION_APOYO_9_DM,
+    TITULO_INTERVALO_DM, DESCRIPCION_INTERVALO_DM,
+)
 
-def obtener_estado(redis, user_id):
-    estado = redis.hget(f"usuario:{user_id}", "estado")
+# --- FUNCIONES INTERNAS ---
+
+def obtener_estado(redis_client, user_id):
+    estado = redis_client.hget(f"usuario:{user_id}", "estado")
     if not estado:
         return "Activo"
     estado = estado.lower()
@@ -22,16 +28,80 @@ def obtener_estado(redis, user_id):
         "desercion": "Deserción"
     }.get(estado, "Activo")
 
-def obtener_faltas(redis, user_id):
+def obtener_faltas(redis_client, user_id):
     try:
-        total = int(redis.hget(f"usuario:{user_id}", "faltas_totales") or 0)
-        mes = int(redis.hget(f"usuario:{user_id}", "faltas_mes") or 0)
+        total = int(redis_client.hget(f"usuario:{user_id}", "faltas_totales") or 0)
+        mes = int(redis_client.hget(f"usuario:{user_id}", "faltas_mes") or 0)
         return total, mes
     except:
         return 0, 0
 
 def generar_hash_datos(estado, faltas_total, faltas_mes):
     return f"{estado}:{faltas_total}:{faltas_mes}"
+
+def siguiente_bloqueo(total_faltas):
+    if total_faltas == 1:
+        return 0  # solo aviso DM
+    elif total_faltas == 2:
+        return 24 * 3600  # 24 horas
+    elif total_faltas == 3:
+        return 7 * 24 * 3600  # 1 semana
+    return 0
+
+async def enviar_aviso_dm(bot, user_id, motivo):
+    # Selecciona el mensaje DM según el motivo
+    try:
+        user = await bot.fetch_user(int(user_id))
+        if not user:
+            return
+        if motivo == "No validar publicación con 👍 en 2 minutos":
+            embed = discord.Embed(
+                title=TITULO_SIN_LIKE_DM,
+                description=DESCRIPCION_SIN_LIKE_DM,
+                color=discord.Color.orange()
+            )
+            await user.send(embed=embed)
+        elif motivo == "No apoyar publicaciones anteriores":
+            embed = discord.Embed(
+                title=TITULO_APOYO_9_DM,
+                description=DESCRIPCION_APOYO_9_DM,
+                color=discord.Color.orange()
+            )
+            await user.send(embed=embed)
+        elif motivo == "No respetar intervalo de publicaciones":
+            embed = discord.Embed(
+                title=TITULO_INTERVALO_DM,
+                description=DESCRIPCION_INTERVALO_DM,
+                color=discord.Color.orange()
+            )
+            await user.send(embed=embed)
+        else:
+            await user.send(f"Has recibido una falta automática por: {motivo}")
+    except Exception:
+        pass
+
+# --- FUNCIÓN GLOBAL DE REGISTRO DE FALTA ---
+
+async def registrar_falta(user_id, motivo):
+    """
+    Esta función debe ser llamada por cualquier módulo que detecte una infracción
+    """
+    redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+    total = int(redis_client.hincrby(f"usuario:{user_id}", "faltas_totales", 1))
+    mes = int(redis_client.hincrby(f"usuario:{user_id}", "faltas_mes", 1))
+    now = datetime.now(timezone.utc)
+    redis_client.hset(f"usuario:{user_id}", "ultima_falta", str(now.timestamp()))
+    # Bloqueos automáticos por faltas
+    bloqueo = siguiente_bloqueo(total)
+    if bloqueo > 0:
+        redis_client.set(f"go_viral:bloqueado:{user_id}", "1", ex=bloqueo)
+    # Logs y avisos
+    await log_discord(None, f"Usuario {user_id} recibió falta por: {motivo} (Total: {total}, Mes: {mes})", "warning", scope="faltas")
+    # Notificación DM (opcional según tipo de falta)
+    # (No hay acceso directo a bot, por eso el DM se hace solo desde el cog abajo)
+    return total, bloqueo
+
+# --- PANEL FALTAS ---
 
 class Faltas(commands.Cog):
     def __init__(self, bot):
@@ -54,7 +124,6 @@ class Faltas(commands.Cog):
         try:
             guild = canal.guild
             user_ids = set()
-
             async for member in guild.fetch_members(limit=None):
                 if not member.bot:
                     user_ids.add(member.id)
@@ -69,7 +138,7 @@ class Faltas(commands.Cog):
             total = 0
             bloques = [list(user_ids)[i:i + 5] for i in range(0, len(user_ids), 5)]
             async with aiohttp.ClientSession() as session:
-                webhook = Webhook.from_url(self.webhook_url, session=session)
+                webhook = discord.Webhook.from_url(self.webhook_url, session=session)
                 for bloque in bloques:
                     for user_id in bloque:
                         async with self.limiter:
