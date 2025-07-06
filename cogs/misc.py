@@ -5,16 +5,14 @@ class Misc(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(name="ping")
-    async def ping(self, ctx):
-        """Responde con 'Pong!' y la latencia del bot."""
+    @discord.app_commands.command(name="ping", description="Verifica la latencia del bot.")
+    async def ping(self, interaction: discord.Interaction):
         latency = round(self.bot.latency * 1000)
-        await ctx.send(f"🏓 Pong! Latencia: {latency}ms")
+        await interaction.response.send_message(f"🏓 Pong! Latencia: {latency}ms", ephemeral=True)
 
-    @commands.command(name="saludo")
-    async def saludo(self, ctx):
-        """Envía un saludo amigable."""
-        await ctx.send("¡Hola! Soy VXbot, siempre listo para ayudarte.")
+    @discord.app_commands.command(name="saludo", description="Envía un saludo amigable.")
+    async def saludo(self, interaction: discord.Interaction):
+        await interaction.response.send_message("¡Hola! Soy VXbot, siempre listo para ayudarte.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Misc(bot))
