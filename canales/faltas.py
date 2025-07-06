@@ -133,7 +133,7 @@ class Faltas(commands.Cog):
             color=self.color_estado(estado)
         )
         embed.set_author(name=getattr(miembro, 'display_name', 'Miembro'), icon_url=avatar_url)
-        embed.set_footer(text="Sistema automatizado de reputación pública", icon_url=avatar_url)
+        embed.set_footer(text="Sistema automatizado", icon_url=avatar_url)
         embed.timestamp = now
         return embed
 
