@@ -7,7 +7,7 @@ from mensajes.viral_texto import (
     TITULO_SIN_LIKE_EDU, DESCRIPCION_SIN_LIKE_EDU,
     TITULO_SOLO_URL_EDU, DESCRIPCION_SOLO_URL_EDU,
 )
-from canales.faltas import registrar_falta  # Debes tener esta función accesible
+from canales.faltas import registrar_falta  # Asegúrate de que registrar_falta esté bien importada
 from utils.logger import log_discord
 from datetime import datetime, timezone
 import asyncio
@@ -33,6 +33,29 @@ def limpiar_url_tweet(texto):
 class GoViral(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        # Limpieza de reacciones no permitidas al iniciar (últimos 100 mensajes)
+        bot.loop.create_task(self.limpiar_reacciones_no_permitidas())
+
+    async def limpiar_reacciones_no_permitidas(self):
+        await self.bot.wait_until_ready()
+        canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
+        if not canal:
+            await log_discord(self.bot, "❌ [GO-VIRAL] No se encontró el canal para limpiar reacciones.", "error", scope="go_viral")
+            return
+        await log_discord(self.bot, "🔄 [GO-VIRAL] Limpiando reacciones no permitidas en los últimos mensajes...", "info", scope="go_viral")
+        try:
+            async for msg in canal.history(limit=100, oldest_first=False):
+                for reaction in msg.reactions:
+                    if str(reaction.emoji) not in EMOJIS_PERMITIDOS:
+                        async for user in reaction.users():
+                            if not user.bot:
+                                try:
+                                    await reaction.remove(user)
+                                except Exception:
+                                    pass
+            await log_discord(self.bot, "✅ [GO-VIRAL] Reacciones no permitidas eliminadas.", "success", scope="go_viral")
+        except Exception as e:
+            await log_discord(self.bot, f"❌ [GO-VIRAL] Error limpiando reacciones: {e}", "error", scope="go_viral")
 
     @commands.Cog.listener()
     async def on_message(self, message):
