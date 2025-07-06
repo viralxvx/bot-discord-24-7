@@ -32,3 +32,6 @@ CANAL_VICTORIAS_ID       = int(get_env_variable("CANAL_VICTORIAS"))
 CANAL_ESTRATEGIAS_ID     = int(get_env_variable("CANAL_ESTRATEGIAS"))
 CANAL_ENTRENAMIENTO_ID   = int(get_env_variable("CANAL_ENTRENAMIENTO"))
 CANAL_SOPORTE_ID         = int(get_env_variable("CANAL_SOPORTE"))
+
+# Emojis permitidos en el canal 🧵go-viral
+EMOJIS_PERMITIDOS = ["🔥", "👍"]
