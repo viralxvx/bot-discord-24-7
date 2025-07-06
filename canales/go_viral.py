@@ -136,7 +136,7 @@ class GoViral(commands.Cog):
         except discord.errors.Forbidden as e:
             await log_discord(self.bot, f"❌ [GO-VIRAL] Permisos insuficientes: {e}", "error", scope="go_viral")
         except discord.errors.NotFound as e:
-            await log_discord(self.bot, f"❌ [GO-VIRAL] Canal no encontrado: {e}", "error", scope="go_viral")
+            log_discord(self.bot, f"❌ [GO-VIRAL] Canal no encontrado: {e}", "error", scope="go_viral")
         except Exception as e:
             await log_discord(self.bot, f"❌ [GO-VIRAL] Error sincronizando reacciones: {e}", "error", scope="go_viral")
 
@@ -149,13 +149,10 @@ class GoViral(commands.Cog):
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
-            await log_discord(self.bot
-
-, f"❌ [GO-VIRAL] No se encontró el canal (ID {CANAL_OBJETIVO_ID})", "error", scope="go_viral")
+            await log_discord(self.bot, f"❌ [GO-VIRAL] No se encontró el canal (ID {CANAL_OBJETIVO_ID})", "error", scope="go_viral")
             return
 
         fecha = datetime.now().strftime("%Y-%m-%d")
-        descripcion = DESCRIPCION_FIJO.format(fe .strftime("%Y-%m-%d")
         descripcion = DESCRIPCION_FIJO.format(fecha=fecha)
         imagen_url = IMAGEN_URL if await validar_imagen_url(IMAGEN_URL) else None
         hash_nuevo = calcular_hash_embed(TITULO_FIJO, descripcion, imagen_url)
@@ -174,7 +171,7 @@ class GoViral(commands.Cog):
                         embed_actual.image.url if embed_actual.image else ""
                     )
                     if hash_actual == hash_nuevo:
-                        await log_discord(self.bot, "✅ [GO-VIRAL] Mensaje fijo actualizado.", "success", scope="go_viral")
+                        await log_discord(self.bot, "✅ [GO-VIRAL] Mensaje fijo ya está actualizado.", "success", scope="go_viral")
                         return
                     else:
                         embed_fijo = discord.Embed(
