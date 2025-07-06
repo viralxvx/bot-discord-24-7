@@ -2,7 +2,7 @@
 
 # --- MENSAJE FIJO (para fijar como reglas en el canal) ---
 TITULO_FIJO = "🧵 ¡Bienvenido a GO-VIRAL!"
-IMAGEN_URL = "https://drive.google.com/uc?export=download&id=1LGwse5dI_Q_PpQhhfpLBudteATKoy4Hj"
+IMAGEN_URL = "https://drive.google.com/file/d/1LGwse5dI_Q_PpQhhfpLBudteATKoy4Hj/view?usp=sharing"
 
 DESCRIPCION_FIJO = (
     "Este es el canal donde *todos nos apoyamos* para viralizar nuestro contenido en 𝕏 (Twitter).\n\n"
