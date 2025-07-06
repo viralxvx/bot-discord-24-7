@@ -21,6 +21,9 @@ EXTENSIONES = [
     "canales.inactividad",
     "canales.soporte_prorroga",
     "canales.go_viral",
+    "comandos.prorroga",
+    "comandos.override",
+    "canales.reporte_incumplimiento",
 ]
 
 log_message = None  # Mensaje embed en canal de logs
