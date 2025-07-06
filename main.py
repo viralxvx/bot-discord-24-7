@@ -24,6 +24,7 @@ EXTENSIONES = [
     "comandos.prorroga",
     "comandos.override",
     "canales.reporte_incumplimiento",
+    "cogs.misc",  # ← Agregamos el nuevo archivo aquí
 ]
 
 log_message = None  # Mensaje embed en canal de logs
@@ -90,13 +91,7 @@ async def on_ready():
         await asyncio.sleep(60)
         print("⏳ Bot sigue vivo...")
 
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
-    if message.content.lower() == "hola bot":
-        await message.channel.send("👋 ¡Hola, soy VXbot y estoy vivo!")
-    await bot.process_commands(message)
+# Ya NO hay handler global de on_message. Los Cogs funcionan de forma independiente.
 
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
