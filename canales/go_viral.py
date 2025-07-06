@@ -16,7 +16,7 @@ import re
 # -------------------------------
 # CONFIGURACIÓN DE REGLAS FÁCIL
 # -------------------------------
-MAX_APOYOS = 1        # Máximo de posts a apoyar antes de publicar
+MAX_APOYOS = 0        # Máximo de posts a apoyar antes de publicar
 MIN_TURNOS = 0        # Turnos mínimos de espera antes de publicar otra vez
 INTERVALO_HORAS = 0  # Horas máximas de espera si nadie publica (luego puedes publicar)
 
@@ -82,28 +82,28 @@ class GoViral(commands.Cog):
             return
 
         # 2️⃣ Verifica apoyos a publicaciones anteriores (máximo MAX_APOYOS)
-        posts_previos = await self.obtener_publicaciones_previas(message)
-        posts_a_apoyar = posts_previos[-MAX_APOYOS:]
-        apoyos_ok = True
-        for post in posts_a_apoyar:
-            if not await self.usuario_ya_apoyo(message.author, post):
-                apoyos_ok = False
-                break
+posts_previos = await self.obtener_publicaciones_previas(message)
+posts_a_apoyar = posts_previos[-MAX_APOYOS:] if MAX_APOYOS > 0 else []
+apoyos_ok = True
+for post in posts_a_apoyar:
+    if not await self.usuario_ya_apoyo(message.author, post):
+        apoyos_ok = False
+        break
 
-        if not apoyos_ok:
-            await message.delete()
-            embed = discord.Embed(
-                title=TITULO_APOYO_9_EDU,
-                description=DESCRIPCION_APOYO_9_EDU.format(usuario=message.author.mention),
-                color=discord.Color.orange()
-            )
-            try:
-                await message.author.send(embed=embed)
-            except:
-                pass
-            await registrar_falta(user_id, "No apoyar publicaciones anteriores")
-            await log_discord(self.bot, f"❌ [GO-VIRAL] {message.author} publicó sin apoyar los anteriores.", "warning", scope="go_viral")
-            return
+if not apoyos_ok:
+    await message.delete()
+    embed = discord.Embed(
+        title=TITULO_APOYO_9_EDU,
+        description=DESCRIPCION_APOYO_9_EDU.format(usuario=message.author.mention),
+        color=discord.Color.orange()
+    )
+    try:
+        await message.author.send(embed=embed)
+    except:
+        pass
+    await registrar_falta(user_id, "No apoyar publicaciones anteriores")
+    await log_discord(self.bot, f"❌ [GO-VIRAL] {message.author} publicó sin apoyar los anteriores.", "warning", scope="go_viral")
+    return
 
         # 3️⃣ Verifica intervalos de turnos/horas
         ultima_pub, turnos_entre = await self.ultima_publicacion_y_turnos(message)
