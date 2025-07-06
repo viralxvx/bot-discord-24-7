@@ -53,6 +53,33 @@ REPORTE_EXPULSION = True              # Si True: expulsión tras reincidencia
 def ahora_utc(): return datetime.now(timezone.utc)
 def fecha_str(): return ahora_utc().strftime('%Y-%m-%d %H:%M:%S')
 
+class ReporteMenuView(ui.View):
+    def __init__(self, cog):
+        super().__init__(timeout=None)
+        self.cog = cog
+        self.add_item(ReporteMotivoSelect(cog))
+
+class ReporteMotivoSelect(ui.Select):
+    def __init__(self, cog):
+        super().__init__(
+            placeholder="Selecciona el motivo del reporte...",
+            min_values=1, max_values=1,
+            options=[
+                discord.SelectOption(label="No apoyó en 𝕏", description="No cumplió con el apoyo requerido", value="no_apoyo"),
+                discord.SelectOption(label="Otro (explica abajo)", description="Otra causa, requiere explicación", value="otro"),
+            ],
+        )
+        self.cog = cog
+
+    async def callback(self, interaction: discord.Interaction):
+        motivo = self.values[0]
+        await interaction.response.send_message(
+            "Por favor indica el usuario (mención o ID) y, si seleccionaste 'Otro', explica brevemente el motivo.",
+            ephemeral=True
+        )
+        # Aquí normalmente abrirías un modal o DM al usuario. 
+        # Debes continuar el flujo según tu lógica avanzada.
+
 class ReporteIncumplimiento(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -62,12 +89,24 @@ class ReporteIncumplimiento(commands.Cog):
 
     async def init_panel_instrucciones(self):
         await self.bot.wait_until_ready()
+        # Registro de View persistente para menú del canal (¡blindaje contra "interacción fallida"!)
+        self.bot.add_view(ReporteMenuView(self))
         canal = self.bot.get_channel(CANAL_REPORTE_ID)
         if not canal:
             await log_discord(self.bot, "❌ No se encontró el canal de reportes.")
             return
 
-        # Aquí se puede fijar el panel de instrucciones al inicio (no relevante para lógica interna)
+        # El panel de instrucciones se debe enviar o editar aquí. (Solo ejemplo, asume que ya existe el mensaje).
+        # Si quieres actualizar el mensaje de instrucciones, puedes hacerlo así:
+        """
+        embed = discord.Embed(
+            title=MSG.TITULO_PANEL_INSTRUCCIONES,
+            description=MSG.DESCRIPCION_PANEL_INSTRUCCIONES,
+            color=discord.Color.red()
+        )
+        embed.set_footer(text=MSG.FOOTER_GENERAL)
+        await canal.send(embed=embed, view=ReporteMenuView(self))
+        """
 
     # --- CREAR REPORTE O AGRUPAR ---
     async def crear_o_agrup_reporte(self, reportante: discord.Member, reportado: discord.Member, motivo, explicacion):
@@ -87,7 +126,6 @@ class ReporteIncumplimiento(commands.Cog):
             # Notifica a nuevo reportante del estado actual
             await reportante.send(MSG.AVISO_MULTI_REPORTANTE)
             # Si el reportado ya regularizó, el nuevo reportante puede validar enseguida
-            # (Este ciclo es gestionado por tareas automáticas)
         else:
             # Nuevo reporte: registra todos los campos y timers iniciales
             self.redis.hset(key_reporte, mapping={
@@ -158,12 +196,6 @@ class ReporteIncumplimiento(commands.Cog):
                         self.redis.hset(key, "expulsion", str(now))
                         self.redis.hset(key, "historial", data.get("historial", "") + f"Expulsión: {fecha_str()}\n")
                         await log_discord(self.bot, MSG.LOG_REPORTE_EXPULSION.format(usuario=data['reportado_id']))
-
-    # --- Botones y paneles se implementan con Views personalizados en ciclo de reporte ---
-    # (Integrar aquí lógica para botones de validación, regularización, apelación y staff)
-    # Ejemplo de integración para el futuro:
-    #   - View con botones: "He apoyado", "Confirmo que me apoyó", "Aún no he sido apoyado", "Apelar", etc.
-    #   - Cada botón ejecuta una función asíncrona que actualiza el estado en Redis y notifica a los implicados.
 
     # --- Listener: eliminar cualquier mensaje ajeno en canal de reporte ---
     @commands.Cog.listener()
