@@ -187,22 +187,21 @@ class GoViral(commands.Cog):
         await log_discord(self.bot, f"✅ [GO-VIRAL] Mensaje válido de {message.author}: {url}", "info", scope="go_viral")
         await self.bot.process_commands(message)
 
-    # 🚨 NUEVO: Listener para eliminar reacciones no permitidas en TIEMPO REAL
     @commands.Cog.listener()
-async def on_reaction_add(self, reaction, user):
-    print(f"DEBUG: Se detectó reacción {reaction.emoji} de {user} en mensaje {reaction.message.id}")
-    if user.bot:
-        return
-    mensaje = reaction.message
-    if mensaje.channel.id != CANAL_OBJETIVO_ID:
-        return
-    if str(reaction.emoji) not in EMOJIS_PERMITIDOS:
-        try:
-            await reaction.remove(user)
-            await log_discord(self.bot, f"❌ [GO-VIRAL] {user.mention} intentó usar una reacción no permitida ({reaction.emoji}) en el mensaje {mensaje.id}. Se eliminó automáticamente.", "warning", scope="go_viral")
-        except Exception as e:
-            await log_discord(self.bot, f"⚠️ [GO-VIRAL] No se pudo eliminar reacción no permitida: {e}", "error", scope="go_viral")
-            
+    async def on_reaction_add(self, reaction, user):
+        print(f"DEBUG: Se detectó reacción {reaction.emoji} de {user} en mensaje {reaction.message.id}")
+        if user.bot:
+            return
+        mensaje = reaction.message
+        if mensaje.channel.id != CANAL_OBJETIVO_ID:
+            return
+        if str(reaction.emoji) not in EMOJIS_PERMITIDOS:
+            try:
+                await reaction.remove(user)
+                await log_discord(self.bot, f"❌ [GO-VIRAL] {user.mention} intentó usar una reacción no permitida ({reaction.emoji}) en el mensaje {mensaje.id}. Se eliminó automáticamente.", "warning", scope="go_viral")
+            except Exception as e:
+                await log_discord(self.bot, f"⚠️ [GO-VIRAL] No se pudo eliminar reacción no permitida: {e}", "error", scope="go_viral")
+
     # ------------ AUXILIARES ------------
     async def obtener_publicaciones_previas(self, message):
         """
