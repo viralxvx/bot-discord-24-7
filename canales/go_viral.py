@@ -114,11 +114,8 @@ class GoViral(commands.Cog):
         await log_discord(self.bot, "🔄 [GO-VIRAL] Sincronizando reacciones...", "info", scope="go_viral")
         try:
             pipe = self.redis.pipeline()
-            mensajes = []
+            # Procesar mensajes uno por uno sin acumular en memoria
             async for msg in canal.history(limit=1000, oldest_first=False):
-                mensajes.append(msg)
-                await asyncio.sleep(0.1)  # Evitar sobrecarga
-            for msg in mensajes:
                 for reaction in msg.reactions:
                     if str(reaction.emoji) not in EMOJIS_PERMITIDOS:
                         async for user in reaction.users():
@@ -136,7 +133,7 @@ class GoViral(commands.Cog):
         except discord.errors.Forbidden as e:
             await log_discord(self.bot, f"❌ [GO-VIRAL] Permisos insuficientes: {e}", "error", scope="go_viral")
         except discord.errors.NotFound as e:
-            log_discord(self.bot, f"❌ [GO-VIRAL] Canal no encontrado: {e}", "error", scope="go_viral")
+            await log_discord(self.bot, f"❌ [GO-VIRAL] Canal no encontrado: {e}", "error", scope="go_viral")
         except Exception as e:
             await log_discord(self.bot, f"❌ [GO-VIRAL] Error sincronizando reacciones: {e}", "error", scope="go_viral")
 
@@ -154,7 +151,8 @@ class GoViral(commands.Cog):
 
         fecha = datetime.now().strftime("%Y-%m-%d")
         descripcion = DESCRIPCION_FIJO.format(fecha=fecha)
-        imagen_url = IMAGEN_URL if await validar_imagen_url(IMAGEN_URL) else None
+        imagen_valida = await validar_imagen_url(IMAGEN_URL)
+        imagen_url = IMAGEN_URL if imagen_valida else None
         hash_nuevo = calcular_hash_embed(TITULO_FIJO, descripcion, imagen_url)
 
         msg_id_guardado = self.redis.get("go_viral:mensaje_fijo_id")
