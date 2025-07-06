@@ -86,7 +86,8 @@ class GoViral(commands.Cog):
                 pipe.set(f"go_viral:primera_pub:{uid}", "1")
                 pipe.set(f"go_viral:bienvenida:{uid}", "1")
                 await asyncio.sleep(0.1)
-            await pipe.execute()
+            # Ejecutar el pipeline de forma síncrona
+            pipe.execute()
             await log_discord(self.bot, "✅ [GO-VIRAL] Historial sincronizado.", "success", scope="go_viral")
         except discord.errors.Forbidden as e:
             await log_discord(self.bot, f"❌ [GO-VIRAL] Permisos insuficientes: {e}", "error", scope="go_viral")
@@ -121,7 +122,8 @@ class GoViral(commands.Cog):
                             if not user.bot:
                                 pipe.sadd(f"go_viral:apoyos:{msg.id}", str(user.id))
                 await asyncio.sleep(0.1)
-            await pipe.execute()
+            # Ejecutar el pipeline de forma síncrona
+            pipe.execute()
             await log_discord(self.bot, "✅ [GO-VIRAL] Apoyos sincronizados.", "success", scope="go_viral")
         except discord.errors.Forbidden as e:
             await log_discord(self.bot, f"❌ [GO-VIRAL] Permisos insuficientes: {e}", "error", scope="go_viral")
