@@ -24,7 +24,8 @@ async def validar_imagen_url(url):
         async with aiohttp.ClientSession() as session:
             async with session.head(url, timeout=5) as resp:
                 return resp.status == 200
-    except Exception:
+    except Exception as e:
+        await log_discord(None, f"Error validando imagen URL {url}: {e}", "error", scope="go_viral")
         return False
 
 async def enviar_mensaje_con_reintento(canal, embed):
@@ -148,10 +149,13 @@ class GoViral(commands.Cog):
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
-            await log_discord(self.bot, f"❌ [GO-VIRAL] No se encontró el canal (ID {CANAL_OBJETIVO_ID})", "error", scope="go_viral")
+            await log_discord(self.bot
+
+, f"❌ [GO-VIRAL] No se encontró el canal (ID {CANAL_OBJETIVO_ID})", "error", scope="go_viral")
             return
 
         fecha = datetime.now().strftime("%Y-%m-%d")
+        descripcion = DESCRIPCION_FIJO.format(fe .strftime("%Y-%m-%d")
         descripcion = DESCRIPCION_FIJO.format(fecha=fecha)
         imagen_url = IMAGEN_URL if await validar_imagen_url(IMAGEN_URL) else None
         hash_nuevo = calcular_hash_embed(TITULO_FIJO, descripcion, imagen_url)
