@@ -17,8 +17,8 @@ import re
 # CONFIGURACIÓN DE REGLAS FÁCIL
 # -------------------------------
 MAX_APOYOS = 1        # Máximo de posts a apoyar antes de publicar
-MIN_TURNOS = 2        # Turnos mínimos de espera antes de publicar otra vez
-INTERVALO_HORAS = 24  # Horas máximas de espera si nadie publica (luego puedes publicar)
+MIN_TURNOS = 0        # Turnos mínimos de espera antes de publicar otra vez
+INTERVALO_HORAS = 0  # Horas máximas de espera si nadie publica (luego puedes publicar)
 
 def limpiar_url_tweet(texto):
     match = re.search(r"https?://x\.com/\w+/status/(\d+)", texto)
