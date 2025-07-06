@@ -17,6 +17,7 @@ EXTENSIONES = [
     "canales.normas_generales",
     "canales.faltas",
     "canales.comandos",
+    "comandos",
 ]
 
 log_message = None  # Mensaje embed en canal de logs
