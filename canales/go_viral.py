@@ -1,40 +1,32 @@
 import discord
 from discord.ext import commands
-from config import CANAL_OBJETIVO_ID, EMOJIS_PERMITIDOS
+from config import CANAL_OBJETIVO_ID, EMOJIS_PERMITIDOS, REDIS_URL
 from mensajes.viral_texto import (
     TITULO_APOYO_9_EDU, DESCRIPCION_APOYO_9_EDU,
     TITULO_INTERVALO_EDU, DESCRIPCION_INTERVALO_EDU,
     TITULO_SIN_LIKE_EDU, DESCRIPCION_SIN_LIKE_EDU,
     TITULO_SOLO_URL_EDU, DESCRIPCION_SOLO_URL_EDU,
 )
-from canales.faltas import registrar_falta  # Asegúrate de que registrar_falta esté bien importada
+from canales.faltas import registrar_falta
 from utils.logger import log_discord
 from datetime import datetime, timezone
 import asyncio
 import re
+import redis
 
 # -------------------------------
 # CONFIGURACIÓN DE REGLAS FÁCIL
 # -------------------------------
-MAX_APOYOS = 0        # Máximo de posts a apoyar antes de publicar
-MIN_TURNOS = 0        # Turnos mínimos de espera antes de publicar otra vez
-INTERVALO_HORAS = 0  # Horas máximas de espera si nadie publica (luego puedes publicar)
-
-def limpiar_url_tweet(texto):
-    match = re.search(r"https?://x\.com/\w+/status/(\d+)", texto)
-    if match:
-        usuario = re.search(r"https?://x\.com/([^/]+)/status", texto)
-        if usuario:
-            user = usuario.group(1)
-            status_id = match.group(1)
-            return f"https://x.com/{user}/status/{status_id}"
-    return None
+MAX_APOYOS = 9        # Máximo de posts a apoyar antes de publicar (poner 0 desactiva la regla)
+MIN_TURNOS = 2        # Turnos mínimos de espera antes de publicar otra vez
+INTERVALO_HORAS = 24  # Horas máximas de espera si nadie publica (luego puedes publicar)
 
 class GoViral(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        # Limpieza de reacciones no permitidas al iniciar (últimos 100 mensajes)
+        self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
         bot.loop.create_task(self.limpiar_reacciones_no_permitidas())
+        bot.loop.create_task(self.preload_apoyos_reacciones())
 
     async def limpiar_reacciones_no_permitidas(self):
         await self.bot.wait_until_ready()
@@ -56,6 +48,28 @@ class GoViral(commands.Cog):
             await log_discord(self.bot, "✅ [GO-VIRAL] Reacciones no permitidas eliminadas.", "success", scope="go_viral")
         except Exception as e:
             await log_discord(self.bot, f"❌ [GO-VIRAL] Error limpiando reacciones: {e}", "error", scope="go_viral")
+
+    async def preload_apoyos_reacciones(self):
+        await self.bot.wait_until_ready()
+        canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
+        if not canal:
+            await log_discord(self.bot, "❌ [GO-VIRAL] No se encontró el canal para sincronizar apoyos.", "error", scope="go_viral")
+            return
+        await log_discord(self.bot, "🔄 [GO-VIRAL] Sincronizando apoyos (reacciones 🔥) de los últimos mensajes...", "info", scope="go_viral")
+        try:
+            pipe = self.redis.pipeline()
+            async for msg in canal.history(limit=100, oldest_first=True):
+                key = f"go_viral:apoyos:{msg.id}"
+                pipe.delete(key)  # Limpia la info vieja
+                for reaction in msg.reactions:
+                    if str(reaction.emoji) == "🔥":
+                        async for user in reaction.users():
+                            if not user.bot:
+                                pipe.sadd(key, str(user.id))
+            pipe.execute()
+            await log_discord(self.bot, "✅ [GO-VIRAL] Apoyos sincronizados.", "success", scope="go_viral")
+        except Exception as e:
+            await log_discord(self.bot, f"❌ [GO-VIRAL] Error sincronizando apoyos: {e}", "error", scope="go_viral")
 
     @commands.Cog.listener()
     async def on_message(self, message):
@@ -82,28 +96,28 @@ class GoViral(commands.Cog):
             return
 
         # 2️⃣ Verifica apoyos a publicaciones anteriores (máximo MAX_APOYOS)
-posts_previos = await self.obtener_publicaciones_previas(message)
-posts_a_apoyar = posts_previos[-MAX_APOYOS:] if MAX_APOYOS > 0 else []
-apoyos_ok = True
-for post in posts_a_apoyar:
-    if not await self.usuario_ya_apoyo(message.author, post):
-        apoyos_ok = False
-        break
+        posts_previos = await self.obtener_publicaciones_previas(message)
+        posts_a_apoyar = posts_previos[-MAX_APOYOS:] if MAX_APOYOS > 0 else []
+        apoyos_ok = True
+        for post in posts_a_apoyar:
+            if not self.usuario_ya_apoyo(user_id, post):
+                apoyos_ok = False
+                break
 
-if not apoyos_ok:
-    await message.delete()
-    embed = discord.Embed(
-        title=TITULO_APOYO_9_EDU,
-        description=DESCRIPCION_APOYO_9_EDU.format(usuario=message.author.mention),
-        color=discord.Color.orange()
-    )
-    try:
-        await message.author.send(embed=embed)
-    except:
-        pass
-    await registrar_falta(user_id, "No apoyar publicaciones anteriores")
-    await log_discord(self.bot, f"❌ [GO-VIRAL] {message.author} publicó sin apoyar los anteriores.", "warning", scope="go_viral")
-    return
+        if not apoyos_ok:
+            await message.delete()
+            embed = discord.Embed(
+                title=TITULO_APOYO_9_EDU,
+                description=DESCRIPCION_APOYO_9_EDU.format(usuario=message.author.mention),
+                color=discord.Color.orange()
+            )
+            try:
+                await message.author.send(embed=embed)
+            except:
+                pass
+            await registrar_falta(user_id, "No apoyar publicaciones anteriores")
+            await log_discord(self.bot, f"❌ [GO-VIRAL] {message.author} publicó sin apoyar los anteriores.", "warning", scope="go_viral")
+            return
 
         # 3️⃣ Verifica intervalos de turnos/horas
         ultima_pub, turnos_entre = await self.ultima_publicacion_y_turnos(message)
@@ -154,7 +168,15 @@ if not apoyos_ok:
             await log_discord(self.bot, f"❌ [GO-VIRAL] {message.author} no validó con 👍 en 2 minutos.", "warning", scope="go_viral")
             return
 
-        # 5️⃣ Si pasa todo, post válido
+        # 5️⃣ Si pasa todo, guarda tu apoyo para próximos cálculos (para soportar reinicio)
+        # (Agrega la reacción 🔥 a Redis si la ponen después de publicar)
+        self.redis.delete(f"go_viral:apoyos:{message.id}")  # Limpia para este mensaje
+        for reaction in mensaje.reactions:
+            if str(reaction.emoji) == "🔥":
+                async for user in reaction.users():
+                    if not user.bot:
+                        self.redis.sadd(f"go_viral:apoyos:{message.id}", str(user.id))
+
         await log_discord(self.bot, f"✅ [GO-VIRAL] Mensaje válido de {message.author}: {url}", "info", scope="go_viral")
         await self.bot.process_commands(message)
 
@@ -171,16 +193,12 @@ if not apoyos_ok:
             mensajes.append(msg)
         return mensajes
 
-    async def usuario_ya_apoyo(self, usuario, mensaje):
+    def usuario_ya_apoyo(self, user_id, mensaje):
         """
-        Devuelve True si el usuario ya reaccionó con 🔥 a ese mensaje.
+        Devuelve True si el usuario ya reaccionó con 🔥 a ese mensaje (verificando Redis).
         """
-        for reaction in mensaje.reactions:
-            if str(reaction.emoji) == "🔥":
-                async for user in reaction.users():
-                    if user.id == usuario.id:
-                        return True
-        return False
+        key = f"go_viral:apoyos:{mensaje.id}"
+        return self.redis.sismember(key, str(user_id))
 
     async def ultima_publicacion_y_turnos(self, message):
         """
@@ -194,6 +212,16 @@ if not apoyos_ok:
                 break
             turnos_entre += 1
         return ultima_pub, turnos_entre
+
+def limpiar_url_tweet(texto):
+    match = re.search(r"https?://x\.com/\w+/status/(\d+)", texto)
+    if match:
+        usuario = re.search(r"https?://x\.com/([^/]+)/status", texto)
+        if usuario:
+            user = usuario.group(1)
+            status_id = match.group(1)
+            return f"https://x.com/{user}/status/{status_id}"
+    return None
 
 async def setup(bot):
     await bot.add_cog(GoViral(bot))
