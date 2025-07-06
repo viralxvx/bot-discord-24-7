@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from config import CANAL_OBJETIVO_ID, REDIS_URL
+from config import CANAL_OBJETIVO_ID, REDIS_URL, EMOJIS_PERMITIDOS
 from mensajes.viral_texto import (
     TITULO_FIJO, DESCRIPCION_FIJO, IMAGEN_URL,
     TITULO_BIENVENIDA, DESCRIPCION_BIENVENIDA,
@@ -15,25 +15,35 @@ import redis
 import asyncio
 import re
 import hashlib
-from utils.logger import log_discord  # 👈 IMPORTANTE
+import aiohttp
+from utils.logger import log_discord
 
-# Función para manejar el rate limiting y enviar mensajes con reintentos
+async def validar_imagen_url(url):
+    """Valida si una URL de imagen es accesible."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.head(url, timeout=5) as resp:
+                return resp.status == 200
+    except Exception:
+        return False
+
 async def enviar_mensaje_con_reintento(canal, embed):
-    for intento in range(5):  # Intentar hasta 5 veces
+    """Envía un mensaje con reintentos en caso de rate limiting."""
+    for intento in range(5):
         try:
-            await canal.send(embed=embed)  # Intentamos enviar el mensaje
-            return  # Si el mensaje se envía correctamente, salimos
+            return await canal.send(embed=embed)
         except discord.errors.HTTPException as e:
-            if e.code == 429:  # Si el error es rate limiting (429)
-                wait_time = 2 ** intento  # Exponential backoff (espera más tiempo con cada intento)
-                await log_discord(self.bot, f"Rate limiting detectado. Esperando {wait_time} segundos...")
-                await asyncio.sleep(wait_time)  # Esperamos antes de reintentar
+            if e.code == 429:
+                wait_time = 2 ** intento
+                await log_discord(None, f"Rate limiting detectado. Esperando {wait_time} segundos...", "warning", scope="go_viral")
+                await asyncio.sleep(wait_time)
             else:
-                # Si es otro error, lo registramos y salimos
-                await log_discord(self.bot, f"Error inesperado al enviar mensaje: {e}")
+                await log_discord(None, f"Error inesperado al enviar mensaje: {e}", "error", scope="go_viral")
                 break
+    return None
 
 def limpiar_url_tweet(texto):
+    """Extrae y valida URLs de tweets."""
     match = re.search(r"https?://x\.com/\w+/status/(\d+)", texto)
     if match:
         usuario = re.search(r"https?://x\.com/([^/]+)/status", texto)
@@ -44,6 +54,7 @@ def limpiar_url_tweet(texto):
     return None
 
 def calcular_hash_embed(titulo, descripcion, imagen_url):
+    """Calcula un hash SHA-256 para un embed."""
     contenido = f"{titulo}|{descripcion}|{imagen_url}"
     return hashlib.sha256(contenido.encode("utf-8")).hexdigest()
 
@@ -51,48 +62,61 @@ class GoViral(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
-        self.tareas_ejecutadas = set()  # Mantener un registro de las tareas realizadas
+        self.tareas_ejecutadas = set()
         bot.loop.create_task(self.preload_historial_miembros())
         bot.loop.create_task(self.preload_apoyos_reacciones())
         bot.loop.create_task(self.init_mensaje_fijo())
 
     async def preload_historial_miembros(self):
+        """Carga el historial de mensajes y registra usuarios en Redis."""
         if 'preload_historial_miembros' in self.tareas_ejecutadas:
             return
-        self.tareas_ejecutadas.add('preload_historial_miembros')  # Marca esta tarea como ejecutada
+        self.tareas_ejecutadas.add('preload_historial_miembros')
 
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
-            await log_discord(self.bot, "❌ [GO-VIRAL] No se encontró el canal para cargar historial.", "error", "GoViral")
+            await log_discord(self.bot, "❌ [GO-VIRAL] No se encontró el canal.", "error", scope="go_viral")
             return
-        await log_discord(self.bot, "🔍 [GO-VIRAL] Cargando historial y usuarios antiguos...", "info", "GoViral")
+
+        await log_discord(self.bot, "🔍 [GO-VIRAL] Cargando historial...", "info", scope="go_viral")
         try:
-            async for msg in canal.history(limit=None, oldest_first=True):
-                if msg.author.bot: continue
+            pipe = self.redis.pipeline()
+            async for msg in canal.history(limit=1000, oldest_first=True):
+                if msg.author.bot:
+                    continue
                 uid = str(msg.author.id)
-                self.redis.set(f"go_viral:primera_pub:{uid}", "1")
-                self.redis.set(f"go_viral:bienvenida:{uid}", "1")
-            await log_discord(self.bot, "✅ [GO-VIRAL] Historial de usuarios antiguos sincronizado en Redis.", "success", "GoViral")
+                pipe.set(f"go_viral:primera_pub:{uid}", "1")
+                pipe.set(f"go_viral:bienvenida:{uid}", "1")
+                await asyncio.sleep(0.1)  # Evitar sobrecarga
+            await pipe.execute()
+            await log_discord(self.bot, "✅ [GO-VIRAL] Historial sincronizado.", "success", scope="go_viral")
+        except discord.errors.Forbidden as e:
+            await log_discord(self.bot, f"❌ [GO-VIRAL] Permisos insuficientes: {e}", "error", scope="go_viral")
+        except discord.errors.NotFound as e:
+            await log_discord(self.bot, f"❌ [GO-VIRAL] Canal no encontrado: {e}", "error", scope="go_viral")
         except Exception as e:
-            await log_discord(self.bot, f"❌ [GO-VIRAL] Error cargando historial: {e}", "error", "GoViral")
+            await log_discord(self.bot, f"❌ [GO-VIRAL] Error inesperado: {e}", "error", scope="go_viral")
 
     async def preload_apoyos_reacciones(self):
+        """Sincroniza reacciones antiguas y limpia las no permitidas."""
         if 'preload_apoyos_reacciones' in self.tareas_ejecutadas:
             return
-        self.tareas_ejecutadas.add('preload_apoyos_reacciones')  # Marca esta tarea como ejecutada
+        self.tareas_ejecutadas.add('preload_apoyos_reacciones')
 
         await self.bot.wait_until_ready()
         await asyncio.sleep(5)
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
-            await log_discord(self.bot, "❌ [GO-VIRAL] No se encontró el canal para cargar reacciones.", "error", "GoViral")
+            await log_discord(self.bot, "❌ [GO-VIRAL] No se encontró el canal.", "error", scope="go_viral")
             return
-        await log_discord(self.bot, "🔄 [GO-VIRAL] Sincronizando reacciones 🔥 antiguas en Redis y limpiando reacciones no permitidas...", "info", "GoViral")
+
+        await log_discord(self.bot, "🔄 [GO-VIRAL] Sincronizando reacciones...", "info", scope="go_viral")
         try:
-            mensajes = [msg async for msg in canal.history(limit=None, oldest_first=False)]
+            pipe = self.redis.pipeline()
+            mensajes = [msg async for msg in canal.history(limit=1000, oldest_first=False)]
             for msg in mensajes:
                 for reaction in msg.reactions:
-                    if str(reaction.emoji) not in ["🔥", "👍"]:
+                    if str(reaction.emoji) not in EMOJIS_PERMITIDOS:
                         async for user in reaction.users():
                             try:
                                 await reaction.remove(user)
@@ -101,25 +125,33 @@ class GoViral(commands.Cog):
                     elif str(reaction.emoji) == "🔥":
                         async for user in reaction.users():
                             if not user.bot:
-                                self.redis.sadd(f"go_viral:apoyos:{msg.id}", str(user.id))
-            await log_discord(self.bot, "✅ [GO-VIRAL] Apoyos sincronizados y reacciones limpiadas.", "success", "GoViral")
+                                pipe.sadd(f"go_viral:apoyos:{msg.id}", str(user.id))
+                await asyncio.sleep(0.1)  # Evitar sobrecarga
+            await pipe.execute()
+            await log_discord(self.bot, "✅ [GO-VIRAL] Apoyos sincronizados.", "success", scope="go_viral")
+        except discord.errors.Forbidden as e:
+            await log_discord(self.bot, f"❌ [GO-VIRAL] Permisos insuficientes: {e}", "error", scope="go_viral")
+        except discord.errors.NotFound as e:
+            await log_discord(self.bot, f"❌ [GO-VIRAL] Canal no encontrado: {e}", "error", scope="go_viral")
         except Exception as e:
-            await log_discord(self.bot, f"❌ [GO-VIRAL] Error sincronizando reacciones: {e}", "error", "GoViral")
+            await log_discord(self.bot, f"❌ [GO-VIRAL] Error sincronizando reacciones: {e}", "error", scope="go_viral")
 
     async def init_mensaje_fijo(self):
+        """Publica o actualiza el mensaje fijo en el canal."""
         if 'init_mensaje_fijo' in self.tareas_ejecutadas:
             return
-        self.tareas_ejecutadas.add('init_mensaje_fijo')  # Marca esta tarea como ejecutada
+        self.tareas_ejecutadas.add('init_mensaje_fijo')
 
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
-            await log_discord(self.bot, f"❌ [GO-VIRAL] No se encontró el canal (ID {CANAL_OBJETIVO_ID})", "error", "GoViral")
+            await log_discord(self.bot, f"❌ [GO-VIRAL] No se encontró el canal (ID {CANAL_OBJETIVO_ID})", "error", scope="go_viral")
             return
 
         fecha = datetime.now().strftime("%Y-%m-%d")
         descripcion = DESCRIPCION_FIJO.format(fecha=fecha)
-        hash_nuevo = calcular_hash_embed(TITULO_FIJO, descripcion, IMAGEN_URL)
+        imagen_url = IMAGEN_URL if await validar_imagen_url(IMAGEN_URL) else None
+        hash_nuevo = calcular_hash_embed(TITULO_FIJO, descripcion, imagen_url)
 
         msg_id_guardado = self.redis.get("go_viral:mensaje_fijo_id")
         hash_guardado = self.redis.get("go_viral:mensaje_fijo_hash")
@@ -135,7 +167,7 @@ class GoViral(commands.Cog):
                         embed_actual.image.url if embed_actual.image else ""
                     )
                     if hash_actual == hash_nuevo:
-                        await log_discord(self.bot, "✅ [GO-VIRAL] Mensaje fijo ya existe y está actualizado.", "success", "GoViral")
+                        await log_discord(self.bot, "✅ [GO-VIRAL] Mensaje fijo actualizado.", "success", scope="go_viral")
                         return
                     else:
                         embed_fijo = discord.Embed(
@@ -143,40 +175,63 @@ class GoViral(commands.Cog):
                             description=descripcion,
                             color=discord.Color.blurple()
                         )
-                        embed_fijo.set_image(url=IMAGEN_URL)
+                        if imagen_url:
+                            embed_fijo.set_image(url=imagen_url)
                         await mensaje.edit(embed=embed_fijo)
                         self.redis.set("go_viral:mensaje_fijo_hash", hash_nuevo)
-                        await log_discord(self.bot, "🔄 [GO-VIRAL] Mensaje fijo actualizado.", "info", "GoViral")
+                        await log_discord(self.bot, "🔄 [GO-VIRAL] Mensaje fijo actualizado.", "info", scope="go_viral")
                         return
+                await mensaje.unpin()  # Desanclar mensaje antiguo
+            except discord.errors.NotFound:
+                await log_discord(self.bot, "⚠️ [GO-VIRAL] Mensaje guardado no encontrado.", "warning", scope="go_viral")
+            except discord.errors.Forbidden as e:
+                await log_discord(self.bot, f"❌ [GO-VIRAL] Permisos insuficientes: {e}", "error", scope="go_viral")
             except Exception as e:
-                await log_discord(self.bot, f"⚠️ [GO-VIRAL] No se pudo recuperar el mensaje guardado: {e}", "warning", "GoViral")
+                await log_discord(self.bot, f"❌ [GO-VIRAL] Error inesperado: {e}", "error", scope="go_viral")
 
         embed_fijo = discord.Embed(
             title=TITULO_FIJO,
             description=descripcion,
             color=discord.Color.blurple()
         )
-        embed_fijo.set_image(url=IMAGEN_URL)
-        msg = await enviar_mensaje_con_reintento(canal, embed_fijo)  # Reemplazar por la nueva función
-        await msg.pin()
-        self.redis.set("go_viral:mensaje_fijo_id", str(msg.id))
-        self.redis.set("go_viral:mensaje_fijo_hash", hash_nuevo)
-        await log_discord(self.bot, "✅ [GO-VIRAL] Mensaje fijo publicado y registrado.", "success", "GoViral")
+        if imagen_url:
+            embed_fijo.set_image(url=imagen_url)
+        msg = await enviar_mensaje_con_reintento(canal, embed_fijo)
+        if msg:
+            await msg.pin()
+            self.redis.set("go_viral:mensaje_fijo_id", str(msg.id))
+            self.redis.set("go_viral:mensaje_fijo_hash", hash_nuevo)
+            await log_discord(self.bot, "✅ [GO-VIRAL] Mensaje fijo publicado.", "success", scope="go_viral")
 
     @commands.Cog.listener()
     async def on_message(self, message):
+        """Procesa mensajes en el canal objetivo."""
         if message.author.bot or message.channel.id != CANAL_OBJETIVO_ID:
             return
 
         user_id = str(message.author.id)
-
-        # Verificar si el usuario tiene override
-        if self.redis.get(f"go_viral:override:{message.author.id}") == "1":
-            await log_discord(self.bot, f"✅ [GO-VIRAL] {message.author} tiene override y su mensaje fue permitido.", "info", "GoViral")
+        if self.redis.get(f"go_viral:override:{user_id}") == "1":
+            await log_discord(self.bot, f"✅ [GO-VIRAL] {message.author} tiene override.", "info", scope="go_viral")
             return
-            
-        # Resto de las validaciones del mensaje (URL mal formateada, etc.)
 
-    # Asegúrate de agregar la función setup
+        url = limpiar_url_tweet(message.content)
+        if not url:
+            try:
+                await message.delete()
+                embed = discord.Embed(
+                    title=TITULO_SOLO_URL_EDU,
+                    description=DESCRIPCION_SOLO_URL_EDU,
+                    color=discord.Color.red()
+                )
+                await message.author.send(embed=embed)
+                await log_discord(self.bot, f"❌ [GO-VIRAL] Mensaje de {message.author} eliminado: URL inválida.", "warning", scope="go_viral")
+            except discord.errors.Forbidden:
+                await log_discord(self.bot, f"❌ [GO-VIRAL] No se pudo eliminar mensaje o enviar DM a {message.author}.", "error", scope="go_viral")
+            return
+
+        await log_discord(self.bot, f"✅ [GO-VIRAL] Mensaje válido de {message.author}: {url}", "info", scope="go_viral")
+        await self.bot.process_commands(message)
+
 async def setup(bot):
+    """Configura el cog GoViral."""
     await bot.add_cog(GoViral(bot))
