@@ -153,4 +153,3 @@ DESCRIPCION_SOLO_REACCION_DM = (
     "Por favor, utiliza solo esas reacciones para apoyar a tus compañeros.\n"
     "Si tienes dudas, escribe en #👨🔧soporte."
 )
-
