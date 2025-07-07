@@ -45,5 +45,6 @@ class Anuncios(commands.Cog):
             await registrar_reingreso(member.id)
             await self.resumen_reingreso(member)
 
-def setup(bot):
-    bot.add_cog(Anuncios(bot))
+async def setup(bot):
+    await bot.add_cog(Anuncios(bot))
+
