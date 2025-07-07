@@ -2,11 +2,15 @@ import discord
 from discord.ext import commands
 from config import CANAL_NORMAS_ID, CANAL_LOGS_ID, CANAL_ANUNCIOS
 from mensajes import normas_texto as texto
-from mensajes.anuncios_texto import EMBED_ANUNCIO_TEMPLATE, LOGO_URL
 from utils.logger import log_discord
 from utils.notificaciones import registrar_novedad, get_redis
 from datetime import datetime
 import hashlib
+
+class AnuncioView(discord.ui.View):
+    def __init__(self, url):
+        super().__init__(timeout=None)
+        self.add_item(discord.ui.Button(label="Ver normas actualizadas", url=url, style=discord.ButtonStyle.link))
 
 class NormasGenerales(commands.Cog):
     def __init__(self, bot):
@@ -17,8 +21,9 @@ class NormasGenerales(commands.Cog):
     async def on_ready(self):
         await log_discord(self.bot, "🔧 Iniciando módulo de normas generales...", CANAL_LOGS_ID, "info", "NormasGenerales")
         canal = self.bot.get_channel(CANAL_NORMAS_ID)
-        if not canal:
-            await log_discord(self.bot, f"❌ No se encontró el canal con ID: {CANAL_NORMAS_ID}", CANAL_LOGS_ID, "error", "NormasGenerales")
+        canal_anuncios = self.bot.get_channel(CANAL_ANUNCIOS)
+        if not canal or not canal_anuncios:
+            await log_discord(self.bot, f"❌ No se encontró el canal de normas o anuncios.", CANAL_LOGS_ID, "error", "NormasGenerales")
             return
 
         try:
@@ -46,11 +51,11 @@ class NormasGenerales(commands.Cog):
             embed2.set_image(url=texto.IMAGEN_URL)
         embeds.append(embed2)
 
-        # --- GENERAR update_id EN FUNCIÓN DEL CONTENIDO DE LOS EMBEDS ---
         texto_update = texto.DESCRIPCION_BLOQUE_1 + (texto.DESCRIPCION_BLOQUE_2 or "")
         update_id = hashlib.sha256(texto_update.encode("utf-8")).hexdigest()
 
         notificar_cambio = False
+        mensaje_principal = None
 
         if len(mensajes_existentes) >= 2:
             await log_discord(self.bot, "✏️ Editando mensajes anteriores...", CANAL_LOGS_ID, "info", "NormasGenerales")
@@ -61,6 +66,8 @@ class NormasGenerales(commands.Cog):
                     await log_discord(self.bot, f"✅ Embed {i+1} editado.", CANAL_LOGS_ID, "success", "NormasGenerales")
                     if embeds[i].description != old_content:
                         notificar_cambio = True
+                    if i == 0:
+                        mensaje_principal = mensajes_existentes[i]
                 except Exception as e:
                     await log_discord(self.bot, f"❌ Error al editar el embed {i+1}: {e}", CANAL_LOGS_ID, "error", "NormasGenerales")
         else:
@@ -75,42 +82,44 @@ class NormasGenerales(commands.Cog):
             await log_discord(self.bot, "📤 Publicando nuevos embeds...", CANAL_LOGS_ID, "info", "NormasGenerales")
             for i, embed in enumerate(embeds):
                 try:
-                    await canal.send(embed=embed)
+                    msg = await canal.send(embed=embed)
                     await log_discord(self.bot, f"✅ Embed {i+1} publicado.", CANAL_LOGS_ID, "success", "NormasGenerales")
                     notificar_cambio = True
+                    if i == 0:
+                        mensaje_principal = msg
                 except Exception as e:
                     await log_discord(self.bot, f"❌ Error al publicar el embed {i+1}: {e}", CANAL_LOGS_ID, "error", "NormasGenerales")
 
-        # --- NOTIFICACIÓN PREMIUM SOLO SI HAY CAMBIO Y NO ES REPETIDO ---
+        # --- Notificación premium con botón solo si hay cambio y no es repetido ---
         redis = await get_redis()
         last_id = await redis.get("vxbot:last_normas_update_id")
 
-        if not last_id or last_id != update_id or notificar_cambio:
+        if (not last_id or last_id != update_id or notificar_cambio) and mensaje_principal:
             await redis.set("vxbot:last_normas_update_id", update_id)
-            canal_anuncios = self.bot.get_channel(CANAL_ANUNCIOS)
-            if canal_anuncios:
-                try:
-                    embed_anuncio = EMBED_ANUNCIO_TEMPLATE(
-                        tipo="Normas Generales",
-                        titulo="Actualización de Normas Generales",
-                        descripcion="¡Se han actualizado las normas generales del servidor! Haz clic para conocer las nuevas reglas.",
-                        url=f"https://discord.com/channels/{canal.guild.id}/{canal.id}",
-                        autor="Staff VX",
-                        fecha=datetime.now(),
-                        logo_url=LOGO_URL
-                    )
-                    await canal_anuncios.send(embed=embed_anuncio)
-                    await registrar_novedad(
-                        update_id,
-                        "Normas Generales",
-                        "Actualización de Normas Generales",
-                        "¡Se han actualizado las normas generales del servidor! Haz clic para conocer las nuevas reglas.",
-                        f"https://discord.com/channels/{canal.guild.id}/{canal.id}",
-                        message_id="0"
-                    )
-                    await log_discord(self.bot, "📢 Notificación premium enviada a canal de anuncios.", CANAL_LOGS_ID, "success", "NormasGenerales")
-                except Exception as e:
-                    await log_discord(self.bot, f"❌ Error al notificar actualización: {e}", CANAL_LOGS_ID, "error", "NormasGenerales")
+            try:
+                url_real = f"https://discord.com/channels/{canal.guild.id}/{canal.id}/{mensaje_principal.id}"
+                embed_anuncio = discord.Embed(
+                    title="📢 Actualización de Normas Generales — ¡Nuevo!",
+                    description="¡Se han actualizado las normas generales del servidor! Haz clic abajo para conocer las nuevas reglas.",
+                    color=0x0057b8
+                )
+                embed_anuncio.set_thumbnail(url="https://drive.google.com/uc?export=download&id=1LGwse5dI_Q_PpQhhfpLBudteATKoy4Hj")
+                embed_anuncio.add_field(name="Tipo", value="Normas Generales", inline=True)
+                embed_anuncio.add_field(name="Fecha", value=datetime.now().strftime('%d/%m/%Y'), inline=True)
+                embed_anuncio.set_footer(text=f"Publicado por Staff VX | VXbot")
+
+                await canal_anuncios.send(embed=embed_anuncio, view=AnuncioView(url_real))
+                await registrar_novedad(
+                    update_id,
+                    "Normas Generales",
+                    "Actualización de Normas Generales",
+                    "¡Se han actualizado las normas generales del servidor! Haz clic para conocer las nuevas reglas.",
+                    url_real,
+                    message_id=str(mensaje_principal.id)
+                )
+                await log_discord(self.bot, "📢 Notificación premium enviada a canal de anuncios.", CANAL_LOGS_ID, "success", "NormasGenerales")
+            except Exception as e:
+                await log_discord(self.bot, f"❌ Error al notificar actualización: {e}", CANAL_LOGS_ID, "error", "NormasGenerales")
 
     @commands.Cog.listener()
     async def on_message(self, message):
