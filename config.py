@@ -25,6 +25,11 @@ CANAL_LOGS_ID            = int(get_env_variable("CANAL_LOGS"))          # 📝lo
 CANAL_REPORTE_ID         = int(get_env_variable("CANAL_REPORTE"))       # ⛔reporte-incumplimiento
 CANAL_COMANDOS_ID        = int(get_env_variable("CANAL_COMANDOS"))
 
+# Alias para compatibilidad premium (sin _ID, usados en nuevos módulos)
+CANAL_NORMAS = CANAL_NORMAS_ID
+CANAL_ANUNCIOS = int(get_env_variable("CANAL_ANUNCIOS"))
+CANAL_FUNCIONES = int(get_env_variable("CANAL_FUNCIONES"))
+
 # IDs de canales de menú/bienvenida
 CANAL_GUIAS_ID           = int(get_env_variable("CANAL_GUIAS"))
 CANAL_NORMAS_GENERALES_ID= int(get_env_variable("CANAL_NORMAS"))        # (Alias, para claridad)
