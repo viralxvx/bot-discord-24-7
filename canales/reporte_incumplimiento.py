@@ -45,10 +45,14 @@ from config import CANAL_REPORTE_ID, CANAL_LOGS_ID, REDIS_URL
 from utils.logger import log_discord
 
 # === Parámetros principales del ciclo automatizado ===
-ADVERTENCIA_INTERVALO_HORAS = 6       # Horas entre advertencias automáticas
-MAX_ADVERTENCIAS = 3                  # Total antes de baneo temporal
-BANEO_TIEMPO_HORAS = 24               # Baneo temporal (horas)
-REPORTE_EXPULSION = True              # Si True: expulsión tras reincidencia
+ADVERTENCIA_INTERVALO_HORAS = 6
+MAX_ADVERTENCIAS = 3
+BANEO_TIEMPO_HORAS = 24
+REPORTE_EXPULSION = True
+
+# --- NUEVO: para manejo único del mensaje de panel ---
+PANEL_HASH_KEY = "reporte_incumplimiento:panel_hash"
+PANEL_MSG_ID_KEY = "reporte_incumplimiento:panel_msg_id"
 
 def ahora_utc(): return datetime.now(timezone.utc)
 def fecha_str(): return ahora_utc().strftime('%Y-%m-%d %H:%M:%S')
@@ -69,7 +73,7 @@ class ReporteMotivoSelect(ui.Select):
                 discord.SelectOption(label="No apoyó en 𝕏", description="No cumplió con el apoyo requerido", value="no_apoyo"),
                 discord.SelectOption(label="Otro (explica abajo)", description="Otra causa, requiere explicación", value="otro"),
             ],
-            custom_id="reporte_motivo_select_persistente"  # <-- FIX PERSISTENTE
+            custom_id="reporte_motivo_select_persistente"
         )
         self.cog = cog
 
@@ -79,8 +83,7 @@ class ReporteMotivoSelect(ui.Select):
             "Por favor indica el usuario (mención o ID) y, si seleccionaste 'Otro', explica brevemente el motivo.",
             ephemeral=True
         )
-        # Aquí normalmente abrirías un modal o DM al usuario. 
-        # Debes continuar el flujo según tu lógica avanzada.
+        # Aquí normalmente abrirías un modal o DM al usuario.
 
 class ReporteIncumplimiento(commands.Cog):
     def __init__(self, bot):
@@ -97,28 +100,62 @@ class ReporteIncumplimiento(commands.Cog):
             await log_discord(self.bot, "❌ No se encontró el canal de reportes.")
             return
 
-        # 1. Desfijar mensajes anteriores
-        pinned = await canal.pins()
-        for msg in pinned:
-            try:
-                await msg.unpin()
-            except Exception:
-                pass
-
-        # 2. Enviar mensaje de instrucciones y menú
         embed = discord.Embed(
             title=MSG.TITULO_PANEL_INSTRUCCIONES,
             description=MSG.DESCRIPCION_PANEL_INSTRUCCIONES,
             color=discord.Color.red()
         )
         embed.set_footer(text=MSG.FOOTER_GENERAL)
-        panel_msg = await canal.send(embed=embed, view=ReporteMenuView(self))
 
-        # 3. Fijar el nuevo mensaje
+        # --- Hash para saber si el mensaje ha cambiado
+        panel_hash = f"{MSG.TITULO_PANEL_INSTRUCCIONES}|{MSG.DESCRIPCION_PANEL_INSTRUCCIONES}|{MSG.FOOTER_GENERAL}"
+        hash_guardado = self.redis.get(PANEL_HASH_KEY)
+        msg_id_guardado = self.redis.get(PANEL_MSG_ID_KEY)
+
+        panel_msg = None
+
+        # --- Si ya existe el mensaje Y el hash no ha cambiado, solo lo refija (si está, lo edita por si acaso)
+        if msg_id_guardado and hash_guardado == panel_hash:
+            try:
+                panel_msg = await canal.fetch_message(int(msg_id_guardado))
+                if panel_msg:  # Edita por si se desfijó, o el embed/menu cambia levemente
+                    await panel_msg.edit(embed=embed, view=ReporteMenuView(self))
+                    try:
+                        await panel_msg.pin()
+                    except Exception:
+                        pass
+                    # Desfija cualquier otro mensaje, solo deja este
+                    pinned = await canal.pins()
+                    for msg in pinned:
+                        if msg.id != panel_msg.id:
+                            try:
+                                await msg.unpin()
+                            except Exception:
+                                pass
+                    return
+            except Exception:
+                # Si hay error, creamos uno nuevo abajo
+                pass
+
+        # Si no existe, crea y fija el panel; borra los demás fijados si hubiera
+        panel_msg = await canal.send(embed=embed, view=ReporteMenuView(self))
         try:
             await panel_msg.pin()
         except Exception:
             pass
+
+        # Desfija cualquier otro mensaje fijado
+        pinned = await canal.pins()
+        for msg in pinned:
+            if msg.id != panel_msg.id:
+                try:
+                    await msg.unpin()
+                except Exception:
+                    pass
+
+        # Guarda el hash y msg_id en Redis para persistencia
+        self.redis.set(PANEL_HASH_KEY, panel_hash)
+        self.redis.set(PANEL_MSG_ID_KEY, str(panel_msg.id))
 
     # --- CREAR REPORTE O AGRUPAR ---
     async def crear_o_agrup_reporte(self, reportante: discord.Member, reportado: discord.Member, motivo, explicacion):
@@ -135,11 +172,8 @@ class ReporteIncumplimiento(commands.Cog):
                 return
             reportantes.add(str(reportante.id))
             self.redis.hset(key_reporte, "reportantes", ",".join(reportantes))
-            # Notifica a nuevo reportante del estado actual
             await reportante.send(MSG.AVISO_MULTI_REPORTANTE)
-            # Si el reportado ya regularizó, el nuevo reportante puede validar enseguida
         else:
-            # Nuevo reporte: registra todos los campos y timers iniciales
             self.redis.hset(key_reporte, mapping={
                 "reportado_id": str(reportado.id),
                 "reportantes": str(reportante.id),
@@ -157,7 +191,6 @@ class ReporteIncumplimiento(commands.Cog):
                 reporte_id=reportado.id, reportante=reportante.display_name, reportado=reportado.display_name
             ))
 
-    # --- CICLO AUTOMÁTICO: Revisar y actualizar todos los reportes activos ---
     @tasks.loop(minutes=10)
     async def tarea_revisar_reportes(self):
         await self.bot.wait_until_ready()
@@ -173,10 +206,8 @@ class ReporteIncumplimiento(commands.Cog):
             if estado in ["cerrado", "expulsado"]:
                 continue
 
-            # --- Si ya pasaron 6h desde último aviso y no hay cierre ---
             if now - ultimo_aviso >= ADVERTENCIA_INTERVALO_HORAS * 3600:
                 if advertencias < MAX_ADVERTENCIAS:
-                    # Enviar nueva advertencia/recordatorio y sumar advertencia
                     reportado = self.bot.get_user(int(data["reportado_id"]))
                     if advertencias == 2:
                         await reportado.send(MSG.AVISO_RECORDATORIO)
@@ -188,7 +219,6 @@ class ReporteIncumplimiento(commands.Cog):
                     self.redis.hset(key, "historial", data.get("historial", "") + f"Advertencia {advertencias}: {fecha_str()}\n")
                     await log_discord(self.bot, f"Advertencia {advertencias} enviada a usuario {data['reportado_id']}")
                 else:
-                    # BANEO TEMPORAL
                     reportado = self.bot.get_user(int(data["reportado_id"]))
                     await reportado.send(MSG.BANEO_TEMPORAL)
                     self.redis.hset(key, "estado", "baneado")
@@ -196,11 +226,9 @@ class ReporteIncumplimiento(commands.Cog):
                     self.redis.hset(key, "historial", data.get("historial", "") + f"Baneo temporal: {fecha_str()}\n")
                     await log_discord(self.bot, MSG.LOG_REPORTE_BANEO.format(usuario=data['reportado_id']))
 
-            # --- Si está baneado, revisa si se cumple el periodo para expulsión ---
             if estado == "baneado":
                 ban_inicio = float(data.get("ban_temp", now))
                 if now - ban_inicio >= BANEO_TIEMPO_HORAS * 3600:
-                    # Verificar reincidencia, expulsar si corresponde
                     if REPORTE_EXPULSION:
                         reportado = self.bot.get_user(int(data["reportado_id"]))
                         await reportado.send(MSG.EXPULSION_FINAL)
@@ -209,7 +237,6 @@ class ReporteIncumplimiento(commands.Cog):
                         self.redis.hset(key, "historial", data.get("historial", "") + f"Expulsión: {fecha_str()}\n")
                         await log_discord(self.bot, MSG.LOG_REPORTE_EXPULSION.format(usuario=data['reportado_id']))
 
-    # --- Listener: eliminar cualquier mensaje ajeno en canal de reporte ---
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.channel.id == CANAL_REPORTE_ID and not message.author.bot:
