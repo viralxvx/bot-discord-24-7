@@ -28,7 +28,7 @@ from config import (
 from mensajes.presentate_mensaje import (
     TITULO_BIENVENIDA,
     DESCRIPCION_BIENVENIDA,
-    ENLACES_MENU,
+    MENU_DESPLEGABLE,
     FOOTER_BIENVENIDA
 )
 
@@ -36,104 +36,90 @@ REDIS_KEY = "presentate:mensaje_id"
 redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
 CANAL_IDS = {
-    "guild": GUILD_ID,
-    "canal_guias": CANAL_GUIAS_ID,
-    "canal_normas": CANAL_NORMAS_ID,
-    "canal_victorias": CANAL_VICTORIAS_ID,
-    "canal_estrategias": CANAL_ESTRATEGIAS_ID,
-    "canal_entrenamiento": CANAL_ENTRENAMIENTO_ID,
+    "CANAL_GUIAS_ID": CANAL_GUIAS_ID,
+    "CANAL_NORMAS_ID": CANAL_NORMAS_ID,
+    "CANAL_VICTORIAS_ID": CANAL_VICTORIAS_ID,
+    "CANAL_ESTRATEGIAS_ID": CANAL_ESTRATEGIAS_ID,
+    "CANAL_ENTRENAMIENTO_ID": CANAL_ENTRENAMIENTO_ID,
 }
 
-def reemplazar_placeholders(url: str) -> str:
-    for key, value in CANAL_IDS.items():
-        url = url.replace(f"{{{key}}}", str(value))
-    return url
-
-class MenuBienvenidaView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        for nombre, url, emoji in ENLACES_MENU:
-            url_final = reemplazar_placeholders(url)
-            self.add_item(
-                discord.ui.Button(
-                    label=nombre,
-                    url=url_final,
-                    emoji=emoji,
-                    style=discord.ButtonStyle.link
-                )
+class MenuDesplegable(discord.ui.Select):
+    def __init__(self, guild_id):
+        options = [
+            discord.SelectOption(
+                label=label,
+                description=desc,
+                emoji=emoji
             )
-
-async def limpiar_canal_presentate(canal, mensaje_id_actual=None):
-    async for mensaje in canal.history(limit=100):
-        if mensaje_id_actual and mensaje.id == int(mensaje_id_actual):
-            continue
-        try:
-            await mensaje.delete()
-        except Exception:
-            pass
-
-async def enviar_bienvenida_dm(member: discord.Member):
-    """Envía el mensaje de bienvenida con menú por DM al usuario nuevo."""
-    try:
-        embed = discord.Embed(
-            title=TITULO_BIENVENIDA,
-            description=DESCRIPCION_BIENVENIDA,
-            color=discord.Color.blue()
+            for (label, desc, canal_key, emoji) in MENU_DESPLEGABLE
+        ]
+        super().__init__(
+            placeholder="Selecciona un recurso para ir directo...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="menu_presentate"
         )
-        embed.set_footer(text=FOOTER_BIENVENIDA)
-        view = MenuBienvenidaView()
-        await member.send(embed=embed, view=view)
-        print(f"✅ DM de bienvenida enviado a {member.display_name} ({member.id})")
-    except Exception as e:
-        print(f"⚠️ No se pudo enviar DM a {member.display_name}: {e}")
+        self.guild_id = guild_id
 
-async def setup(bot):
-    print("⚙️ Iniciando módulo del canal 👉preséntate...")
+    async def callback(self, interaction: discord.Interaction):
+        selected = self.values[0]
+        for (label, desc, canal_key, emoji) in MENU_DESPLEGABLE:
+            if label == selected:
+                canal_id = CANAL_IDS[canal_key]
+                url = f"https://discord.com/channels/{self.guild_id}/{canal_id}"
+                await interaction.response.send_message(
+                    f"🔗 Aquí tienes el acceso directo a **{label}**: {url}",
+                    ephemeral=True  # Solo lo ve el usuario que seleccionó
+                )
+                break
+
+class MenuDesplegableView(discord.ui.View):
+    def __init__(self, guild_id):
+        super().__init__(timeout=None)
+        self.add_item(MenuDesplegable(guild_id))
+
+async def enviar_mensaje_bienvenida(bot, member):
     canal = bot.get_channel(CANAL_PRESENTATE_ID)
     if canal is None:
         print(f"Error: No se encontró el canal con ID {CANAL_PRESENTATE_ID}")
         return
 
-    mensaje_id = redis_client.get(REDIS_KEY)
-    mensaje = None
+    guild_id = canal.guild.id
+    embed = discord.Embed(
+        title=TITULO_BIENVENIDA,
+        description=f"{member.mention}\n\n{DESCRIPCION_BIENVENIDA}",
+        color=discord.Color.blue()
+    )
+    embed.set_footer(text=FOOTER_BIENVENIDA)
+    view = MenuDesplegableView(guild_id)
+    mensaje = await canal.send(embed=embed, view=view)
+    redis_client.set(REDIS_KEY, mensaje.id)
+    await mensaje.pin()
+    print(f"✅ Mensaje de bienvenida enviado en canal y guardado para {member.display_name}")
 
-    if mensaje_id:
-        try:
-            mensaje = await canal.fetch_message(int(mensaje_id))
-            embed = discord.Embed(
-                title=TITULO_BIENVENIDA,
-                description=DESCRIPCION_BIENVENIDA,
-                color=discord.Color.blue()
-            )
-            embed.set_footer(text=FOOTER_BIENVENIDA)
-            view = MenuBienvenidaView()
-            await mensaje.edit(embed=embed, view=view)
-            await mensaje.pin()
-            print("🔁 Mensaje de bienvenida actualizado y menú reactivado tras reinicio.")
-        except discord.NotFound:
-            mensaje = None
-
-    if not mensaje:
-        await limpiar_canal_presentate(canal)
-        embed = discord.Embed(
+    # También enviar por DM
+    try:
+        embed_dm = discord.Embed(
             title=TITULO_BIENVENIDA,
             description=DESCRIPCION_BIENVENIDA,
             color=discord.Color.blue()
         )
-        embed.set_footer(text=FOOTER_BIENVENIDA)
-        view = MenuBienvenidaView()
-        mensaje = await canal.send(embed=embed, view=view)
-        await mensaje.pin()
-        redis_client.set(REDIS_KEY, mensaje.id)
-        print("✅ Mensaje de bienvenida publicado y guardado en Redis.")
+        embed_dm.set_footer(text=FOOTER_BIENVENIDA)
+        view_dm = MenuDesplegableView(guild_id)
+        await member.send(embed=embed_dm, view=view_dm)
+        print(f"✅ DM de bienvenida enviado a {member.display_name}")
+    except Exception as e:
+        print(f"⚠️ No se pudo enviar DM a {member.display_name}: {e}")
 
-    print("✅ Canal 👉preséntate listo a prueba de reinicios.")
-
-    # --- REGISTRA EL EVENTO DE BIENVENIDA ---
+async def setup(bot):
+    print("⚙️ Iniciando módulo del canal 👉preséntate...")
 
     @bot.event
     async def on_member_join(member):
-        # Evita que se dispare en otros servidores si el bot está en varios
+        # Evita duplicar mensajes si el bot está en varios servidores
         if member.guild.id != GUILD_ID:
             return
-        await enviar_bienvenida_dm(member)
+        await enviar_mensaje_bienvenida(bot, member)
+
+    print("✅ Canal 👉preséntate listo y menú desplegable activo a prueba de reinicio.")
