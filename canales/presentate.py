@@ -13,43 +13,50 @@
 """
 
 import discord
-from discord.ext import commands
-import redis
 from config import (
     CANAL_PRESENTATE_ID,
     REDIS_URL,
+    GUILD_ID,
     CANAL_GUIAS_ID,
     CANAL_NORMAS_ID,
     CANAL_VICTORIAS_ID,
     CANAL_ESTRATEGIAS_ID,
-    CANAL_ENTRENAMIENTO_ID,
+    CANAL_ENTRENAMIENTO_ID
 )
 from mensajes.presentate_mensaje import (
     TITULO_BIENVENIDA,
     DESCRIPCION_BIENVENIDA,
+    ENLACES_MENU,
     FOOTER_BIENVENIDA
 )
+import redis
 
 REDIS_KEY = "presentate:mensaje_id"
 redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
-def build_menu_links(guild_id):
-    return [
-        ("📖 Guías", f"https://discord.com/channels/{guild_id}/{CANAL_GUIAS_ID}", "📖"),
-        ("✅ Normas", f"https://discord.com/channels/{guild_id}/{CANAL_NORMAS_ID}", "✅"),
-        ("🏆 Victorias", f"https://discord.com/channels/{guild_id}/{CANAL_VICTORIAS_ID}", "🏆"),
-        ("♟ Estrategias", f"https://discord.com/channels/{guild_id}/{CANAL_ESTRATEGIAS_ID}", "♟"),
-        ("🏋 Entrenamiento", f"https://discord.com/channels/{guild_id}/{CANAL_ENTRENAMIENTO_ID}", "🏋"),
-    ]
+CANAL_IDS = {
+    "guild": GUILD_ID,
+    "canal_guias": CANAL_GUIAS_ID,
+    "canal_normas": CANAL_NORMAS_ID,
+    "canal_victorias": CANAL_VICTORIAS_ID,
+    "canal_estrategias": CANAL_ESTRATEGIAS_ID,
+    "canal_entrenamiento": CANAL_ENTRENAMIENTO_ID,
+}
+
+def reemplazar_placeholders(url: str) -> str:
+    for key, value in CANAL_IDS.items():
+        url = url.replace(f"{{{key}}}", str(value))
+    return url
 
 class MenuBienvenidaView(discord.ui.View):
-    def __init__(self, guild_id):
+    def __init__(self):
         super().__init__(timeout=None)
-        for nombre, url, emoji in build_menu_links(guild_id):
+        for nombre, url, emoji in ENLACES_MENU:
+            url_final = reemplazar_placeholders(url)
             self.add_item(
                 discord.ui.Button(
                     label=nombre,
-                    url=url,
+                    url=url_final,
                     emoji=emoji,
                     style=discord.ButtonStyle.link
                 )
@@ -73,7 +80,6 @@ async def setup(bot):
 
     mensaje_id = redis_client.get(REDIS_KEY)
     mensaje = None
-    guild_id = canal.guild.id
 
     if mensaje_id:
         try:
@@ -84,7 +90,7 @@ async def setup(bot):
                 color=discord.Color.blue()
             )
             embed.set_footer(text=FOOTER_BIENVENIDA)
-            view = MenuBienvenidaView(guild_id)
+            view = MenuBienvenidaView()
             await mensaje.edit(embed=embed, view=view)
             await mensaje.pin()
             print("🔁 Mensaje de bienvenida actualizado y menú reactivado tras reinicio.")
@@ -99,7 +105,7 @@ async def setup(bot):
             color=discord.Color.blue()
         )
         embed.set_footer(text=FOOTER_BIENVENIDA)
-        view = MenuBienvenidaView(guild_id)
+        view = MenuBienvenidaView()
         mensaje = await canal.send(embed=embed, view=view)
         await mensaje.pin()
         redis_client.set(REDIS_KEY, mensaje.id)
