@@ -13,6 +13,8 @@
 """
 
 import discord
+from discord.ext import commands
+import redis
 from config import (
     CANAL_PRESENTATE_ID,
     REDIS_URL,
@@ -29,7 +31,6 @@ from mensajes.presentate_mensaje import (
     ENLACES_MENU,
     FOOTER_BIENVENIDA
 )
-import redis
 
 REDIS_KEY = "presentate:mensaje_id"
 redis_client = redis.from_url(REDIS_URL, decode_responses=True)
@@ -70,6 +71,21 @@ async def limpiar_canal_presentate(canal, mensaje_id_actual=None):
             await mensaje.delete()
         except Exception:
             pass
+
+async def enviar_bienvenida_dm(member: discord.Member):
+    """Envía el mensaje de bienvenida con menú por DM al usuario nuevo."""
+    try:
+        embed = discord.Embed(
+            title=TITULO_BIENVENIDA,
+            description=DESCRIPCION_BIENVENIDA,
+            color=discord.Color.blue()
+        )
+        embed.set_footer(text=FOOTER_BIENVENIDA)
+        view = MenuBienvenidaView()
+        await member.send(embed=embed, view=view)
+        print(f"✅ DM de bienvenida enviado a {member.display_name} ({member.id})")
+    except Exception as e:
+        print(f"⚠️ No se pudo enviar DM a {member.display_name}: {e}")
 
 async def setup(bot):
     print("⚙️ Iniciando módulo del canal 👉preséntate...")
@@ -112,3 +128,12 @@ async def setup(bot):
         print("✅ Mensaje de bienvenida publicado y guardado en Redis.")
 
     print("✅ Canal 👉preséntate listo a prueba de reinicios.")
+
+    # --- REGISTRA EL EVENTO DE BIENVENIDA ---
+
+    @bot.event
+    async def on_member_join(member):
+        # Evita que se dispare en otros servidores si el bot está en varios
+        if member.guild.id != GUILD_ID:
+            return
+        await enviar_bienvenida_dm(member)
