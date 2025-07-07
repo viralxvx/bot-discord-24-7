@@ -3,18 +3,15 @@ DESCRIPCION_BIENVENIDA = (
     "¡Nos alegra tenerte aquí!\n\n"
     "Preséntate para que la comunidad te conozca y aprovecha al máximo nuestros recursos.\n\n"
     "**¿Qué hacer ahora?**\n"
-    "1. Lee las [📖 guías] para saber cómo funciona todo.\n"
-    "2. Revisa las [✅ normas generales] para evitar sanciones.\n"
-    "3. Inspírate en las [🏆 victorias] de otros miembros.\n"
-    "4. Explora las [♟ estrategias probadas] para crecer rápido.\n"
-    "5. Únete a [🏋 entrenamiento] si buscas mentoría o apoyo.\n\n"
-    "No olvides escribir tu presentación: ¿quién eres, de dónde vienes y qué buscas aquí?"
+    "Selecciona una opción del menú para acceder rápidamente a los recursos clave del servidor."
+    "\n\nNo olvides escribir tu presentación: ¿quién eres, de dónde vienes y qué buscas aquí?"
 )
-ENLACES_MENU = [
-    ("📖 Guías", "https://discord.com/channels/{guild}/{canal_guias}", "📖"),
-    ("✅ Normas", "https://discord.com/channels/{guild}/{canal_normas}", "✅"),
-    ("🏆 Victorias", "https://discord.com/channels/{guild}/{canal_victorias}", "🏆"),
-    ("♟ Estrategias", "https://discord.com/channels/{guild}/{canal_estrategias}", "♟"),
-    ("🏋 Entrenamiento", "https://discord.com/channels/{guild}/{canal_entrenamiento}", "🏋"),
+MENU_DESPLEGABLE = [
+    # (label, description, canal_id, emoji)
+    ("📖 Guías", "Lee las guías para aprender cómo funciona todo.", "CANAL_GUIAS_ID", "📖"),
+    ("✅ Normas", "Consulta las normas generales del servidor.", "CANAL_NORMAS_ID", "✅"),
+    ("🏆 Victorias", "Inspírate con logros y casos de éxito.", "CANAL_VICTORIAS_ID", "🏆"),
+    ("♟ Estrategias", "Explora estrategias probadas por la comunidad.", "CANAL_ESTRATEGIAS_ID", "♟"),
+    ("🏋 Entrenamiento", "Accede a mentoría y entrenamientos especiales.", "CANAL_ENTRENAMIENTO_ID", "🏋"),
 ]
-FOOTER_BIENVENIDA = "Si tienes dudas, puedes escribirnos por soporte en cualquier momento."
+FOOTER_BIENVENIDA = "Si tienes dudas, selecciona una opción del menú o escribe a soporte."
