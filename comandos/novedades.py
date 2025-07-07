@@ -44,5 +44,4 @@ class NovedadesView(discord.ui.View):
         )
 
 async def setup(bot):
-    await bot.add_cog(Anuncios(bot))
-
+    await bot.add_cog(Novedades(bot))
