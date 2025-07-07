@@ -1,18 +1,17 @@
 import discord
 from discord.ext import commands
-from config import CANAL_NORMAS_ID, CANAL_LOGS_ID, CANAL_ANUNCIOS  # CANAL_ANUNCIOS para las notificaciones premium
+from config import CANAL_NORMAS_ID, CANAL_LOGS_ID, CANAL_ANUNCIOS
 from mensajes import normas_texto as texto
-from mensajes import normas_config as config
 from mensajes.anuncios_texto import EMBED_ANUNCIO_TEMPLATE, LOGO_URL
-from utils.logger import log_discord  # <-- Logger universal
-from utils.notificaciones import registrar_novedad
+from utils.logger import log_discord
+from utils.notificaciones import registrar_novedad, get_redis
 from datetime import datetime
 import hashlib
 
 class NormasGenerales(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self._ultimo_update_id = None  # Para saber si hubo cambios
+        self._ultimo_update_id = None
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -33,14 +32,12 @@ class NormasGenerales(commands.Cog):
             mensajes_existentes = []
 
         embeds = []
-
         embed1 = discord.Embed(
             title=texto.TITULO,
             description=texto.DESCRIPCION_BLOQUE_1,
             color=discord.Color.orange()
         )
         embeds.append(embed1)
-
         embed2 = discord.Embed(
             description=texto.DESCRIPCION_BLOQUE_2,
             color=discord.Color.orange()
@@ -62,7 +59,6 @@ class NormasGenerales(commands.Cog):
                     old_content = mensajes_existentes[i].embeds[0].description if mensajes_existentes[i].embeds else ""
                     await mensajes_existentes[i].edit(embed=embeds[i])
                     await log_discord(self.bot, f"✅ Embed {i+1} editado.", CANAL_LOGS_ID, "success", "NormasGenerales")
-                    # Si hay diferencia, marca para notificar
                     if embeds[i].description != old_content:
                         notificar_cambio = True
                 except Exception as e:
@@ -76,7 +72,6 @@ class NormasGenerales(commands.Cog):
             except Exception as e:
                 await log_discord(self.bot, f"❌ Error al borrar mensajes: {e}", CANAL_LOGS_ID, "error", "NormasGenerales")
                 return
-
             await log_discord(self.bot, "📤 Publicando nuevos embeds...", CANAL_LOGS_ID, "info", "NormasGenerales")
             for i, embed in enumerate(embeds):
                 try:
@@ -86,10 +81,12 @@ class NormasGenerales(commands.Cog):
                 except Exception as e:
                     await log_discord(self.bot, f"❌ Error al publicar el embed {i+1}: {e}", CANAL_LOGS_ID, "error", "NormasGenerales")
 
-        # --- NOTIFICACIÓN PREMIUM SOLO SI HAY CAMBIO (y no es el mismo update_id) ---
-        if not self._ultimo_update_id or self._ultimo_update_id != update_id or notificar_cambio:
-            self._ultimo_update_id = update_id
-            # Mensaje/Embed de anuncio premium
+        # --- NOTIFICACIÓN PREMIUM SOLO SI HAY CAMBIO Y NO ES REPETIDO ---
+        redis = await get_redis()
+        last_id = await redis.get("vxbot:last_normas_update_id")
+
+        if not last_id or last_id != update_id or notificar_cambio:
+            await redis.set("vxbot:last_normas_update_id", update_id)
             canal_anuncios = self.bot.get_channel(CANAL_ANUNCIOS)
             if canal_anuncios:
                 try:
