@@ -1,5 +1,3 @@
-# mensajes/presentate_mensaje.py
-
 TITULO_BIENVENIDA = "👋 ¡Bienvenido a Viral 𝕏 | V𝕏!"
 DESCRIPCION_BIENVENIDA = (
     "¡Nos alegra tenerte aquí!\n\n"
@@ -19,5 +17,4 @@ ENLACES_MENU = [
     ("♟ Estrategias", "https://discord.com/channels/{guild}/{canal_estrategias}", "♟"),
     ("🏋 Entrenamiento", "https://discord.com/channels/{guild}/{canal_entrenamiento}", "🏋"),
 ]
-# Reemplaza {guild} y {canal_x} por los IDs reales en config.py
 FOOTER_BIENVENIDA = "Si tienes dudas, puedes escribirnos por soporte en cualquier momento."
