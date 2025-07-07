@@ -24,5 +24,6 @@ class NuevasFunciones(commands.Cog):
                 autor="Equipo VX"
             )
 
-def setup(bot):
-    bot.add_cog(NuevasFunciones(bot))
+async def setup(bot):
+    await bot.add_cog(Anuncios(bot))
+
