@@ -10,7 +10,6 @@ class Novedades(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # Registro del comando slash usando app_commands
     @app_commands.command(name="novedades", description="Ver tus novedades no leídas y el historial.")
     async def novedades(self, interaction: discord.Interaction):
         novedades = await obtener_no_leidos(interaction.user.id)
@@ -44,11 +43,5 @@ class NovedadesView(discord.ui.View):
             view=None
         )
 
-async def setup(bot):
-    await bot.add_cog(Novedades(bot))
-    # ¡Registro correcto del comando slash!
-    try:
-        bot.tree.add_command(Novedades.novedades)
-    except Exception:
-        # Ya registrado, evitar duplicados
-        pass
+def setup(bot):
+    bot.add_cog(Novedades(bot))
