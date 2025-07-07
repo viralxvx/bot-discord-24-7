@@ -1,5 +1,3 @@
-# canales/anuncios.py
-
 import discord
 from discord.ext import commands
 from mensajes.anuncios_texto import (
