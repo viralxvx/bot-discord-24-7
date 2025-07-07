@@ -1,5 +1,3 @@
-# canales/nuevas_funciones.py
-
 import discord
 from discord.ext import commands, tasks
 from mensajes.anuncios_texto import (
