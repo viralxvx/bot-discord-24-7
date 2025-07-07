@@ -1,5 +1,3 @@
-# mensajes/anuncios_texto.py
-
 import discord
 from datetime import datetime
 import hashlib
@@ -35,17 +33,9 @@ def EMBED_RESUMEN_REINGRESO(member, novedades, logo_url):
     embed.set_footer(text="VXbot — Tu comunidad evoluciona, tú también.")
     return embed
 
-TITULO_NORMAS = "Actualización de Normas Generales"
-DESC_NORMAS = "¡Se han actualizado las normas generales del servidor! Haz clic para conocer las nuevas reglas."
-URL_NORMAS = "https://discord.com/channels/{GUILD_ID}/{CANAL_NORMAS}/{MESSAGE_ID}"
-
 TITULO_FUNCION = "Nueva Funcionalidad Disponible"
 DESC_FUNCION = "¡Lanzamos una nueva función en el sistema! Descubre cómo sacarle provecho."
 URL_FUNCION = "https://discord.com/channels/{GUILD_ID}/{CANAL_FUNCIONES}/{MESSAGE_ID}"
-
-def get_update_id_normas():
-    texto = DESC_NORMAS  # O el texto real de normas
-    return hashlib.sha256(texto.encode('utf-8')).hexdigest()
 
 def get_update_id_funcion():
     texto = DESC_FUNCION  # O el texto real de la función nueva
