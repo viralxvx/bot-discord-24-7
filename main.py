@@ -25,7 +25,10 @@ EXTENSIONES = [
     "comandos.prorroga",
     "comandos.override",
     "canales.reporte_incumplimiento",
-    "cogs.misc",  # ← Agregamos el nuevo archivo aquí
+    "cogs.misc",
+    "canales.anuncios",
+    "canales.nuevas_funciones",
+    "comandos.novedades"
 ]
 
 log_message = None  # Mensaje embed en canal de logs
