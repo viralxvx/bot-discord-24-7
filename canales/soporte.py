@@ -57,15 +57,21 @@ class SugerenciaModal(Modal, title="📫 Enviar una sugerencia"):
 class Soporte(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.bot.add_command(self.test_soporte)  # Agrega el comando al bot
 
     async def iniciar_soporte(self):
         canal = self.bot.get_channel(CANAL_SOPORTE_ID)
+        print(f"[DEBUG] Canal detectado: {canal}")  # 🧪 Debug canal
+
         if not canal:
             await log_discord(self.bot, "Error", "No se encontró el canal de soporte.", "❌ Error soporte")
             return
 
         try:
             mensajes_fijados = await canal.pins()
+            print(f"[DEBUG] Pins encontrados: {len(mensajes_fijados)}")  # 🧪 Debug pins
+            for m in mensajes_fijados:
+                print(f"[DEBUG] Pin: autor={m.author} | contenido={'embed' if m.embeds else m.content}")
         except Exception as e:
             await log_discord(self.bot, "Error", f"No se pudieron obtener los mensajes fijados: {e}", "❌ Error pins")
             return
@@ -73,12 +79,13 @@ class Soporte(commands.Cog):
         mensaje_bot = next((m for m in mensajes_fijados if m.author == self.bot.user), None)
 
         if mensaje_bot:
+            print("[DEBUG] Mensaje existente del bot encontrado. Editando...")
             await mensaje_bot.edit(embed=MENSAJE_INTRO, view=MenuSoporteView())
-            print("✅ Mensaje de soporte existente editado correctamente.")
         else:
+            print("[DEBUG] No hay mensaje fijado del bot. Creando uno nuevo...")
             mensaje = await canal.send(embed=MENSAJE_INTRO, view=MenuSoporteView())
             await mensaje.pin()
-            print("📌 Mensaje de soporte creado y fijado por primera vez.")
+            print("📌 Mensaje de soporte creado y fijado.")
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -94,7 +101,6 @@ class Soporte(commands.Cog):
 
         member = message.author
 
-        # Admins y mods no reciben prórroga automática
         if not (member.guild_permissions.administrator or member.guild_permissions.manage_guild):
             key_prorroga = f"inactividad:prorroga:{member.id}"
             ahora = datetime.now(timezone.utc)
@@ -126,20 +132,18 @@ class Soporte(commands.Cog):
                 print(f"⚠️ [PRÓRROGA] No se pudo enviar DM a {member.display_name}: {e}")
 
             try:
-                aviso = await message.channel.send(
+                await message.channel.send(
                     f"✅ {member.mention}, tu prórroga de {dias} días fue registrada. Revisa tu DM.",
                     delete_after=10
                 )
             except:
                 pass
 
-        # Borrar mensaje del canal de soporte
         try:
             await message.delete()
         except:
             pass
 
-        # Enviar recordatorio al DM
         try:
             await member.send(
                 "📌 Este canal es exclusivo para el soporte automatizado de VX.\n"
@@ -148,11 +152,11 @@ class Soporte(commands.Cog):
         except:
             pass
 
-@commands.command(name="test_soporte")
-@commands.is_owner()
-async def test_soporte(self, ctx):
-    await self.iniciar_soporte()
-    await ctx.send("✅ Soporte inicializado manualmente.")
+    @commands.command(name="test_soporte")
+    @commands.is_owner()
+    async def test_soporte(self, ctx):
+        await self.iniciar_soporte()
+        await ctx.send("✅ Soporte inicializado manualmente.")
 
 async def setup(bot):
     await bot.add_cog(Soporte(bot))
