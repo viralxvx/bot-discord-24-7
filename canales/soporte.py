@@ -64,15 +64,21 @@ class Soporte(commands.Cog):
             await log_discord(self.bot, "Error", "No se encontró el canal de soporte.", "❌ Error soporte")
             return
 
-        mensajes_fijados = await canal.pins()
+        try:
+            mensajes_fijados = await canal.pins()
+        except Exception as e:
+            await log_discord(self.bot, "Error", f"No se pudieron obtener los mensajes fijados: {e}", "❌ Error pins")
+            return
+
         mensaje_bot = next((m for m in mensajes_fijados if m.author == self.bot.user), None)
 
         if mensaje_bot:
-            # Edita el mensaje si cambia el contenido o estructura
             await mensaje_bot.edit(embed=MENSAJE_INTRO, view=MenuSoporteView())
+            print("✅ Mensaje de soporte existente editado correctamente.")
         else:
             mensaje = await canal.send(embed=MENSAJE_INTRO, view=MenuSoporteView())
             await mensaje.pin()
+            print("📌 Mensaje de soporte creado y fijado por primera vez.")
 
     @commands.Cog.listener()
     async def on_ready(self):
