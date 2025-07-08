@@ -28,7 +28,7 @@ EXTENSIONES = [
     "canales.anuncios",
     "canales.nuevas_funciones",
     "comandos.novedades",
-    "canales.soporte"  
+    "canales.soporte"  # Importante: dejar este nombre así para el get_cog
 ]
 
 log_message = None  # Mensaje embed en canal de logs
@@ -72,6 +72,9 @@ async def on_ready():
         logs.append(error_msg)
         print(error_msg)
 
+    # 🔧 FORZAMOS iniciar_soporte() tras cargar todas las extensiones
+    await ejecutar_iniciar_soporte()
+
     logs_message = "\n".join(logs)
 
     if errores:
@@ -87,7 +90,6 @@ async def on_ready():
         print("✅ Resumen de inicio del bot: Todos los módulos cargados correctamente.")
         print("Status: Activo")
 
-    logs_message = "\n".join(logs)
     if log_message:
         await log_message.edit(content=logs_message)
 
@@ -95,7 +97,15 @@ async def on_ready():
         await asyncio.sleep(60)
         print("⏳ Bot sigue vivo...")
 
-# Ya NO hay handler global de on_message. Los Cogs funcionan de forma independiente.
+# 🔁 FUNCIÓN adicional para ejecutar iniciar_soporte()
+async def ejecutar_iniciar_soporte():
+    await asyncio.sleep(2)  # Por si aún no terminó de cargar bien el bot
+    soporte_cog = bot.get_cog("Soporte")
+    if soporte_cog:
+        print("[DEBUG] Ejecutando iniciar_soporte desde main.py...")
+        await soporte_cog.iniciar_soporte()
+    else:
+        print("[ADVERTENCIA] No se encontró el cog 'Soporte'. No se pudo ejecutar iniciar_soporte().")
 
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
