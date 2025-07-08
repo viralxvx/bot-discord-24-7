@@ -148,5 +148,11 @@ class Soporte(commands.Cog):
         except:
             pass
 
+@commands.command(name="test_soporte")
+@commands.is_owner()
+async def test_soporte(self, ctx):
+    await self.iniciar_soporte()
+    await ctx.send("✅ Soporte inicializado manualmente.")
+
 async def setup(bot):
     await bot.add_cog(Soporte(bot))
