@@ -20,7 +20,6 @@ EXTENSIONES = [
     "canales.comandos",
     "comandos",
     "canales.inactividad",
-    "canales.soporte_prorroga",
     "canales.go_viral",
     "comandos.prorroga",
     "comandos.override",
