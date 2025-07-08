@@ -1,20 +1,13 @@
 import os
+import redis
 
 REDIS_URL = os.getenv("REDIS_URL")
+if not REDIS_URL:
+    print("ERROR: No se encontró la variable de entorno REDIS_URL")
+    exit(1)
 
+r = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 
-r = redis.from_url(REDIS_URL, decode_responses=True)
-
-# Muestra todos los keys de apoyos
-keys = r.keys("go_viral:apoyos:*")
-print(f"Claves encontradas: {len(keys)}")
-
-for key in keys:
+for key in r.scan_iter("go_viral:apoyos:*"):
     usuarios = r.smembers(key)
-    print(f"{key} => {usuarios}")
-
-# Opcional: Ver también las validaciones (👍)
-keys_valid = r.keys("go_viral:validaciones:*")
-for key in keys_valid:
-    usuarios = r.smembers(key)
-    print(f"{key} => {usuarios}")
+    print(f"{key}: {usuarios}")
