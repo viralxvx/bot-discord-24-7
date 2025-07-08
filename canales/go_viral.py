@@ -41,7 +41,7 @@ class GoViral(commands.Cog):
         bot.loop.create_task(self.init_mensaje_fijo())
 
     async def preload_apoyos_reacciones(self):
-        """Sincroniza todos los apoyos (🔥) y validaciones (👍) a memoria Redis para soporte en reinicios."""
+        """Sincroniza apoyos y validaciones de los últimos 100 mensajes, SOLO agregando lo faltante en Redis."""
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
@@ -49,22 +49,18 @@ class GoViral(commands.Cog):
             return
         await log_discord(self.bot, "🔄 [GO-VIRAL] Sincronizando apoyos y validaciones de últimos 100 mensajes...", "info", scope="go_viral")
         try:
-            pipe = self.redis.pipeline()
             async for msg in canal.history(limit=100, oldest_first=True):
                 apoyos_key = f"go_viral:apoyos:{msg.id}"
                 validaciones_key = f"go_viral:validaciones:{msg.id}"
-                pipe.delete(apoyos_key)
-                pipe.delete(validaciones_key)
                 for reaction in msg.reactions:
                     if str(reaction.emoji) == "🔥":
                         async for user in reaction.users():
                             if not user.bot:
-                                pipe.sadd(apoyos_key, str(user.id))
+                                self.redis.sadd(apoyos_key, str(user.id))
                     if str(reaction.emoji) == "👍":
                         async for user in reaction.users():
                             if not user.bot:
-                                pipe.sadd(validaciones_key, str(user.id))
-            pipe.execute()
+                                self.redis.sadd(validaciones_key, str(user.id))
             await log_discord(self.bot, "✅ [GO-VIRAL] Apoyos y validaciones sincronizados.", "success", scope="go_viral")
         except Exception as e:
             await log_discord(self.bot, f"❌ [GO-VIRAL] Error sincronizando apoyos: {e}", "error", scope="go_viral")
@@ -236,7 +232,7 @@ class GoViral(commands.Cog):
                     if user.id == message.author.id:
                         validado = True
                         # Registra validación en Redis
-                        self.redis.sadd(f"go_viral:validaciones:{mensaje.id}", str(user.id))
+                        self.redis.sadd(f"go_viral:validaciones:{message.id}", str(user.id))
                         break
         if not validado:
             await mensaje.delete()
@@ -245,8 +241,6 @@ class GoViral(commands.Cog):
             return
 
         # --- 6. Guardar apoyos y validaciones (para futuro) ---
-        self.redis.delete(f"go_viral:apoyos:{message.id}")
-        self.redis.delete(f"go_viral:validaciones:{message.id}")
         for reaction in mensaje.reactions:
             if str(reaction.emoji) == "🔥":
                 async for user in reaction.users():
