@@ -1,3 +1,5 @@
+# canales/soporte.py
+
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -57,11 +59,10 @@ class SugerenciaModal(Modal, title="📫 Enviar una sugerencia"):
 class Soporte(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.bot.add_command(self.test_soporte)  # Agrega el comando al bot
 
     async def iniciar_soporte(self):
         canal = self.bot.get_channel(CANAL_SOPORTE_ID)
-        print(f"[DEBUG] Canal detectado: {canal}")  # 🧪 Debug canal
+        print(f"[DEBUG] Canal detectado: {canal}")
 
         if not canal:
             await log_discord(self.bot, "Error", "No se encontró el canal de soporte.", "❌ Error soporte")
@@ -69,7 +70,7 @@ class Soporte(commands.Cog):
 
         try:
             mensajes_fijados = await canal.pins()
-            print(f"[DEBUG] Pins encontrados: {len(mensajes_fijados)}")  # 🧪 Debug pins
+            print(f"[DEBUG] Pins encontrados: {len(mensajes_fijados)}")
             for m in mensajes_fijados:
                 print(f"[DEBUG] Pin: autor={m.author} | contenido={'embed' if m.embeds else m.content}")
         except Exception as e:
@@ -151,12 +152,6 @@ class Soporte(commands.Cog):
             )
         except:
             pass
-
-    @commands.command(name="test_soporte")
-    @commands.is_owner()
-    async def test_soporte(self, ctx):
-        await self.iniciar_soporte()
-        await ctx.send("✅ Soporte inicializado manualmente.")
 
 async def setup(bot):
     await bot.add_cog(Soporte(bot))
