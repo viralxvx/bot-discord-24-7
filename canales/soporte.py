@@ -1,12 +1,12 @@
-# canales/soporte.py
-
 import discord
 from discord.ext import commands
 from discord import app_commands
 from discord.ui import View, Select, Modal, TextInput
 from config import CANAL_SOPORTE_ID, REDIS_URL
 from mensajes.soporte_mensajes import MENSAJE_INTRO, OPCIONES_MENU, EXPLICACIONES
+from mensajes.inactividad_texto import PRORROGA_CONCEDIDA
 from utils.logger import log_discord
+from datetime import datetime, timedelta, timezone
 import redis
 import json
 
@@ -86,15 +86,67 @@ class Soporte(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        if message.channel.id == CANAL_SOPORTE_ID and message.author != self.bot.user:
-            await message.delete()
+        if message.author == self.bot.user:
+            return
+
+        if message.channel.id != CANAL_SOPORTE_ID:
+            return
+
+        member = message.author
+
+        # Admins y mods no reciben prórroga automática
+        if not (member.guild_permissions.administrator or member.guild_permissions.manage_guild):
+            key_prorroga = f"inactividad:prorroga:{member.id}"
+            ahora = datetime.now(timezone.utc)
+            prorroga_actual = redis_client.get(key_prorroga)
+
+            if prorroga_actual:
+                fecha_prorroga = datetime.fromisoformat(prorroga_actual)
+                if ahora < fecha_prorroga:
+                    try:
+                        await message.reply(
+                            "⏳ Ya tienes una prórroga activa. Espera a que termine antes de solicitar otra.",
+                            mention_author=False
+                        )
+                    except Exception:
+                        pass
+                    try:
+                        await message.delete()
+                    except:
+                        pass
+                    return
+
+            dias = 7
+            hasta = ahora + timedelta(days=dias)
+            redis_client.set(key_prorroga, hasta.isoformat())
+
             try:
-                await message.author.send(
-                    "📌 Este canal es exclusivo para el soporte automatizado de VX.\n"
-                    "Usa el mensaje fijado para enviar sugerencias o recibir ayuda."
+                await member.send(PRORROGA_CONCEDIDA.format(dias=dias))
+            except Exception as e:
+                print(f"⚠️ [PRÓRROGA] No se pudo enviar DM a {member.display_name}: {e}")
+
+            try:
+                aviso = await message.channel.send(
+                    f"✅ {member.mention}, tu prórroga de {dias} días fue registrada. Revisa tu DM.",
+                    delete_after=10
                 )
             except:
                 pass
+
+        # Borrar mensaje del canal de soporte
+        try:
+            await message.delete()
+        except:
+            pass
+
+        # Enviar recordatorio al DM
+        try:
+            await member.send(
+                "📌 Este canal es exclusivo para el soporte automatizado de VX.\n"
+                "Usa el mensaje fijado para enviar sugerencias o recibir ayuda."
+            )
+        except:
+            pass
 
 async def setup(bot):
     await bot.add_cog(Soporte(bot))
