@@ -1,5 +1,3 @@
-# canales/soporte.py
-
 import discord
 from discord.ext import commands
 from discord import app_commands
@@ -71,21 +69,24 @@ class Soporte(commands.Cog):
         try:
             mensajes_fijados = await canal.pins()
             print(f"[DEBUG] Pins encontrados: {len(mensajes_fijados)}")
-            for m in mensajes_fijados:
-                print(f"[DEBUG] Pin: autor={m.author} | contenido={'embed' if m.embeds else m.content}")
         except Exception as e:
             await log_discord(self.bot, "Error", f"No se pudieron obtener los mensajes fijados: {e}", "❌ Error pins")
             return
 
-        mensaje_bot = next((m for m in mensajes_fijados if m.author == self.bot.user), None)
+        mensaje_bot = None
+        for m in mensajes_fijados:
+            if m.author == self.bot.user and m.embeds:
+                if m.embeds[0].title == MENSAJE_INTRO.title:
+                    mensaje_bot = m
+                    break
 
         if mensaje_bot:
-            print("[DEBUG] Mensaje existente del bot encontrado. Editando...")
+            print("[DEBUG] Mensaje de soporte detectado. Editando.")
             await mensaje_bot.edit(embed=MENSAJE_INTRO, view=MenuSoporteView())
         else:
-            print("[DEBUG] No hay mensaje fijado del bot. Creando uno nuevo...")
-            mensaje = await canal.send(embed=MENSAJE_INTRO, view=MenuSoporteView())
-            await mensaje.pin()
+            print("[DEBUG] No se encontró mensaje válido. Creando nuevo mensaje de soporte.")
+            nuevo_mensaje = await canal.send(embed=MENSAJE_INTRO, view=MenuSoporteView())
+            await nuevo_mensaje.pin()
             print("📌 Mensaje de soporte creado y fijado.")
 
     @commands.Cog.listener()
