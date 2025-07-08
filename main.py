@@ -28,7 +28,8 @@ EXTENSIONES = [
     "cogs.misc",
     "canales.anuncios",
     "canales.nuevas_funciones",
-    "comandos.novedades"
+    "comandos.novedades",
+    "canales.soporte"  
 ]
 
 log_message = None  # Mensaje embed en canal de logs
