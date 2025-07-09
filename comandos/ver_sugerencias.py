@@ -53,4 +53,6 @@ class VerSugerencias(commands.Cog):
         await interaction.response.send_message(embeds=embeds[:10], ephemeral=True)  # Muestra hasta 10 sugerencias
 
 async def setup(bot):
+    print("[DEBUG] Cargando cog VerSugerencias...")
     await bot.add_cog(VerSugerencias(bot))
+    print("[DEBUG] VerSugerencias registrado correctamente.")
