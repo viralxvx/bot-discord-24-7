@@ -15,11 +15,8 @@ class NuevasFunciones(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        # Solo canal nuevas funciones y no bots
-        if (
-            message.channel.id == CANAL_FUNCIONES
-            and not message.author.bot
-        ):
+        # Solo canal nuevas funciones (acepta mensajes de humanos y del bot)
+        if message.channel.id == CANAL_FUNCIONES:
             redis = await get_redis()
             last_id = await redis.get("vxbot:last_funcion_update_id")
             if last_id == str(message.id):
@@ -30,7 +27,6 @@ class NuevasFunciones(commands.Cog):
             if not canal_anuncios:
                 return
 
-            # Toma el embed si existe, si no el contenido como descripción
             if message.embeds:
                 descripcion = message.embeds[0].description or ""
                 titulo = message.embeds[0].title or "Nueva Función"
