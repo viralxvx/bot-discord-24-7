@@ -19,6 +19,7 @@ EXTENSIONES = [
     "canales.faltas",
     "canales.comandos",
     "comandos",
+    "comandos.ver_sugerencias",
     "canales.inactividad",
     "canales.go_viral",
     "comandos.prorroga",
