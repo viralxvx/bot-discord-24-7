@@ -29,6 +29,7 @@ EXTENSIONES = [
     "canales.anuncios",
     "canales.nuevas_funciones",
     "comandos.novedades",
+    "comandos.publicar_funcion",
     "canales.soporte"  # Importante: dejar este nombre así para el get_cog
 ]
 
