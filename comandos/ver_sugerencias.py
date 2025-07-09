@@ -1,56 +1,56 @@
-# comandos/ver_sugerencias.py
 import discord
-from discord.ext import commands
 from discord import app_commands
-from config import REDIS_URL, ADMIN_ID
+from discord.ext import commands
 import redis
-
-redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
-
-ESTADOS = {
-    "pendiente": "🕐 Pendiente",
-    "hecha": "✅ Hecha",
-    "descartada": "❌ Descartada"
-}
+from config import REDIS_URL, CANAL_COMANDOS_ID
 
 class VerSugerencias(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 
-    @app_commands.command(name="ver_sugerencias_test", description="Revisa y gestiona las sugerencias enviadas por los usuarios")
+    @app_commands.command(name="ver_sugerencias", description="📬 Revisa las sugerencias enviadas por los usuarios (solo admins).")
     async def ver_sugerencias(self, interaction: discord.Interaction):
-        if interaction.user.id != ADMIN_ID:
-            await interaction.response.send_message("❌ Solo los administradores pueden usar este comando.", ephemeral=True)
+        if interaction.channel.id != CANAL_COMANDOS_ID:
+            await interaction.response.send_message(
+                "❌ Este comando solo puede usarse en el canal 💻comandos.",
+                ephemeral=True
+            )
             return
 
-        sugerencias = redis_client.hgetall("soporte:sugerencias")
-
-        if not sugerencias:
-            await interaction.response.send_message("📭 No hay sugerencias registradas.", ephemeral=True)
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message(
+                "🔒 Este comando es solo para administradores.",
+                ephemeral=True
+            )
             return
 
-        # Convertir a lista de tuplas ordenadas por fecha
-        sugerencias_ordenadas = sorted(
-            [(k, eval(v)) for k, v in sugerencias.items()],
-            key=lambda item: item[1]["timestamp"],
-            reverse=True
-        )
+        claves = self.redis.keys("sugerencia:*")
+        if not claves:
+            await interaction.response.send_message("📭 No hay sugerencias guardadas aún.", ephemeral=True)
+            return
+
+        sugerencias = []
+        for clave in claves:
+            data = self.redis.hgetall(clave)
+            estado = data.get("estado", "pendiente").capitalize()
+            texto = data.get("contenido", "Sin contenido")
+            autor_id = clave.split(":")[1]
+            sugerencias.append((autor_id, texto, estado))
 
         embeds = []
-        for user_id, data in sugerencias_ordenadas[:10]:  # Limite por ahora a 10
-            user = self.bot.get_user(int(user_id))
-            estado = ESTADOS.get(data.get("estado", "pendiente"), "🕐 Pendiente")
+        for autor_id, texto, estado in sugerencias:
+            user = await self.bot.fetch_user(int(autor_id))
             embed = discord.Embed(
-                title=f"📬 Sugerencia de {user.name if user else user_id}",
-                description=data.get("mensaje", "(sin mensaje)"),
-                color=discord.Color.blue()
+                title=f"📨 Sugerencia de {user.name}",
+                description=texto,
+                color=discord.Color.blurple()
             )
-            embed.add_field(name="Estado", value=estado, inline=True)
-            embed.add_field(name="Fecha", value=data.get("fecha", "N/A"), inline=True)
-            embed.set_footer(text=f"ID: {user_id}")
+            embed.add_field(name="Estado", value=estado)
+            embed.set_footer(text=f"Usuario ID: {autor_id}")
             embeds.append(embed)
 
-        await interaction.response.send_message(embeds=embeds, ephemeral=True)
+        await interaction.response.send_message(embeds=embeds[:10], ephemeral=True)  # Muestra hasta 10 sugerencias
 
 async def setup(bot):
     await bot.add_cog(VerSugerencias(bot))
