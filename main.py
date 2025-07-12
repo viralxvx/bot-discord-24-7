@@ -110,6 +110,17 @@ async def ejecutar_iniciar_soporte():
     else:
         print("[ADVERTENCIA] No se encontró el cog 'Soporte'. No se pudo ejecutar iniciar_soporte().")
 
+# === RESTRICCIÓN DE CANAL FALTAS SOLO PARA PANELES (NO HUMANOS) ===
+@bot.event
+async def on_message(message):
+    try:
+        from config import CANAL_FALTAS_ID
+        if message.channel.id == CANAL_FALTAS_ID and not message.author.bot:
+            await message.delete()
+    except Exception:
+        pass
+    await bot.process_commands(message)
+
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
     asyncio.run(bot.start(TOKEN))
