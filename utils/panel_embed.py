@@ -1,139 +1,92 @@
 import discord
-import json
-from datetime import datetime, timezone
-import os
-import aiohttp
+import redis
 from config import CANAL_FALTAS_ID, REDIS_URL
+from datetime import datetime, timezone
 
-def formatea_fecha_relativa(dt):
-    if not dt:
-        return "-"
-    return f"<t:{int(dt.timestamp())}:R>"
-
-def color_estado_y_emoji(estado):
+def color_estado(estado):
     estado = estado.lower()
-    if estado == "activo":
-        return discord.Color.green(), "🟢"
-    if estado == "baneado":
-        return discord.Color.red(), "⛔"
-    if estado == "expulsado":
-        return discord.Color.dark_red(), "🚫"
-    if estado == "prórroga":
-        return discord.Color.gold(), "🟠"
-    if estado == "desercion":
-        return discord.Color.orange(), "⚠️"
-    return discord.Color.greyple(), "⚪"
-
-async def generar_panel_embed(redis_client, miembro):
-    user_id = miembro.id
-    estado = (redis_client.hget(f"usuario:{user_id}", "estado") or "Activo").capitalize()
-    color, emoji_estado = color_estado_y_emoji(estado)
-    faltas_total = int(redis_client.hget(f"usuario:{user_id}", "faltas_totales") or 0)
-    faltas_mes = int(redis_client.hget(f"usuario:{user_id}", "faltas_mes") or 0)
-    ultima_falta_ts = redis_client.hget(f"usuario:{user_id}", "ultima_falta")
-    ultima_falta_dt = datetime.fromtimestamp(float(ultima_falta_ts), timezone.utc) if ultima_falta_ts else None
-
-    # Fecha de ingreso
-    fecha_ingreso = formatea_fecha_relativa(getattr(miembro, "joined_at", None))
-
-    # Prórroga activa
-    prorroga_activa = redis_client.get(f"inactividad:prorroga:{user_id}")
-    prorroga_text = "—"
-    if prorroga_activa:
-        prorroga_dt = datetime.fromisoformat(prorroga_activa)
-        pr_hist = redis_client.lrange(f"prorrogas_historial:{user_id}", -1, -1)
-        motivo = ""
-        if pr_hist:
-            try:
-                motivo = json.loads(pr_hist[0]).get("motivo", "")
-            except:
-                motivo = ""
-        prorroga_text = f"⏳ Hasta {formatea_fecha_relativa(prorroga_dt)}"
-        if motivo:
-            prorroga_text += f"\n**Motivo:** {motivo}"
-
-    # Última publicación
-    last_publi = redis_client.get(f"inactividad:{user_id}")
-    last_publi_dt = datetime.fromisoformat(last_publi) if last_publi else None
-
-    # Historial reciente (últimas 3 faltas)
-    faltas_hist = redis_client.lrange(f"faltas_historial:{user_id}", -3, -1)
-    ultimas_faltas = []
-    if faltas_hist:
-        for f in faltas_hist:
-            entry = json.loads(f)
-            ultimas_faltas.append(
-                f"`{entry['fecha']}`: {entry['motivo']} ({entry['canal']}) — {entry['moderador']}"
-            )
-    faltas_text = "\n".join(ultimas_faltas) if ultimas_faltas else "*Sin faltas recientes*"
-
-    reincidencias = int(redis_client.get(f"inactividad:reincidencia:{user_id}") or 0)
-    advertencias = int(redis_client.get(f"inactividad:advertencias:{user_id}") or 0)
-
-    avatar_url = miembro.display_avatar.url if hasattr(miembro, "display_avatar") else (miembro.avatar.url if miembro.avatar else discord.Embed.Empty)
-
-    # Tag Discord amigable (nombre#1234)
-    tag = f"{miembro.name}#{miembro.discriminator}" if hasattr(miembro, "discriminator") else miembro.name
-
-    embed = discord.Embed(
-        title=f"{emoji_estado} REGISTRO DE {miembro.display_name} ({tag})",
-        color=color
-    )
-    embed.set_thumbnail(url=avatar_url)
-    embed.add_field(name="Estado actual", value=f"{emoji_estado} {estado}", inline=True)
-    embed.add_field(name="Faltas totales", value=faltas_total, inline=True)
-    embed.add_field(name="Faltas este mes", value=faltas_mes, inline=True)
-    embed.add_field(name="Fecha de ingreso", value=fecha_ingreso, inline=True)
-    if ultima_falta_dt:
-        embed.add_field(name="Última falta", value=formatea_fecha_relativa(ultima_falta_dt), inline=True)
-    if last_publi_dt:
-        embed.add_field(name="Última publicación", value=formatea_fecha_relativa(last_publi_dt), inline=True)
-    embed.add_field(name="Prórroga activa", value=prorroga_text, inline=False)
-    embed.add_field(name="Advertencias activas", value=advertencias, inline=True)
-    embed.add_field(name="Reincidencias inactividad", value=reincidencias, inline=True)
-    embed.add_field(name="Historial reciente", value=faltas_text, inline=False)
-    embed.set_footer(text="Sistema automatizado de reputación pública – Última actualización")
-    embed.timestamp = datetime.now(timezone.utc)
-    return embed
+    return {
+        "activo": discord.Color.green(),
+        "baneado": discord.Color.red(),
+        "expulsado": discord.Color.dark_red(),
+        "deserción": discord.Color.orange(),
+        "prórroga": discord.Color.orange()
+    }.get(estado, discord.Color.greyple())
 
 async def actualizar_panel_faltas(bot, miembro):
-    from redis import Redis
-    redis_client = Redis.from_url(REDIS_URL, decode_responses=True)
-    user_id = miembro.id
+    """
+    Actualiza o crea el panel público de faltas para un usuario.
+    Si el panel anterior fue borrado, crea uno nuevo y actualiza referencias en Redis.
+    """
+    redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
     canal = bot.get_channel(CANAL_FALTAS_ID)
-    embed = await generar_panel_embed(redis_client, miembro)
+    if not canal:
+        print(f"❌ No se encontró el canal de faltas (ID {CANAL_FALTAS_ID})")
+        return
 
-    # Guardar hash para evitar duplicados innecesarios
+    # Datos básicos del usuario
+    user_id = miembro.id
+    data = redis_client.hgetall(f"usuario:{user_id}")
+
+    estado = data.get("estado", "Activo").capitalize()
+    faltas_total = int(data.get("faltas_totales", 0))
+    faltas_mes = int(data.get("faltas_mes", 0))
+    ultima_falta = data.get("ultima_falta")
+    fecha_ultima_falta = ""
+    if ultima_falta:
+        try:
+            fecha_ultima_falta = datetime.fromtimestamp(float(ultima_falta), timezone.utc).strftime("%d/%m/%Y %H:%M")
+        except:
+            fecha_ultima_falta = ""
+
+    now = datetime.now(timezone.utc)
+    avatar_url = getattr(getattr(miembro, "display_avatar", None), "url", "") or getattr(getattr(miembro, "avatar", None), "url", "")
+
+    embed = discord.Embed(
+        title=f"📤 REGISTRO DE {miembro.mention}",
+        description=(
+            f"**Estado actual:** {estado}\n"
+            f"**Total de faltas:** {faltas_total}\n"
+            f"**Faltas este mes:** {faltas_mes}\n"
+            f"{f'**Última falta:** {fecha_ultima_falta}' if fecha_ultima_falta else ''}"
+        ),
+        color=color_estado(estado)
+    )
+    embed.set_author(name=getattr(miembro, 'display_name', 'Miembro'), icon_url=avatar_url)
+    embed.set_footer(text="Sistema automatizado de reputación pública", icon_url=avatar_url)
+    embed.timestamp = now
+
+    # --- Gestión premium de mensaje y Redis ---
     panel_key = f"panel:{user_id}"
     hash_key = f"hash:{user_id}"
-
-    # Se puede mejorar el hash, aquí solo ejemplo sencillo
-    current_hash = f"{embed.title}:{embed.description}:{embed.fields}:{embed.footer.text if embed.footer else ''}"
     mensaje_id = redis_client.get(panel_key)
-    previous_hash = redis_client.get(hash_key)
+    current_hash = f"{estado}:{faltas_total}:{faltas_mes}:{fecha_ultima_falta}"
 
-    webhook_url = os.getenv("WEB_HOOKS_FALTAS")
-    async with aiohttp.ClientSession() as session:
-        if webhook_url:
-            webhook = discord.Webhook.from_url(webhook_url, session=session)
+    if redis_client.get(hash_key) == current_hash:
+        # No hace falta actualizar, ya está al día
+        return
+
+    try:
+        if mensaje_id:
+            # Intenta editar mensaje existente
             try:
-                if mensaje_id and current_hash != previous_hash:
-                    await webhook.edit_message(int(mensaje_id), embed=embed)
-                    redis_client.set(hash_key, current_hash)
-                elif not mensaje_id:
-                    msg = await webhook.send(embed=embed, wait=True)
-                    redis_client.set(panel_key, msg.id)
-                    redis_client.set(hash_key, current_hash)
+                msg = await canal.fetch_message(int(mensaje_id))
+                await msg.edit(embed=embed)
+            except discord.NotFound:
+                # El mensaje ya no existe (404), borra referencias y crea nuevo mensaje
+                redis_client.delete(panel_key)
+                redis_client.delete(hash_key)
+                msg = await canal.send(embed=embed)
+                redis_client.set(panel_key, msg.id)
             except Exception as e:
                 print(f"❌ Error actualizando panel de {miembro.display_name}: {e}")
+                raise
         else:
-            # Alternativa: publicar directamente en el canal si no hay webhook
-            if canal:
-                if mensaje_id and current_hash != previous_hash:
-                    msg = await canal.fetch_message(int(mensaje_id))
-                    await msg.edit(embed=embed)
-                    redis_client.set(hash_key, current_hash)
-                elif not mensaje_id:
-                    msg = await canal.send(embed=embed)
-                    redis_client.set(panel_key, msg.id)
-                    redis_client.set(hash_key, current_hash)
+            # No existe mensaje previo, crea uno nuevo
+            msg = await canal.send(embed=embed)
+            redis_client.set(panel_key, msg.id)
+
+        # Actualiza hash (solo si no hubo error)
+        redis_client.set(hash_key, current_hash)
+    except Exception as e:
+        print(f"❌ Error actualizando/creando panel de {miembro.display_name}: {e}")
