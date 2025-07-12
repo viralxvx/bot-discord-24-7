@@ -31,8 +31,7 @@ from mensajes.presentate_mensaje import (
     FOOTER_BIENVENIDA
 )
 
-REDIS_KEY = "presentate:mensaje_id"
-redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+# Ya NO necesitas guardar mensaje_id en Redis porque cada mensaje es único
 
 CANAL_IDS = {
     "CANAL_GUIAS_ID": CANAL_GUIAS_ID,
@@ -78,17 +77,14 @@ class MenuDesplegableView(discord.ui.View):
         super().__init__(timeout=None)
         self.add_item(MenuDesplegable(guild_id))
 
-async def crear_o_actualizar_mensaje_bienvenida(bot, mention_text=None):
+async def enviar_bienvenida_canal(bot, member: discord.Member):
     canal = bot.get_channel(CANAL_PRESENTATE_ID)
     if canal is None:
         print(f"Error: No se encontró el canal con ID {CANAL_PRESENTATE_ID}")
         return
 
     guild_id = canal.guild.id
-    mensaje_id = redis_client.get(REDIS_KEY)
-    embed_desc = DESCRIPCION_BIENVENIDA
-    if mention_text:
-        embed_desc = f"{mention_text}\n\n{DESCRIPCION_BIENVENIDA}"
+    embed_desc = f"{member.mention}\n\n{DESCRIPCION_BIENVENIDA}"
 
     embed = discord.Embed(
         title=TITULO_BIENVENIDA,
@@ -98,21 +94,9 @@ async def crear_o_actualizar_mensaje_bienvenida(bot, mention_text=None):
     embed.set_footer(text=FOOTER_BIENVENIDA)
     view = MenuDesplegableView(guild_id)
 
-    mensaje = None
-    if mensaje_id:
-        try:
-            mensaje = await canal.fetch_message(int(mensaje_id))
-            await mensaje.edit(embed=embed, view=view)
-            await mensaje.pin()
-            print("🔁 Mensaje de bienvenida actualizado y menú reactivado tras reinicio.")
-        except discord.NotFound:
-            mensaje = None
-
-    if not mensaje:
-        mensaje = await canal.send(embed=embed, view=view)
-        await mensaje.pin()
-        redis_client.set(REDIS_KEY, mensaje.id)
-        print("✅ Mensaje de bienvenida publicado y guardado en Redis.")
+    mensaje = await canal.send(embed=embed, view=view)
+    await mensaje.pin()
+    print(f"✅ Mensaje de bienvenida personalizado publicado para {member.display_name}")
 
 async def enviar_bienvenida_dm(member: discord.Member):
     try:
@@ -131,15 +115,12 @@ async def enviar_bienvenida_dm(member: discord.Member):
 
 async def setup(bot):
     print("⚙️ Iniciando módulo del canal 👉preséntate...")
-    await crear_o_actualizar_mensaje_bienvenida(bot)
 
     @bot.event
     async def on_member_join(member):
         if member.guild.id != GUILD_ID:
             return
-        # Menciona al usuario y lo invita a presentarse (edita el mensaje fijo)
-        mention_text = f"🎉 {member.mention} acaba de unirse. ¡Dale la bienvenida y cuéntanos sobre ti!"
-        await crear_o_actualizar_mensaje_bienvenida(bot, mention_text=mention_text)
+        await enviar_bienvenida_canal(bot, member)
         await enviar_bienvenida_dm(member)
 
-    print("✅ Canal 👉preséntate listo, menú fijo, DM automático y a prueba de reinicio.")
+    print("✅ Canal 👉preséntate listo: bienvenida personalizada para cada usuario y menú desplegable profesional.")
