@@ -32,8 +32,8 @@ EXTENSIONES = [
     "comandos.publicar_funcion",
     "canales.soporte",  # Importante: dejar este nombre así para el get_cog
     "comandos.migrar_paneles",   # <--- PANEL PREMIUM MIGRATION
+    "comandos.forzar_panel",     # <--- NUEVO: COMANDO PREMIUM INDIVIDUAL
 ]
-
 log_message = None  # Mensaje embed en canal de logs
 logs = []  # Lista para mensaje embed y consola Railway
 
