@@ -34,11 +34,34 @@ EXTENSIONES = [
     "comandos.migrar_paneles",   # <--- PANEL PREMIUM MIGRATION
     "comandos.forzar_panel",     # <--- NUEVO: COMANDO PREMIUM INDIVIDUAL
 ]
+
 log_message = None  # Mensaje embed en canal de logs
 logs = []  # Lista para mensaje embed y consola Railway
 
 def get_current_time():
     return datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+
+async def sincronizar_todos_los_paneles(bot):
+    """
+    Recorre todos los humanos del servidor y sincroniza sus paneles premium.
+    """
+    await bot.wait_until_ready()
+    try:
+        from utils.panel_embed import actualizar_panel_faltas
+        import redis
+        from config import REDIS_URL
+        redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+    except Exception as e:
+        print(f"❌ Error importando dependencias para sincronizar paneles: {e}")
+        return
+
+    for guild in bot.guilds:
+        for miembro in guild.members:
+            if not miembro.bot:
+                try:
+                    await actualizar_panel_faltas(bot, miembro)
+                except Exception as e:
+                    print(f"❌ Error auto-actualizando panel de {miembro.display_name}: {e}")
 
 @bot.event
 async def on_ready():
@@ -95,6 +118,11 @@ async def on_ready():
 
     if log_message:
         await log_message.edit(content=logs_message)
+
+    # === Sincroniza paneles premium al iniciar (nunca más paneles viejos) ===
+    print("🔄 Sincronizando TODOS los paneles premium de faltas...")
+    await sincronizar_todos_los_paneles(bot)
+    print("✅ Sincronización de paneles completada.")
 
     while True:
         await asyncio.sleep(60)
