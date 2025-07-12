@@ -5,32 +5,42 @@ import os
 import aiohttp
 from config import CANAL_FALTAS_ID, REDIS_URL
 
-def formatea_fecha_relativa(fecha_dt):
-    """Devuelve fecha Discord relativa o '-' si no aplica."""
-    if not fecha_dt:
+def formatea_fecha_relativa(dt):
+    if not dt:
         return "-"
-    return f"<t:{int(fecha_dt.timestamp())}:R>"
+    return f"<t:{int(dt.timestamp())}:R>"
+
+def color_estado_y_emoji(estado):
+    estado = estado.lower()
+    if estado == "activo":
+        return discord.Color.green(), "🟢"
+    if estado == "baneado":
+        return discord.Color.red(), "⛔"
+    if estado == "expulsado":
+        return discord.Color.dark_red(), "🚫"
+    if estado == "prórroga":
+        return discord.Color.gold(), "🟠"
+    if estado == "desercion":
+        return discord.Color.orange(), "⚠️"
+    return discord.Color.greyple(), "⚪"
 
 async def generar_panel_embed(redis_client, miembro):
     user_id = miembro.id
     estado = (redis_client.hget(f"usuario:{user_id}", "estado") or "Activo").capitalize()
+    color, emoji_estado = color_estado_y_emoji(estado)
     faltas_total = int(redis_client.hget(f"usuario:{user_id}", "faltas_totales") or 0)
     faltas_mes = int(redis_client.hget(f"usuario:{user_id}", "faltas_mes") or 0)
     ultima_falta_ts = redis_client.hget(f"usuario:{user_id}", "ultima_falta")
     ultima_falta_dt = datetime.fromtimestamp(float(ultima_falta_ts), timezone.utc) if ultima_falta_ts else None
 
     # Fecha de ingreso
-    if hasattr(miembro, "joined_at") and miembro.joined_at:
-        fecha_ingreso = formatea_fecha_relativa(miembro.joined_at)
-    else:
-        fecha_ingreso = "-"
+    fecha_ingreso = formatea_fecha_relativa(getattr(miembro, "joined_at", None))
 
     # Prórroga activa
     prorroga_activa = redis_client.get(f"inactividad:prorroga:{user_id}")
-    prorroga_text = "-"
+    prorroga_text = "—"
     if prorroga_activa:
         prorroga_dt = datetime.fromisoformat(prorroga_activa)
-        # Buscar motivo
         pr_hist = redis_client.lrange(f"prorrogas_historial:{user_id}", -1, -1)
         motivo = ""
         if pr_hist:
@@ -38,7 +48,7 @@ async def generar_panel_embed(redis_client, miembro):
                 motivo = json.loads(pr_hist[0]).get("motivo", "")
             except:
                 motivo = ""
-        prorroga_text = f"Hasta {formatea_fecha_relativa(prorroga_dt)}"
+        prorroga_text = f"⏳ Hasta {formatea_fecha_relativa(prorroga_dt)}"
         if motivo:
             prorroga_text += f"\n**Motivo:** {motivo}"
 
@@ -48,38 +58,29 @@ async def generar_panel_embed(redis_client, miembro):
 
     # Historial reciente (últimas 3 faltas)
     faltas_hist = redis_client.lrange(f"faltas_historial:{user_id}", -3, -1)
+    ultimas_faltas = []
     if faltas_hist:
-        ultimas_faltas = []
         for f in faltas_hist:
             entry = json.loads(f)
             ultimas_faltas.append(
                 f"`{entry['fecha']}`: {entry['motivo']} ({entry['canal']}) — {entry['moderador']}"
             )
-        faltas_text = "\n".join(ultimas_faltas)
-    else:
-        faltas_text = "*Sin faltas recientes*"
+    faltas_text = "\n".join(ultimas_faltas) if ultimas_faltas else "*Sin faltas recientes*"
 
-    # Reincidencias (por inactividad)
     reincidencias = int(redis_client.get(f"inactividad:reincidencia:{user_id}") or 0)
     advertencias = int(redis_client.get(f"inactividad:advertencias:{user_id}") or 0)
 
-    # Color según estado
-    color_estado = {
-        "Activo": discord.Color.green(),
-        "Baneado": discord.Color.red(),
-        "Expulsado": discord.Color.dark_red(),
-        "Desercion": discord.Color.orange(),
-        "Prórroga": discord.Color.gold()
-    }.get(estado, discord.Color.greyple())
+    avatar_url = miembro.display_avatar.url if hasattr(miembro, "display_avatar") else (miembro.avatar.url if miembro.avatar else discord.Embed.Empty)
 
-    avatar_url = getattr(getattr(miembro, "display_avatar", None), "url", "") or getattr(getattr(miembro, "avatar", None), "url", "")
+    # Tag Discord amigable (nombre#1234)
+    tag = f"{miembro.name}#{miembro.discriminator}" if hasattr(miembro, "discriminator") else miembro.name
 
     embed = discord.Embed(
-        title=f"📤 REGISTRO DE {miembro.display_name} ({miembro})",
-        color=color_estado
+        title=f"{emoji_estado} REGISTRO DE {miembro.display_name} ({tag})",
+        color=color
     )
     embed.set_thumbnail(url=avatar_url)
-    embed.add_field(name="Estado actual", value=estado, inline=True)
+    embed.add_field(name="Estado actual", value=f"{emoji_estado} {estado}", inline=True)
     embed.add_field(name="Faltas totales", value=faltas_total, inline=True)
     embed.add_field(name="Faltas este mes", value=faltas_mes, inline=True)
     embed.add_field(name="Fecha de ingreso", value=fecha_ingreso, inline=True)
@@ -106,11 +107,11 @@ async def actualizar_panel_faltas(bot, miembro):
     panel_key = f"panel:{user_id}"
     hash_key = f"hash:{user_id}"
 
+    # Se puede mejorar el hash, aquí solo ejemplo sencillo
     current_hash = f"{embed.title}:{embed.description}:{embed.fields}:{embed.footer.text if embed.footer else ''}"
     mensaje_id = redis_client.get(panel_key)
     previous_hash = redis_client.get(hash_key)
 
-    # Usa webhook si tienes configurado
     webhook_url = os.getenv("WEB_HOOKS_FALTAS")
     async with aiohttp.ClientSession() as session:
         if webhook_url:
