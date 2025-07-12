@@ -1,52 +1,47 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-from config import CANAL_FALTAS_ID, ADMIN_ID, REDIS_URL
+from config import ADMIN_ID
 from utils.panel_embed import actualizar_panel_faltas
-import redis
 
 class MigrarPaneles(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 
     @app_commands.command(
         name="migrar_paneles",
-        description="Migra todos los paneles viejos de faltas al formato premium (solo admin)."
+        description="Migra TODOS los paneles públicos al nuevo formato premium (solo admin)."
     )
     async def migrar_paneles(self, interaction: discord.Interaction):
-        # Solo el admin puede ejecutar
         if interaction.user.id != int(ADMIN_ID):
             await interaction.response.send_message(
-                "❌ Solo el administrador principal puede migrar los paneles.",
+                "❌ Solo el administrador puede ejecutar este comando.",
                 ephemeral=True
             )
             return
 
         await interaction.response.send_message(
-            "🔄 Migrando paneles viejos al nuevo formato premium. Esto puede tardar unos minutos...",
+            "🔄 Migrando paneles públicos a formato premium... Esto puede tardar unos segundos.",
             ephemeral=True
         )
 
-        canal = interaction.guild.get_channel(CANAL_FALTAS_ID)
-        if not canal:
-            await interaction.followup.send("❌ No se encontró el canal de faltas.", ephemeral=True)
-            return
+        guild = interaction.guild
+        miembros = [m for m in guild.members if not m.bot]
 
         migrados = 0
-        for member in interaction.guild.members:
-            if member.bot:
-                continue
+        errores = []
+        for miembro in miembros:
             try:
-                await actualizar_panel_faltas(self.bot, member)
+                await actualizar_panel_faltas(self.bot, miembro)
                 migrados += 1
             except Exception as e:
-                print(f"❌ Error migrando panel de {member.display_name}: {e}")
+                errores.append(f"{miembro.display_name}: {e}")
 
-        await interaction.followup.send(
-            f"✅ Paneles migrados: {migrados}. ¡Todos los mensajes están ahora en el nuevo formato premium!",
-            ephemeral=True
-        )
+        msg = f"✅ Paneles migrados: {migrados}."
+        if errores:
+            msg += f"\n❌ Errores:\n" + "\n".join(errores[:5])  # solo primeros 5
+
+        await interaction.followup.send(msg, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(MigrarPaneles(bot))
