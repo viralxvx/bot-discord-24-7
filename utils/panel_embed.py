@@ -99,7 +99,7 @@ async def actualizar_panel_faltas(bot, miembro):
         timestamp=now
     )
     embed.set_author(name=miembro, icon_url=avatar_url)
-    embed.set_thumbnail(url=avatar_url)   # <-- Foto de perfil a la derecha (premium)
+    embed.set_thumbnail(url=avatar_url)   # Foto de perfil premium
     embed.add_field(name="Estado actual", value=estado, inline=True)
     embed.add_field(name="Faltas totales", value=str(faltas_total), inline=True)
     embed.add_field(name="Faltas este mes", value=str(faltas_mes), inline=True)
@@ -115,7 +115,9 @@ async def actualizar_panel_faltas(bot, miembro):
     mensaje_id = redis_client.get(panel_key)
     current_hash = f"{estado}:{faltas_total}:{faltas_mes}:{ultima_falta_str}:{last_post_str}:{prorroga_str}:{historial_str}"
 
-    if redis_client.get(hash_key) == current_hash:
+    # ¡Nunca retornes aunque todo esté en blanco!
+    # Si el panel existe y el hash es igual, salta la edición (eficiente)
+    if mensaje_id and redis_client.get(hash_key) == current_hash:
         return
 
     try:
@@ -124,6 +126,7 @@ async def actualizar_panel_faltas(bot, miembro):
                 msg = await canal.fetch_message(int(mensaje_id))
                 await msg.edit(embed=embed)
             except discord.NotFound:
+                print(f"[INFO] Panel borrado, creando nuevo para {miembro.display_name} ({miembro.id})")
                 redis_client.delete(panel_key)
                 redis_client.delete(hash_key)
                 msg = await canal.send(embed=embed)
@@ -136,5 +139,6 @@ async def actualizar_panel_faltas(bot, miembro):
             redis_client.set(panel_key, msg.id)
 
         redis_client.set(hash_key, current_hash)
+        print(f"[SYNC] Panel actualizado/creado para {miembro.display_name} ({miembro.id})")
     except Exception as e:
         print(f"❌ Error actualizando/creando panel de {miembro.display_name}: {e}")
