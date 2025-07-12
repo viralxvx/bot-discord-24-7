@@ -49,13 +49,17 @@ async def actualizar_panel_faltas(bot, miembro):
         ultima_falta_dt = None
         ultima_falta_str = "-"
 
+    now = datetime.now(timezone.utc)
     key_last_post = f"inactividad:{user_id}"
     last_post_iso = redis_client.get(key_last_post)
     if last_post_iso:
         last_post_dt = datetime.fromisoformat(last_post_iso)
         last_post_str = tiempo_relativo(last_post_dt)
+        dias_inactivo = (now - last_post_dt).days
     else:
+        last_post_dt = None
         last_post_str = "-"
+        dias_inactivo = "-"
 
     key_prorroga = f"inactividad:prorroga:{user_id}"
     prorroga_iso = redis_client.get(key_prorroga)
@@ -90,7 +94,6 @@ async def actualizar_panel_faltas(bot, miembro):
 
     reincidencias = int(redis_client.get(f"inactividad:reincidencia:{user_id}") or 0)
 
-    now = datetime.now(timezone.utc)
     avatar_url = getattr(getattr(miembro, "display_avatar", None), "url", "") or getattr(getattr(miembro, "avatar", None), "url", "")
 
     embed = discord.Embed(
@@ -105,6 +108,7 @@ async def actualizar_panel_faltas(bot, miembro):
     embed.add_field(name="Faltas este mes", value=str(faltas_mes), inline=True)
     embed.add_field(name="Última falta", value=ultima_falta_str, inline=True)
     embed.add_field(name="Última publicación", value=last_post_str, inline=True)
+    embed.add_field(name="Días de inactividad", value=str(dias_inactivo), inline=True)   # <-- NUEVO CAMPO
     embed.add_field(name="Prórroga activa", value=prorroga_str, inline=True)
     embed.add_field(name="Historial reciente", value=historial_str or "-", inline=False)
     embed.add_field(name="Reincidencias", value=str(reincidencias), inline=True)
@@ -113,10 +117,9 @@ async def actualizar_panel_faltas(bot, miembro):
     panel_key = f"panel:{user_id}"
     hash_key = f"hash:{user_id}"
     mensaje_id = redis_client.get(panel_key)
-    current_hash = f"{estado}:{faltas_total}:{faltas_mes}:{ultima_falta_str}:{last_post_str}:{prorroga_str}:{historial_str}"
+    current_hash = f"{estado}:{faltas_total}:{faltas_mes}:{ultima_falta_str}:{last_post_str}:{dias_inactivo}:{prorroga_str}:{historial_str}"
 
-    # ¡Nunca retornes aunque todo esté en blanco!
-    # Si el panel existe y el hash es igual, salta la edición (eficiente)
+    # Anti-huérfano: Nunca retornes aunque todo esté en blanco
     if mensaje_id and redis_client.get(hash_key) == current_hash:
         return
 
