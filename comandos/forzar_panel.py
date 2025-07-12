@@ -10,27 +10,26 @@ class ForzarPanel(commands.Cog):
 
     @app_commands.command(
         name="forzar_panel",
-        description="Crea o actualiza el panel de faltas de un usuario manualmente (solo admin)."
+        description="Crea o actualiza el panel premium para un usuario específico (solo admin)."
     )
-    @app_commands.describe(usuario="Usuario al que forzar el panel")
+    @app_commands.describe(usuario="Usuario al que se le forzará la creación/actualización de panel")
     async def forzar_panel(self, interaction: discord.Interaction, usuario: discord.Member):
         if interaction.user.id != int(ADMIN_ID):
             await interaction.response.send_message(
-                "❌ Solo el administrador puede ejecutar este comando.",
+                "❌ Solo el administrador puede usar este comando.",
                 ephemeral=True
             )
             return
 
-        # Llama al panel premium para este usuario, aunque no tenga historial
         try:
             await actualizar_panel_faltas(self.bot, usuario)
             await interaction.response.send_message(
-                f"✅ Panel de {usuario.display_name} actualizado o creado en 📤faltas.",
+                f"✅ Panel premium creado/actualizado para {usuario.mention}.",
                 ephemeral=True
             )
         except Exception as e:
             await interaction.response.send_message(
-                f"❌ Error creando panel: {e}",
+                f"❌ Error creando/actualizando panel para {usuario.mention}: {e}",
                 ephemeral=True
             )
 
