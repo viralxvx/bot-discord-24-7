@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from config import CANAL_OBJETIVO_ID, REDIS_URL, CANAL_FALTAS_ID, CANAL_LOGS_ID
 from mensajes.inactividad_texto import AVISO_BANEO, AVISO_EXPULSION, PRORROGA_CONCEDIDA
 from utils.logger import log_discord
+from utils.panel_embed import actualizar_panel_faltas  # <--- Importa aquí
 
 DIAS_LIMITE_INACTIVIDAD = 3
 DURACION_BANEO_DIAS = 7
@@ -98,11 +99,10 @@ class Inactividad(commands.Cog):
                 if member.bot:
                     continue
 
-                # ----------- NUEVO: Protección staff/admin -----------
+                # Protección staff/admin
                 if es_staff_o_admin(member):
                     await log_discord(self.bot, f"⚠️ NO se puede sancionar (ban/kick) a admin/staff: {member.display_name}", "warning", "Protección Staff")
                     continue
-                # -----------------------------------------------------
 
                 key_prorroga = f"inactividad:prorroga:{member.id}"
                 if self.redis.get(key_prorroga):
@@ -181,7 +181,7 @@ class EstadoMiembros(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_remove(self, member):
-        # ---- Limpieza del panel público en faltas ----
+        # Limpieza del panel público en faltas
         from config import CANAL_FALTAS_ID, REDIS_URL
         redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
         panel_key = f"panel:{member.id}"
@@ -206,6 +206,11 @@ class EstadoMiembros(commands.Cog):
     @commands.Cog.listener()
     async def on_member_join(self, member):
         self.redis.hset(f"usuario:{member.id}", "estado", "activo")
+        # CREA/ACTUALIZA SU PANEL DE FALTAS INMEDIATAMENTE AL ENTRAR
+        try:
+            await actualizar_panel_faltas(self.bot, member)
+        except Exception as e:
+            print(f"❌ Error creando panel para nuevo miembro {member.display_name}: {e}")
 
 async def setup(bot):
     await bot.add_cog(Inactividad(bot))
