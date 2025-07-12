@@ -15,7 +15,6 @@ def color_estado(estado):
     }.get(estado, discord.Color.greyple())
 
 def tiempo_relativo(dt):
-    """Convierte una fecha a formato 'hace X horas/días'."""
     if not dt:
         return "-"
     now = datetime.now(timezone.utc)
@@ -42,7 +41,6 @@ async def actualizar_panel_faltas(bot, miembro):
     faltas_total = int(data.get("faltas_totales", 0))
     faltas_mes = int(data.get("faltas_mes", 0))
 
-    # Última falta
     ultima_falta_ts = data.get("ultima_falta")
     if ultima_falta_ts:
         ultima_falta_dt = datetime.fromtimestamp(float(ultima_falta_ts), timezone.utc)
@@ -51,7 +49,6 @@ async def actualizar_panel_faltas(bot, miembro):
         ultima_falta_dt = None
         ultima_falta_str = "-"
 
-    # Última publicación en canal objetivo
     key_last_post = f"inactividad:{user_id}"
     last_post_iso = redis_client.get(key_last_post)
     if last_post_iso:
@@ -60,7 +57,6 @@ async def actualizar_panel_faltas(bot, miembro):
     else:
         last_post_str = "-"
 
-    # Prórroga activa
     key_prorroga = f"inactividad:prorroga:{user_id}"
     prorroga_iso = redis_client.get(key_prorroga)
     prorroga_str = "-"
@@ -72,13 +68,11 @@ async def actualizar_panel_faltas(bot, miembro):
         else:
             prorroga_str = "-"
 
-    # Historial reciente de faltas (últimas 3)
     key_historial = f"historial_faltas:{user_id}"
     historial = redis_client.lrange(key_historial, 0, 2)
     historial_str = ""
     if historial:
         for entry in historial:
-            # entry puede ser un JSON string con fecha/motivo
             try:
                 import json
                 data_falta = json.loads(entry)
@@ -94,12 +88,7 @@ async def actualizar_panel_faltas(bot, miembro):
     else:
         historial_str = "Sin faltas recientes"
 
-    # Reincidencias
     reincidencias = int(redis_client.get(f"inactividad:reincidencia:{user_id}") or 0)
-
-    # Fecha de ingreso (opcional, solo si lo guardas)
-    # fecha_ingreso = data.get("fecha_ingreso")  # ISO
-    # fecha_ingreso_str = fecha_ingreso if fecha_ingreso else "-"
 
     now = datetime.now(timezone.utc)
     avatar_url = getattr(getattr(miembro, "display_avatar", None), "url", "") or getattr(getattr(miembro, "avatar", None), "url", "")
@@ -110,6 +99,7 @@ async def actualizar_panel_faltas(bot, miembro):
         timestamp=now
     )
     embed.set_author(name=miembro, icon_url=avatar_url)
+    embed.set_thumbnail(url=avatar_url)   # <-- Foto de perfil a la derecha (premium)
     embed.add_field(name="Estado actual", value=estado, inline=True)
     embed.add_field(name="Faltas totales", value=str(faltas_total), inline=True)
     embed.add_field(name="Faltas este mes", value=str(faltas_mes), inline=True)
@@ -120,14 +110,13 @@ async def actualizar_panel_faltas(bot, miembro):
     embed.add_field(name="Reincidencias", value=str(reincidencias), inline=True)
     embed.set_footer(text="Sistema automatizado de reputación pública", icon_url=avatar_url)
 
-    # Panel management (robusto, premium)
     panel_key = f"panel:{user_id}"
     hash_key = f"hash:{user_id}"
     mensaje_id = redis_client.get(panel_key)
     current_hash = f"{estado}:{faltas_total}:{faltas_mes}:{ultima_falta_str}:{last_post_str}:{prorroga_str}:{historial_str}"
 
     if redis_client.get(hash_key) == current_hash:
-        return  # Panel ya actualizado, no repite
+        return
 
     try:
         if mensaje_id:
