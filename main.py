@@ -30,7 +30,8 @@ EXTENSIONES = [
     "canales.nuevas_funciones",
     "comandos.novedades",
     "comandos.publicar_funcion",
-    "canales.soporte"  # Importante: dejar este nombre así para el get_cog
+    "canales.soporte",  # Importante: dejar este nombre así para el get_cog
+    "comandos.migrar_paneles",   # <--- PANEL PREMIUM MIGRATION
 ]
 
 log_message = None  # Mensaje embed en canal de logs
