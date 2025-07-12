@@ -1,24 +1,30 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from config import ADMIN_ID
+from config import ADMIN_ID, REDIS_URL, CANAL_COMANDOS_ID
 from mensajes.comandos_texto import generar_embed_estadisticas
 import redis
-import os
 
 class Estadisticas(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        redis_url = os.getenv("REDIS_URL")
-        self.redis = redis.Redis.from_url(redis_url, decode_responses=True)
+        self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 
     @app_commands.command(name="estadisticas", description="Ver estadísticas generales del servidor.")
     async def estadisticas(self, interaction: discord.Interaction):
-        try:
-            if interaction.user.id != int(ADMIN_ID):
-                await interaction.response.send_message("❌ Solo los administradores pueden usar este comando.", ephemeral=True)
-                return
+        # Solo admin puede ejecutar
+        if interaction.user.id != int(ADMIN_ID):
+            await interaction.response.send_message("❌ Solo los administradores pueden usar este comando.", ephemeral=True)
+            return
 
+        if interaction.channel.id != CANAL_COMANDOS_ID:
+            await interaction.response.send_message(
+                "❌ Este comando solo puede usarse en el canal de comandos.",
+                ephemeral=True
+            )
+            return
+
+        try:
             await interaction.response.defer(thinking=True)
 
             guild = interaction.guild
@@ -38,28 +44,23 @@ class Estadisticas(commands.Cog):
                 if estado in estados:
                     estados[estado] += 1
                 else:
-                    estados["activo"] += 1  # Fallback si hay datos viejos
-
-            # Armoniza los valores
-            total_baneados = estados["baneado"]
-            total_expulsados = estados["expulsado"]
-            total_deserciones = estados["desercion"]
-            total_activos = estados["activo"]
+                    estados["activo"] += 1  # Fallback
 
             embed = generar_embed_estadisticas(
                 total_miembros,
-                total_baneados,
-                total_expulsados,
-                total_deserciones,
-                total_activos
+                estados["baneado"],
+                estados["expulsado"],
+                estados["desercion"],
+                estados["activo"]
             )
 
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            # Envía en canal de comandos y autoelimina a los 10 min
+            msg = await interaction.followup.send(embed=embed, ephemeral=False, delete_after=600)
 
-            # También enviar por DM como respaldo
+            # También lo envía por DM al admin como respaldo
             try:
                 await interaction.user.send(embed=embed)
-            except:
+            except Exception:
                 print(f"❌ No se pudo enviar DM a {interaction.user.display_name}")
 
         except Exception as e:
