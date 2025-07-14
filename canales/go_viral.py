@@ -19,6 +19,7 @@ from mensajes.viral_texto import (
 )
 from utils.logger import log_discord
 from canales.faltas import registrar_falta
+from utils.panel_embed import actualizar_panel_faltas
 from datetime import datetime, timezone
 import asyncio
 import re
@@ -35,13 +36,11 @@ class GoViral(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
-        # Sincroniza reacciones y elimina reacciones no permitidas en arranque
         bot.loop.create_task(self.preload_apoyos_reacciones())
         bot.loop.create_task(self.limpiar_reacciones_no_permitidas())
         bot.loop.create_task(self.init_mensaje_fijo())
 
     async def preload_apoyos_reacciones(self):
-        """Sincroniza todos los apoyos (🔥) y validaciones (👍) a memoria Redis para soporte en reinicios."""
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
@@ -70,7 +69,6 @@ class GoViral(commands.Cog):
             await log_discord(self.bot, f"❌ [GO-VIRAL] Error sincronizando apoyos: {e}", "error", scope="go_viral")
 
     async def limpiar_reacciones_no_permitidas(self):
-        """Elimina reacciones NO PERMITIDAS en los últimos 100 mensajes al arrancar."""
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
@@ -93,7 +91,6 @@ class GoViral(commands.Cog):
             await log_discord(self.bot, f"❌ [GO-VIRAL] Error limpiando reacciones: {e}", "error", scope="go_viral")
 
     async def init_mensaje_fijo(self):
-        """Publica o edita el mensaje fijo SOLO si el texto cambia."""
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         if not canal:
@@ -128,10 +125,8 @@ class GoViral(commands.Cog):
         self.redis.set("go_viral:mensaje_fijo_hash", hash_nuevo)
         await log_discord(self.bot, "✅ [GO-VIRAL] Mensaje fijo publicado.", "success", scope="go_viral")
 
-    # --------- REACCIONES EN TIEMPO REAL (🔥 y 👍 permitidas) ----------
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload):
-        """Elimina reacciones no permitidas en tiempo real y actualiza apoyos/validaciones en Redis."""
         if payload.channel_id != CANAL_OBJETIVO_ID:
             return
         emoji = str(payload.emoji)
@@ -145,7 +140,6 @@ class GoViral(commands.Cog):
             await self.notificar_reaccion_no_permitida(canal, user, mensaje)
             await log_discord(self.bot, f"🚫 [GO-VIRAL] Reacción no permitida {emoji} eliminada a {user}", "warning", scope="go_viral")
             return
-        # Registra apoyo/validación
         if emoji == "🔥":
             self.redis.sadd(f"go_viral:apoyos:{mensaje.id}", str(user.id))
         if emoji == "👍":
@@ -167,13 +161,21 @@ class GoViral(commands.Cog):
         except:
             pass
 
-    # ----------------- PUBLICACIÓN -------------------
     @commands.Cog.listener()
     async def on_message(self, message):
         if message.author.bot or message.channel.id != CANAL_OBJETIVO_ID:
             return
 
         user_id = str(message.author.id)
+
+        # ACTUALIZACIÓN INSTANTÁNEA DEL PANEL DE FALTAS
+        try:
+            from utils.panel_embed import actualizar_panel_faltas
+            now = datetime.now(timezone.utc)
+            self.redis.set(f"inactividad:{user_id}", now.isoformat())
+            await actualizar_panel_faltas(self.bot, message.author)
+        except Exception as e:
+            print(f"[GO-VIRAL] Error actualizando panel de faltas tras publicar: {e}")
 
         # --- 0. OVERRIDE: Permite 1 publicación libre ---
         if self.redis.get(f"go_viral:override:{user_id}") == "1":
@@ -239,7 +241,6 @@ class GoViral(commands.Cog):
                 async for user in reaction.users():
                     if user.id == message.author.id:
                         validado = True
-                        # Registra validación en Redis
                         self.redis.sadd(f"go_viral:validaciones:{mensaje.id}", str(user.id))
                         break
         if not validado:
@@ -261,15 +262,11 @@ class GoViral(commands.Cog):
                     if not user.bot:
                         self.redis.sadd(f"go_viral:validaciones:{message.id}", str(user.id))
 
-        # 🟢 GUARDAR el mensaje como último apoyo completo para ese usuario
         self.redis.set(f"go_viral:ultimo_apoyo_completo:{user_id}", str(message.id))
-
         await log_discord(self.bot, f"✅ [GO-VIRAL] Mensaje válido de {message.author}: {url}", "info", scope="go_viral")
         await self.bot.process_commands(message)
 
-    # --------- AUXILIARES Y NOTIFICACIONES ----------
     async def notif_full(self, message, titulo_embed, desc_embed, titulo_dm, desc_dm, user_id, motivo):
-        """Notifica al usuario en canal (autodelete), DM, logs y registra falta."""
         embed = discord.Embed(title=titulo_embed, description=desc_embed, color=discord.Color.orange())
         notif = await message.channel.send(content=message.author.mention, embed=embed, delete_after=NOTIF_TIEMPO)
         try:
@@ -280,7 +277,6 @@ class GoViral(commands.Cog):
         await log_discord(self.bot, f"❌ [GO-VIRAL] {message.author} — {motivo}", "warning", scope="go_viral")
 
     async def enviar_bienvenida(self, message):
-        """Envía el mensaje educativo de bienvenida (primer post) y lo autoelimina tras BIENVENIDA_TIEMPO."""
         embed = discord.Embed(title=TITULO_BIENVENIDA, description=DESCRIPCION_BIENVENIDA, color=discord.Color.green())
         msg = await message.channel.send(content=message.author.mention, embed=embed, delete_after=BIENVENIDA_TIEMPO)
         try:
@@ -289,9 +285,8 @@ class GoViral(commands.Cog):
             pass
 
     async def obtener_publicaciones_previas(self, message, last_apoyo_id=None):
-        """Devuelve lista de mensajes válidos anteriores de otros usuarios, solo posteriores a last_apoyo_id."""
         mensajes = []
-        found_last = False if last_apoyo_id else True  # Si no hay apoyo previo, incluye todo
+        found_last = False if last_apoyo_id else True
         async for msg in message.channel.history(before=message.created_at, limit=100, oldest_first=True):
             if msg.author.bot or msg.author.id == message.author.id:
                 continue
@@ -303,12 +298,10 @@ class GoViral(commands.Cog):
         return mensajes
 
     def usuario_ya_apoyo(self, user_id, mensaje):
-        """Devuelve True si el usuario ya apoyó (🔥) ese mensaje, según Redis."""
         key = f"go_viral:apoyos:{mensaje.id}"
         return self.redis.sismember(key, str(user_id))
 
     async def ultima_publicacion_y_turnos(self, message):
-        """Devuelve (fecha última publicación usuario, turnos entre última y actual)"""
         ultima_pub = None
         turnos_entre = 0
         async for msg in message.channel.history(before=message.created_at, limit=100, oldest_first=False):
