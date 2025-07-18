@@ -1,15 +1,13 @@
+# telegram/telegrambot.py
+
 import os
 import sys
 import logging
 import redis
 import re
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
-
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from dotenv import load_dotenv
@@ -22,8 +20,11 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 REDIS_URL = os.getenv("REDIS_URL")
 CANAL_LINK = os.getenv("TELEGRAM_CANAL", "https://t.me/viralxvx")
 CHAT_LINK = os.getenv("TELEGRAM_CHAT", "https://t.me/+PaqyU7Z-VQQ0ZTBh")
-DISCORD_LINK = os.getenv("DISCORD_LINK", "https://discord.com/invite/viralxvx")  # puedes cambiarlo
 WHOP_LINK = "https://whop.com/viralxvxpremium/?store=true"
+ADMIN_ID = os.getenv("ADMIN_ID")  # Si quieres soporte directo
+
+CANAL_USERNAME = CANAL_LINK.replace("https://t.me/", "")
+CANAL_ID = None  # Si tienes el ID numérico del canal, ponlo aquí (mejor para validación)
 
 if not TELEGRAM_TOKEN:
     raise Exception("❌ Falta TELEGRAM_TOKEN en las variables de entorno")
@@ -33,10 +34,11 @@ if not REDIS_URL:
 redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=TELEGRAM_TOKEN, parse_mode="Markdown")
+bot = Bot(token=TELEGRAM_TOKEN, parse_mode="MarkdownV2")
 dp = Dispatcher(bot)
 dp.middleware.setup(LoggingMiddleware())
 
+# === Estados
 def get_user_state(user_id):
     return redis_client.hget(f"user:telegram:{user_id}", "state") or "inicio"
 
@@ -54,132 +56,97 @@ def is_valid_email(email):
     return re.match(pattern, email) is not None
 
 def get_main_menu():
-    kb = ReplyKeyboardMarkup(resize_keyboard=True)
+    kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
-        KeyboardButton("❓ FAQ / Ayuda"),
-        KeyboardButton("📺 Tutorial Discord"),
-    )
-    kb.add(
-        KeyboardButton("📢 Canal Oficial"),
-        KeyboardButton("💬 Grupo/Chat"),
-    )
-    kb.add(
-        KeyboardButton("🎟️ Acceso Discord"),
-        KeyboardButton("👤 Mi perfil"),
-    )
-    kb.add(
-        KeyboardButton("🛡️ Soporte"),
-        KeyboardButton("🔁 Volver a empezar"),
+        InlineKeyboardButton("❓ FAQ / Ayuda", callback_data="faq"),
+        InlineKeyboardButton("🛡️ Soporte", callback_data="soporte"),
+        InlineKeyboardButton("📢 Canal Oficial", url=CANAL_LINK),
+        InlineKeyboardButton("📺 Tutorial Discord", callback_data="tutorial_discord"),
+        InlineKeyboardButton("💬 Grupo/Chat", url=CHAT_LINK)
     )
     return kb
 
+# === Paso 1: BIENVENIDA CON BOTÓN ===
 @dp.message_handler(commands=["start"])
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id
     set_user_state(user_id, "inicio")
-    print(f"[ONBOARDING] Usuario {user_id} inició /start")
-    await message.reply(msj.BIENVENIDA, reply_markup=ReplyKeyboardRemove())
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("🚀 Quiero Viralizar", callback_data="quiero_viralizar"))
+    await message.answer(msj.BIENVENIDA, reply_markup=kb)
 
-@dp.message_handler(lambda message: message.text and "quiero viralizar" in message.text.lower())
-async def flujo_onboarding(message: types.Message):
-    user_id = message.from_user.id
-    state = get_user_state(user_id)
-    print(f"[ONBOARDING] Usuario {user_id} escribió 'Quiero Viralizar' | Estado: {state}")
-
-    if state == "whop_ok":
-        await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
-        return
-    if state == "mailrelay_ok":
-        await message.reply(msj.MAILRELAY_OK, reply_markup=get_main_menu())
-        await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
-        set_user_state(user_id, "whop_ok")
-        return
-    if state == "email_ok":
-        await message.reply(msj.YA_REGISTRADO, reply_markup=get_main_menu())
-        return
-
+# === Paso 2: MANEJO DEL BOTÓN "QUIERO VIRALIZAR" ===
+@dp.callback_query_handler(lambda c: c.data == "quiero_viralizar")
+async def handle_quiero_viralizar(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
     set_user_state(user_id, "esperando_email")
-    await message.reply(msj.PIDE_EMAIL, reply_markup=ReplyKeyboardRemove())
+    await bot.answer_callback_query(callback_query.id)
+    await bot.send_message(user_id, msj.PIDE_EMAIL, reply_markup=ReplyKeyboardRemove())
 
+# === Paso 3: SOLO SE ACEPTA EMAIL COMO SIGUIENTE MENSAJE ===
 @dp.message_handler(lambda message: get_user_state(message.from_user.id) == "esperando_email")
 async def recibir_email(message: types.Message):
     user_id = message.from_user.id
     email = message.text.strip()
-    print(f"[ONBOARDING] Usuario {user_id} envió email: {email}")
-
     if not is_valid_email(email):
         await message.reply(msj.EMAIL_INVALIDO)
         return
 
     save_user_email(user_id, email)
-    print(f"[ONBOARDING] Email válido guardado para usuario {user_id}: {email}")
-    await message.reply("Validando tu correo en la plataforma...")
+    set_user_state(user_id, "esperando_canal")
+    await message.reply(msj.EMAIL_OK.format(email=email))
+    # Botón para unirse al canal oficial
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("✅ Ya me uní al canal", callback_data="verificar_canal"),
+           InlineKeyboardButton("📢 Unirme al Canal", url=CANAL_LINK))
+    await message.reply(msj.PIDE_CANAL, reply_markup=kb)
 
-    ok, resp = suscribir_email(email)
-    if ok:
-        set_user_state(user_id, "mailrelay_ok")
-        await message.reply(msj.MAILRELAY_OK, reply_markup=get_main_menu())
-        await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
-        set_user_state(user_id, "whop_ok")
-    else:
-        print(f"[MAILRELAY] Error para usuario {user_id}: {resp}")
-        if resp == "YA_EXISTE":
-            await message.reply(msj.MAILRELAY_YA_EXISTE, reply_markup=get_main_menu())
-            await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
-            set_user_state(user_id, "whop_ok")
-        else:
-            await message.reply(msj.MAILRELAY_ERROR, reply_markup=ReplyKeyboardRemove())
-            set_user_state(user_id, "email_ok")  # Permite volver a intentar si usuario escribe de nuevo
+# === Paso 4: VERIFICACIÓN DE MEMBRESÍA EN EL CANAL ===
+@dp.callback_query_handler(lambda c: c.data == "verificar_canal")
+async def verificar_canal(callback_query: types.CallbackQuery):
+    user_id = callback_query.from_user.id
 
-# -- MENÚ AVANZADO Y FAQ --
+    # Validar membresía en canal con getChatMember (solo funciona si el canal es público y el bot es admin en el canal)
+    try:
+        member = await bot.get_chat_member(chat_id=f"@{CANAL_USERNAME}", user_id=user_id)
+        if member.status not in ["member", "administrator", "creator"]:
+            await bot.answer_callback_query(callback_query.id, text="⚠️ Debes unirte al canal para avanzar.", show_alert=True)
+            return
+    except Exception as e:
+        await bot.answer_callback_query(callback_query.id, text="❌ No pude verificar tu membresía. Únete al canal y reintenta.", show_alert=True)
+        return
 
-@dp.message_handler(lambda message: message.text == "❓ FAQ / Ayuda")
-async def menu_faq(message: types.Message):
-    await message.reply(msj.FAQ, reply_markup=get_main_menu())
+    set_user_state(user_id, "whop_ok")
+    await bot.answer_callback_query(callback_query.id, text="¡Perfecto! Ya eres parte del canal.", show_alert=False)
+    # Enviar acceso a Whop
+    await bot.send_message(user_id, msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
 
-@dp.message_handler(lambda message: message.text == "📢 Canal Oficial")
-async def menu_canal(message: types.Message):
-    await message.reply(f"Entra a nuestro canal oficial: {CANAL_LINK}", reply_markup=get_main_menu())
+# === Solo permite callback/buttons y emails ===
+@dp.message_handler(lambda message: get_user_state(message.from_user.id) not in ["esperando_email"])
+async def bloquear_mensajes(message: types.Message):
+    # No permite mensajes fuera del flujo: educa y borra el mensaje
+    await message.delete()
+    await bot.send_message(message.from_user.id, msj.AYUDA, reply_markup=None)
 
-@dp.message_handler(lambda message: message.text == "💬 Grupo/Chat")
-async def menu_chat(message: types.Message):
-    await message.reply(f"Únete al chat de la comunidad aquí: {CHAT_LINK}", reply_markup=get_main_menu())
+# === MENÚ AVANZADO (FAQ, SOPORTE, ETC.) ===
+@dp.callback_query_handler(lambda c: c.data == "faq")
+async def menu_faq(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+    await bot.send_message(callback_query.from_user.id, msj.FAQ, reply_markup=get_main_menu())
 
-@dp.message_handler(lambda message: message.text == "📺 Tutorial Discord")
-async def menu_tutorial(message: types.Message):
-    await message.reply(msj.TUTORIAL_DISCORD, reply_markup=get_main_menu())
+@dp.callback_query_handler(lambda c: c.data == "tutorial_discord")
+async def menu_tutorial(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+    await bot.send_message(callback_query.from_user.id, msj.TUTORIAL_DISCORD, reply_markup=get_main_menu())
 
-@dp.message_handler(lambda message: message.text == "🛡️ Soporte")
-async def menu_soporte(message: types.Message):
-    await message.reply(msj.SOPORTE, reply_markup=get_main_menu())
-
-@dp.message_handler(lambda message: message.text == "🎟️ Acceso Discord")
-async def menu_discord(message: types.Message):
-    await message.reply(f"Únete a nuestro Discord aquí: {DISCORD_LINK}", reply_markup=get_main_menu())
-
-@dp.message_handler(lambda message: message.text == "👤 Mi perfil")
-async def menu_perfil(message: types.Message):
-    user_id = message.from_user.id
-    email = get_user_email(user_id)
-    estado = get_user_state(user_id)
-    await message.reply(msj.MI_PERFIL.format(user_id=user_id, email=email or "No registrado", estado=estado), reply_markup=get_main_menu())
-
-@dp.message_handler(lambda message: message.text == "🔁 Volver a empezar")
-async def menu_reiniciar(message: types.Message):
-    user_id = message.from_user.id
-    set_user_state(user_id, "inicio")
-    redis_client.hdel(f"user:telegram:{user_id}", "email")
-    await message.reply(msj.REINICIO, reply_markup=ReplyKeyboardRemove())
-
-@dp.message_handler(lambda message: get_user_state(message.from_user.id) == "whop_ok")
-async def menu_registrado(message: types.Message):
-    await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
-
-@dp.message_handler()
-async def fallback(message: types.Message):
-    print(f"[MENSAJE] Usuario {message.from_user.id}: {message.text}")
-    await message.reply(msj.AYUDA, reply_markup=get_main_menu())
+@dp.callback_query_handler(lambda c: c.data == "soporte")
+async def menu_soporte(callback_query: types.CallbackQuery):
+    await bot.answer_callback_query(callback_query.id)
+    await bot.send_message(callback_query.from_user.id, msj.SOPORTE, reply_markup=get_main_menu())
+    # (Opcional) Notificar a admin
+    if ADMIN_ID:
+        await bot.send_message(int(ADMIN_ID), f"🛡️ Usuario {callback_query.from_user.id} ha solicitado soporte.")
 
 if __name__ == "__main__":
-    print("✅ Bot de Telegram VXbot FASE 5 iniciado correctamente.")
+    print("✅ Bot de Telegram VXbot FINAL listo y corriendo.")
     executor.start_polling(dp, skip_updates=True)
