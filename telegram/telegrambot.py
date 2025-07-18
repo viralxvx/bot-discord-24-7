@@ -6,11 +6,11 @@ import logging
 import redis
 import re
 
-# ====== PYTHONPATH para Railway/imports ======
+# ==== PYTHONPATH para Railway/imports ====
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
-# =============================================
+# =========================================
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
@@ -19,8 +19,8 @@ from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from dotenv import load_dotenv
 
 from mensajes import telegram as msj
+from utils.mailrelay import suscribir_email
 
-# -- Configuración de entorno y Redis --
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 REDIS_URL = os.getenv("REDIS_URL")
@@ -40,7 +40,6 @@ bot = Bot(token=TELEGRAM_TOKEN, parse_mode="Markdown")
 dp = Dispatcher(bot)
 dp.middleware.setup(LoggingMiddleware())
 
-# -- Helpers para el flujo --
 def get_user_state(user_id):
     return redis_client.hget(f"user:telegram:{user_id}", "state") or "inicio"
 
@@ -57,7 +56,6 @@ def is_valid_email(email):
     pattern = r"^[\w\.-]+@[\w\.-]+\.\w+$"
     return re.match(pattern, email) is not None
 
-# -- MENÚ TECLADO PERSONALIZADO --
 def get_main_menu():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
     kb.add(KeyboardButton("❓ FAQ / Ayuda"),
@@ -67,7 +65,6 @@ def get_main_menu():
            KeyboardButton("🛡️ Soporte"))
     return kb
 
-# -- /start y flujo principal --
 @dp.message_handler(commands=["start"])
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id
@@ -81,6 +78,14 @@ async def flujo_onboarding(message: types.Message):
     state = get_user_state(user_id)
     print(f"[ONBOARDING] Usuario {user_id} escribió 'Quiero Viralizar' | Estado: {state}")
 
+    if state == "whop_ok":
+        await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
+        return
+    if state == "mailrelay_ok":
+        await message.reply(msj.MAILRELAY_OK, reply_markup=get_main_menu())
+        await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
+        set_user_state(user_id, "whop_ok")
+        return
     if state == "email_ok":
         await message.reply(msj.YA_REGISTRADO, reply_markup=get_main_menu())
         return
@@ -99,10 +104,19 @@ async def recibir_email(message: types.Message):
         return
 
     save_user_email(user_id, email)
-    set_user_state(user_id, "email_ok")
     print(f"[ONBOARDING] Email válido guardado para usuario {user_id}: {email}")
-    await message.reply(msj.EMAIL_OK.format(email=email), reply_markup=get_main_menu())
-    # Aquí se puede integrar Mailrelay en la FASE 3
+    await message.reply("Validando tu correo en la plataforma...")
+
+    ok, resp = suscribir_email(email)
+    if ok:
+        set_user_state(user_id, "mailrelay_ok")
+        await message.reply(msj.MAILRELAY_OK, reply_markup=get_main_menu())
+        await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
+        set_user_state(user_id, "whop_ok")
+    else:
+        print(f"[MAILRELAY] Error para usuario {user_id}: {resp}")
+        await message.reply(msj.MAILRELAY_ERROR, reply_markup=ReplyKeyboardRemove())
+        set_user_state(user_id, "email_ok")  # Permite volver a intentar si usuario escribe de nuevo
 
 # -- MENÚ AVANZADO Y FAQ --
 @dp.message_handler(lambda message: message.text == "❓ FAQ / Ayuda")
@@ -125,17 +139,15 @@ async def menu_tutorial(message: types.Message):
 async def menu_soporte(message: types.Message):
     await message.reply(msj.SOPORTE, reply_markup=get_main_menu())
 
-# -- YA REGISTRADO: Siempre menú avanzado --
-@dp.message_handler(lambda message: get_user_state(message.from_user.id) == "email_ok")
+@dp.message_handler(lambda message: get_user_state(message.from_user.id) == "whop_ok")
 async def menu_registrado(message: types.Message):
-    await message.reply(msj.MENU_REGISTRADO, reply_markup=get_main_menu())
+    await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
 
-# -- Fallback --
 @dp.message_handler()
 async def fallback(message: types.Message):
     print(f"[MENSAJE] Usuario {message.from_user.id}: {message.text}")
     await message.reply(msj.AYUDA, reply_markup=get_main_menu())
 
 if __name__ == "__main__":
-    print("✅ Bot de Telegram VXbot FASE 2 iniciado correctamente.")
+    print("✅ Bot de Telegram VXbot FASE 3 iniciado correctamente.")
     executor.start_polling(dp, skip_updates=True)
