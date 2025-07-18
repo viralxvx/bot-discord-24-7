@@ -10,15 +10,16 @@ import re
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import (
+    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
+    InlineKeyboardMarkup, InlineKeyboardButton
+)
 from aiogram.utils import executor
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from dotenv import load_dotenv
 
 from mensajes import telegram as msj
 from utils.mailrelay import suscribir_email
-
-# ... el resto de tu código sigue igual ...
 
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -39,7 +40,7 @@ if not REDIS_URL:
 redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=TELEGRAM_TOKEN, parse_mode="MarkdownV2")
+bot = Bot(token=TELEGRAM_TOKEN, parse_mode="Markdown")  # <--- Ajustado aquí
 dp = Dispatcher(bot)
 dp.middleware.setup(LoggingMiddleware())
 
@@ -102,8 +103,10 @@ async def recibir_email(message: types.Message):
     await message.reply(msj.EMAIL_OK.format(email=email))
     # Botón para unirse al canal oficial
     kb = InlineKeyboardMarkup()
-    kb.add(InlineKeyboardButton("✅ Ya me uní al canal", callback_data="verificar_canal"),
-           InlineKeyboardButton("📢 Unirme al Canal", url=CANAL_LINK))
+    kb.add(
+        InlineKeyboardButton("✅ Ya me uní al canal", callback_data="verificar_canal"),
+        InlineKeyboardButton("📢 Unirme al Canal", url=CANAL_LINK)
+    )
     await message.reply(msj.PIDE_CANAL, reply_markup=kb)
 
 # === Paso 4: VERIFICACIÓN DE MEMBRESÍA EN EL CANAL ===
@@ -111,7 +114,7 @@ async def recibir_email(message: types.Message):
 async def verificar_canal(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
 
-    # Validar membresía en canal con getChatMember (solo funciona si el canal es público y el bot es admin en el canal)
+    # Validar membresía en canal con getChatMember (solo si canal es público y bot es admin en el canal)
     try:
         member = await bot.get_chat_member(chat_id=f"@{CANAL_USERNAME}", user_id=user_id)
         if member.status not in ["member", "administrator", "creator"]:
