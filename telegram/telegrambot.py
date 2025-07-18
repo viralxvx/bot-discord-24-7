@@ -77,11 +77,11 @@ async def flujo_onboarding(message: types.Message):
     print(f"[ONBOARDING] Usuario {user_id} escribió 'Quiero Viralizar' | Estado: {state}")
 
     if state == "whop_ok":
-        await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
+        await enviar_premium(message, user_id)
         return
     if state == "mailrelay_ok":
         await message.reply(msj.MAILRELAY_OK, reply_markup=get_main_menu())
-        await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
+        await enviar_premium(message, user_id)
         set_user_state(user_id, "whop_ok")
         return
     if state == "email_ok":
@@ -103,23 +103,29 @@ async def recibir_email(message: types.Message):
 
     save_user_email(user_id, email)
     print(f"[ONBOARDING] Email válido guardado para usuario {user_id}: {email}")
-    await message.reply("Validando tu correo en la plataforma...")
+    await message.reply(msj.VALIDANDO_EMAIL)
 
     ok, resp = suscribir_email(email)
     if ok:
         set_user_state(user_id, "mailrelay_ok")
         await message.reply(msj.MAILRELAY_OK, reply_markup=get_main_menu())
-        await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
+        await enviar_premium(message, user_id)
         set_user_state(user_id, "whop_ok")
     else:
         print(f"[MAILRELAY] Error para usuario {user_id}: {resp}")
         if resp == "YA_EXISTE":
             await message.reply(msj.MAILRELAY_YA_EXISTE, reply_markup=get_main_menu())
-            await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
+            await enviar_premium(message, user_id)
             set_user_state(user_id, "whop_ok")
         else:
             await message.reply(msj.MAILRELAY_ERROR, reply_markup=ReplyKeyboardRemove())
             set_user_state(user_id, "email_ok")  # Permite volver a intentar si usuario escribe de nuevo
+
+async def enviar_premium(message, user_id):
+    email = get_user_email(user_id)
+    text = msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK)
+    await message.reply(text, reply_markup=get_main_menu())
+    print(f"[PREMIUM] Acceso premium entregado a usuario {user_id} ({email})")
 
 # -- MENÚ AVANZADO Y FAQ --
 @dp.message_handler(lambda message: message.text == "❓ FAQ / Ayuda")
@@ -144,7 +150,7 @@ async def menu_soporte(message: types.Message):
 
 @dp.message_handler(lambda message: get_user_state(message.from_user.id) == "whop_ok")
 async def menu_registrado(message: types.Message):
-    await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
+    await enviar_premium(message, message.from_user.id)
 
 @dp.message_handler()
 async def fallback(message: types.Message):
@@ -152,5 +158,5 @@ async def fallback(message: types.Message):
     await message.reply(msj.AYUDA, reply_markup=get_main_menu())
 
 if __name__ == "__main__":
-    print("✅ Bot de Telegram VXbot FASE 3 iniciado correctamente.")
+    print("✅ Bot de Telegram VXbot FASE 4 iniciado correctamente.")
     executor.start_polling(dp, skip_updates=True)
