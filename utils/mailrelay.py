@@ -27,9 +27,15 @@ def suscribir_email(email):
             return True, "OK"
         else:
             print(f"[MAILRELAY] Error ({r.status_code}): {r.text}")
-            # Intenta obtener mensaje de error de la respuesta
             try:
-                msg = r.json().get("message", "Error desconocido en Mailrelay.")
+                json_resp = r.json()
+                # Si existe el mensaje "Subscriber already exists."
+                if "email" in json_resp.get("errors", {}):
+                    errors = json_resp["errors"]["email"]
+                    for err in errors:
+                        if "Subscriber already exists" in err:
+                            return False, "YA_EXISTE"
+                msg = json_resp.get("message", "Error desconocido en Mailrelay.")
             except Exception:
                 msg = "Error desconocido en Mailrelay."
             return False, msg
