@@ -1,8 +1,16 @@
 # telegram/telegrambot.py
 
 import os
+import sys
 import logging
 import redis
+
+# ====== CORRECCIÓN DE PYTHONPATH para Railway/imports ======
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+# ===========================================================
+
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
@@ -49,4 +57,3 @@ async def fallback(message: types.Message):
 if __name__ == "__main__":
     print("✅ Bot de Telegram VXbot iniciado correctamente.")
     executor.start_polling(dp, skip_updates=True)
-
