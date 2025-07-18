@@ -2,7 +2,7 @@ discord.py==2.3.2
 redis==5.0.1
 python-dotenv
 pytz
-aiohttp
+aiohttp==3.8.6
 pynacl
 aiolimiter
 aiogram==2.25.1
