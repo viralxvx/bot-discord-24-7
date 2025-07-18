@@ -6,14 +6,19 @@ import logging
 import redis
 import re
 
+# ==== AJUSTE DE PATH PARA IMPORTAR 'mensajes' ====
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from aiogram.utils import executor
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from dotenv import load_dotenv
 
 from mensajes import telegram as msj
 from utils.mailrelay import suscribir_email
+
+# ... el resto de tu código sigue igual ...
 
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
