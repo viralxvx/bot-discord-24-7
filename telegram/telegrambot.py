@@ -1,18 +1,17 @@
-# telegram/telegrambot.py
-
 import os
 import sys
 import logging
 import redis
 import re
+import asyncio
+from datetime import datetime, timedelta
 
 # ==== AJUSTE DE PATH PARA IMPORTAR 'mensajes' ====
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import (
-    ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove,
-    InlineKeyboardMarkup, InlineKeyboardButton
+    ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 )
 from aiogram.utils import executor
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
@@ -37,19 +36,24 @@ if not REDIS_URL:
 redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=TELEGRAM_TOKEN, parse_mode="Markdown")  # <--- Ajustado aquí
+bot = Bot(token=TELEGRAM_TOKEN, parse_mode="Markdown")
 dp = Dispatcher(bot)
 dp.middleware.setup(LoggingMiddleware())
 
-# === Estados
+TIEMPO_RECORDATORIO_HRS = 24
+TIEMPO_EXPULSION_HRS = 72
+
+# === Estados y helpers
 def get_user_state(user_id):
     return redis_client.hget(f"user:telegram:{user_id}", "state") or "inicio"
 
 def set_user_state(user_id, state):
     redis_client.hset(f"user:telegram:{user_id}", "state", state)
+    redis_client.hset(f"user:telegram:{user_id}", "last_update", datetime.utcnow().isoformat())
 
 def save_user_email(user_id, email):
     redis_client.hset(f"user:telegram:{user_id}", "email", email)
+    redis_client.hset(f"user:telegram:{user_id}", "last_update", datetime.utcnow().isoformat())
 
 def get_user_email(user_id):
     return redis_client.hget(f"user:telegram:{user_id}", "email") or ""
@@ -69,7 +73,7 @@ def get_main_menu():
     )
     return kb
 
-# === Paso 1: BIENVENIDA CON BOTÓN ===
+# === BIENVENIDA ===
 @dp.message_handler(commands=["start"])
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id
@@ -78,7 +82,6 @@ async def cmd_start(message: types.Message):
     kb.add(InlineKeyboardButton("🚀 Quiero Viralizar", callback_data="quiero_viralizar"))
     await message.answer(msj.BIENVENIDA, reply_markup=kb)
 
-# === Paso 2: MANEJO DEL BOTÓN "QUIERO VIRALIZAR" ===
 @dp.callback_query_handler(lambda c: c.data == "quiero_viralizar")
 async def handle_quiero_viralizar(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
@@ -86,7 +89,6 @@ async def handle_quiero_viralizar(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     await bot.send_message(user_id, msj.PIDE_EMAIL, reply_markup=ReplyKeyboardRemove())
 
-# === Paso 3: SOLO SE ACEPTA EMAIL COMO SIGUIENTE MENSAJE ===
 @dp.message_handler(lambda message: get_user_state(message.from_user.id) == "esperando_email")
 async def recibir_email(message: types.Message):
     user_id = message.from_user.id
@@ -94,11 +96,9 @@ async def recibir_email(message: types.Message):
     if not is_valid_email(email):
         await message.reply(msj.EMAIL_INVALIDO)
         return
-
     save_user_email(user_id, email)
     set_user_state(user_id, "esperando_canal")
     await message.reply(msj.EMAIL_OK.format(email=email))
-    # Botón para unirse al canal oficial (URL arreglada)
     kb = InlineKeyboardMarkup()
     kb.add(
         InlineKeyboardButton("✅ Ya me uní al canal", callback_data="verificar_canal"),
@@ -106,12 +106,9 @@ async def recibir_email(message: types.Message):
     )
     await message.reply(msj.PIDE_CANAL, reply_markup=kb)
 
-# === Paso 4: VERIFICACIÓN DE MEMBRESÍA EN EL CANAL ===
 @dp.callback_query_handler(lambda c: c.data == "verificar_canal")
 async def verificar_canal(callback_query: types.CallbackQuery):
     user_id = callback_query.from_user.id
-
-    # Validar membresía en canal con getChatMember (solo si canal es público y bot es admin en el canal)
     try:
         member = await bot.get_chat_member(chat_id=f"@{CANAL_USERNAME}", user_id=user_id)
         if member.status not in ["member", "administrator", "creator"]:
@@ -120,20 +117,17 @@ async def verificar_canal(callback_query: types.CallbackQuery):
     except Exception as e:
         await bot.answer_callback_query(callback_query.id, text="❌ No pude verificar tu membresía. Únete al canal y reintenta.", show_alert=True)
         return
-
     set_user_state(user_id, "whop_ok")
     await bot.answer_callback_query(callback_query.id, text="¡Perfecto! Ya eres parte del canal.", show_alert=False)
-    # Enviar acceso a Whop
     await bot.send_message(user_id, msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
 
-# === Solo permite callback/buttons y emails ===
+# Bloquear mensajes fuera del flujo
 @dp.message_handler(lambda message: get_user_state(message.from_user.id) not in ["esperando_email"])
 async def bloquear_mensajes(message: types.Message):
-    # No permite mensajes fuera del flujo: educa y borra el mensaje
     await message.delete()
     await bot.send_message(message.from_user.id, msj.AYUDA, reply_markup=None)
 
-# === MENÚ AVANZADO (FAQ, SOPORTE, ETC.) ===
+# MENÚ AVANZADO
 @dp.callback_query_handler(lambda c: c.data == "faq")
 async def menu_faq(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
@@ -148,10 +142,86 @@ async def menu_tutorial(callback_query: types.CallbackQuery):
 async def menu_soporte(callback_query: types.CallbackQuery):
     await bot.answer_callback_query(callback_query.id)
     await bot.send_message(callback_query.from_user.id, msj.SOPORTE, reply_markup=get_main_menu())
-    # (Opcional) Notificar a admin
     if ADMIN_ID:
         await bot.send_message(int(ADMIN_ID), f"🛡️ Usuario {callback_query.from_user.id} ha solicitado soporte.")
 
+# === LIMPIEZA AUTOMÁTICA Y /inactivos ADMIN ===
+async def limpieza_inactivos():
+    print("🔎 [LIMPIEZA] Iniciando limpieza automática...")
+    now = datetime.utcnow()
+    count_expulsados, count_recordados = 0, 0
+    for key in redis_client.scan_iter("user:telegram:*"):
+        user_id = key.split(":")[-1]
+        user_state = redis_client.hget(key, "state")
+        email = redis_client.hget(key, "email") or None
+        last_update = redis_client.hget(key, "last_update")
+        if not last_update:
+            continue
+        try:
+            ts = datetime.fromisoformat(last_update)
+        except:
+            ts = now
+        horas = (now - ts).total_seconds() / 3600
+        # Solo limpiar atascados, no premium
+        if user_state in ["inicio", "esperando_email", "esperando_canal"]:
+            if horas > TIEMPO_EXPULSION_HRS and not email:
+                # Expulsar
+                try:
+                    await bot.send_message(
+                        user_id, 
+                        "⚠️ No completaste tu registro y serás eliminado por inactividad.\nSi fue un error, vuelve a iniciar escribiendo /start."
+                    )
+                except Exception as e:
+                    print(f"[WARN] No se pudo notificar a {user_id}: {e}")
+                try:
+                    await bot.kick_chat_member(chat_id=user_id, user_id=user_id)
+                except Exception as e:
+                    print(f"[WARN] No se pudo expulsar {user_id} (quizá no está en grupo): {e}")
+                redis_client.delete(key)
+                count_expulsados += 1
+                print(f"[EXPULSADO] Usuario {user_id} eliminado por inactividad ({int(horas)}h).")
+            elif email and horas > TIEMPO_RECORDATORIO_HRS:
+                # Solo recordatorio
+                kb = InlineKeyboardMarkup()
+                kb.add(InlineKeyboardButton("🔄 Reiniciar proceso", callback_data="quiero_viralizar"))
+                try:
+                    await bot.send_message(
+                        user_id,
+                        "👋 Aún no completaste tu acceso premium.\nPulsa abajo para reiniciar el proceso o pide ayuda en Soporte.",
+                        reply_markup=kb
+                    )
+                    # Marca timestamp nuevo
+                    redis_client.hset(key, "last_update", now.isoformat())
+                    count_recordados += 1
+                    print(f"[RECORDATORIO] Usuario {user_id} recordado por inactividad ({int(horas)}h).")
+                except Exception as e:
+                    print(f"[WARN] No se pudo recordar {user_id}: {e}")
+    print(f"✅ [LIMPIEZA] Finalizada. Expulsados: {count_expulsados} | Recordados: {count_recordados}")
+
+async def schedule_limpieza():
+    while True:
+        await limpieza_inactivos()
+        await asyncio.sleep(TIEMPO_RECORDATORIO_HRS * 3600)  # 24h
+
+@dp.message_handler(commands=["inactivos"])
+async def cmd_inactivos(message: types.Message):
+    if not ADMIN_ID or str(message.from_user.id) != str(ADMIN_ID):
+        return
+    now = datetime.utcnow()
+    res = []
+    for key in redis_client.scan_iter("user:telegram:*"):
+        user_id = key.split(":")[-1]
+        state = redis_client.hget(key, "state")
+        email = redis_client.hget(key, "email") or "-"
+        last_update = redis_client.hget(key, "last_update") or "-"
+        res.append(f"ID: {user_id} | Estado: {state} | Email: {email} | Último movimiento: {last_update}")
+    if not res:
+        await message.reply("No hay inactivos encontrados.")
+    else:
+        await message.reply("\n".join(res[:50]))  # Hasta 50 por mensaje
+
 if __name__ == "__main__":
     print("✅ Bot de Telegram VXbot FINAL listo y corriendo.")
+    loop = asyncio.get_event_loop()
+    loop.create_task(schedule_limpieza())  # Arranca limpieza automática cada 24h
     executor.start_polling(dp, skip_updates=True)
