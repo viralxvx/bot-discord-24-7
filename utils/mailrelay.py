@@ -4,7 +4,7 @@ import os
 import requests
 
 MAILRELAY_API_KEY = os.getenv("MAILRELAY_API_KEY")
-MAILRELAY_URL = "https://YOUR-SUBDOMAIN.ipzmarketing.com/api/v1/subscribers"  # Cambia YOUR-SUBDOMAIN por el subdominio de tu cuenta Mailrelay
+MAILRELAY_URL = "https://innovaguard.ipzmarketing.com/api/v1/subscribers"  # Cambia YOUR-SUBDOMAIN por el subdominio de tu cuenta Mailrelay
 
 def suscribir_email(email):
     if not MAILRELAY_API_KEY or "YOUR-SUBDOMAIN" in MAILRELAY_URL:
