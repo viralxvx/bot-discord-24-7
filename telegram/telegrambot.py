@@ -1,5 +1,3 @@
-# telegram/telegrambot.py
-
 import os
 import sys
 import logging
@@ -24,6 +22,7 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 REDIS_URL = os.getenv("REDIS_URL")
 CANAL_LINK = os.getenv("TELEGRAM_CANAL", "https://t.me/viralxvx")
 CHAT_LINK = os.getenv("TELEGRAM_CHAT", "https://t.me/+PaqyU7Z-VQQ0ZTBh")
+DISCORD_LINK = os.getenv("DISCORD_LINK", "https://discord.com/invite/viralxvx")  # puedes cambiarlo
 WHOP_LINK = "https://whop.com/viralxvxpremium/?store=true"
 
 if not TELEGRAM_TOKEN:
@@ -56,11 +55,22 @@ def is_valid_email(email):
 
 def get_main_menu():
     kb = ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add(KeyboardButton("❓ FAQ / Ayuda"),
-           KeyboardButton("📺 Tutorial Discord"),
-           KeyboardButton("📢 Canal Oficial"),
-           KeyboardButton("💬 Grupo/Chat"),
-           KeyboardButton("🛡️ Soporte"))
+    kb.add(
+        KeyboardButton("❓ FAQ / Ayuda"),
+        KeyboardButton("📺 Tutorial Discord"),
+    )
+    kb.add(
+        KeyboardButton("📢 Canal Oficial"),
+        KeyboardButton("💬 Grupo/Chat"),
+    )
+    kb.add(
+        KeyboardButton("🎟️ Acceso Discord"),
+        KeyboardButton("👤 Mi perfil"),
+    )
+    kb.add(
+        KeyboardButton("🛡️ Soporte"),
+        KeyboardButton("🔁 Volver a empezar"),
+    )
     return kb
 
 @dp.message_handler(commands=["start"])
@@ -77,11 +87,11 @@ async def flujo_onboarding(message: types.Message):
     print(f"[ONBOARDING] Usuario {user_id} escribió 'Quiero Viralizar' | Estado: {state}")
 
     if state == "whop_ok":
-        await enviar_premium(message, user_id)
+        await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
         return
     if state == "mailrelay_ok":
         await message.reply(msj.MAILRELAY_OK, reply_markup=get_main_menu())
-        await enviar_premium(message, user_id)
+        await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
         set_user_state(user_id, "whop_ok")
         return
     if state == "email_ok":
@@ -103,31 +113,26 @@ async def recibir_email(message: types.Message):
 
     save_user_email(user_id, email)
     print(f"[ONBOARDING] Email válido guardado para usuario {user_id}: {email}")
-    await message.reply(msj.VALIDANDO_EMAIL)
+    await message.reply("Validando tu correo en la plataforma...")
 
     ok, resp = suscribir_email(email)
     if ok:
         set_user_state(user_id, "mailrelay_ok")
         await message.reply(msj.MAILRELAY_OK, reply_markup=get_main_menu())
-        await enviar_premium(message, user_id)
+        await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
         set_user_state(user_id, "whop_ok")
     else:
         print(f"[MAILRELAY] Error para usuario {user_id}: {resp}")
         if resp == "YA_EXISTE":
             await message.reply(msj.MAILRELAY_YA_EXISTE, reply_markup=get_main_menu())
-            await enviar_premium(message, user_id)
+            await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
             set_user_state(user_id, "whop_ok")
         else:
             await message.reply(msj.MAILRELAY_ERROR, reply_markup=ReplyKeyboardRemove())
             set_user_state(user_id, "email_ok")  # Permite volver a intentar si usuario escribe de nuevo
 
-async def enviar_premium(message, user_id):
-    email = get_user_email(user_id)
-    text = msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK)
-    await message.reply(text, reply_markup=get_main_menu())
-    print(f"[PREMIUM] Acceso premium entregado a usuario {user_id} ({email})")
-
 # -- MENÚ AVANZADO Y FAQ --
+
 @dp.message_handler(lambda message: message.text == "❓ FAQ / Ayuda")
 async def menu_faq(message: types.Message):
     await message.reply(msj.FAQ, reply_markup=get_main_menu())
@@ -148,9 +153,27 @@ async def menu_tutorial(message: types.Message):
 async def menu_soporte(message: types.Message):
     await message.reply(msj.SOPORTE, reply_markup=get_main_menu())
 
+@dp.message_handler(lambda message: message.text == "🎟️ Acceso Discord")
+async def menu_discord(message: types.Message):
+    await message.reply(f"Únete a nuestro Discord aquí: {DISCORD_LINK}", reply_markup=get_main_menu())
+
+@dp.message_handler(lambda message: message.text == "👤 Mi perfil")
+async def menu_perfil(message: types.Message):
+    user_id = message.from_user.id
+    email = get_user_email(user_id)
+    estado = get_user_state(user_id)
+    await message.reply(msj.MI_PERFIL.format(user_id=user_id, email=email or "No registrado", estado=estado), reply_markup=get_main_menu())
+
+@dp.message_handler(lambda message: message.text == "🔁 Volver a empezar")
+async def menu_reiniciar(message: types.Message):
+    user_id = message.from_user.id
+    set_user_state(user_id, "inicio")
+    redis_client.hdel(f"user:telegram:{user_id}", "email")
+    await message.reply(msj.REINICIO, reply_markup=ReplyKeyboardRemove())
+
 @dp.message_handler(lambda message: get_user_state(message.from_user.id) == "whop_ok")
 async def menu_registrado(message: types.Message):
-    await enviar_premium(message, message.from_user.id)
+    await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
 
 @dp.message_handler()
 async def fallback(message: types.Message):
@@ -158,5 +181,5 @@ async def fallback(message: types.Message):
     await message.reply(msj.AYUDA, reply_markup=get_main_menu())
 
 if __name__ == "__main__":
-    print("✅ Bot de Telegram VXbot FASE 4 iniciado correctamente.")
+    print("✅ Bot de Telegram VXbot FASE 5 iniciado correctamente.")
     executor.start_polling(dp, skip_updates=True)
