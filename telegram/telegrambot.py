@@ -6,11 +6,9 @@ import logging
 import redis
 import re
 
-# ==== PYTHONPATH para Railway/imports ====
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
-# =========================================
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
@@ -115,8 +113,13 @@ async def recibir_email(message: types.Message):
         set_user_state(user_id, "whop_ok")
     else:
         print(f"[MAILRELAY] Error para usuario {user_id}: {resp}")
-        await message.reply(msj.MAILRELAY_ERROR, reply_markup=ReplyKeyboardRemove())
-        set_user_state(user_id, "email_ok")  # Permite volver a intentar si usuario escribe de nuevo
+        if resp == "YA_EXISTE":
+            await message.reply(msj.MAILRELAY_YA_EXISTE, reply_markup=get_main_menu())
+            await message.reply(msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
+            set_user_state(user_id, "whop_ok")
+        else:
+            await message.reply(msj.MAILRELAY_ERROR, reply_markup=ReplyKeyboardRemove())
+            set_user_state(user_id, "email_ok")  # Permite volver a intentar si usuario escribe de nuevo
 
 # -- MENÚ AVANZADO Y FAQ --
 @dp.message_handler(lambda message: message.text == "❓ FAQ / Ayuda")
