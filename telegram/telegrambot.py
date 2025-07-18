@@ -24,13 +24,10 @@ from utils.mailrelay import suscribir_email
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 REDIS_URL = os.getenv("REDIS_URL")
-CANAL_LINK = os.getenv("TELEGRAM_CANAL", "https://t.me/viralxvx")
+CANAL_USERNAME = os.getenv("TELEGRAM_CANAL", "viralxvx")   # Solo el username (sin @ ni link)
 CHAT_LINK = os.getenv("TELEGRAM_CHAT", "https://t.me/+PaqyU7Z-VQQ0ZTBh")
 WHOP_LINK = "https://whop.com/viralxvxpremium/?store=true"
 ADMIN_ID = os.getenv("ADMIN_ID")  # Si quieres soporte directo
-
-CANAL_USERNAME = CANAL_LINK.replace("https://t.me/", "")
-CANAL_ID = None  # Si tienes el ID numérico del canal, ponlo aquí (mejor para validación)
 
 if not TELEGRAM_TOKEN:
     raise Exception("❌ Falta TELEGRAM_TOKEN en las variables de entorno")
@@ -66,7 +63,7 @@ def get_main_menu():
     kb.add(
         InlineKeyboardButton("❓ FAQ / Ayuda", callback_data="faq"),
         InlineKeyboardButton("🛡️ Soporte", callback_data="soporte"),
-        InlineKeyboardButton("📢 Canal Oficial", url=CANAL_LINK),
+        InlineKeyboardButton("📢 Canal Oficial", url=f"https://t.me/{CANAL_USERNAME}"),
         InlineKeyboardButton("📺 Tutorial Discord", callback_data="tutorial_discord"),
         InlineKeyboardButton("💬 Grupo/Chat", url=CHAT_LINK)
     )
@@ -101,11 +98,11 @@ async def recibir_email(message: types.Message):
     save_user_email(user_id, email)
     set_user_state(user_id, "esperando_canal")
     await message.reply(msj.EMAIL_OK.format(email=email))
-    # Botón para unirse al canal oficial
+    # Botón para unirse al canal oficial (URL arreglada)
     kb = InlineKeyboardMarkup()
     kb.add(
         InlineKeyboardButton("✅ Ya me uní al canal", callback_data="verificar_canal"),
-        InlineKeyboardButton("📢 Unirme al Canal", url=CANAL_LINK)
+        InlineKeyboardButton("📢 Unirme al Canal", url=f"https://t.me/{CANAL_USERNAME}")
     )
     await message.reply(msj.PIDE_CANAL, reply_markup=kb)
 
