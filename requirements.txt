@@ -6,3 +6,4 @@ aiohttp==3.8.6
 pynacl
 aiolimiter
 aiogram==2.25.1
+requests
