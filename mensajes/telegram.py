@@ -1,12 +1,17 @@
-BIENVENIDA = """
-👋 ¡Bienvenido a VXbot!
+# mensajes/telegram.py
 
-Para comenzar escribe exactamente: *Quiero Viralizar*
+BIENVENIDA = """
+👋 *¡Bienvenido a VXbot!*
+
+Aquí solo hay un camino: viralizarte de verdad y monetizar.
+Toca el botón abajo para comenzar. Nadie puede ayudarte fuera de este sistema.
+
+Solo podrás avanzar si sigues todos los pasos, uno por uno.
 """
 
 PIDE_EMAIL = """
-Para validar tu acceso, escribe tu *correo electrónico*.
-Este correo será usado para enviarte el acceso premium y recursos clave.
+Para empezar, necesito tu *correo electrónico*.
+Te enviaremos acceso premium, recursos clave y toda la información.
 """
 
 EMAIL_INVALIDO = """
@@ -19,86 +24,57 @@ EMAIL_OK = """
 
 Tu email: `{email}`
 
-Ahora tienes acceso a nuestro menú avanzado:
+Ahora, para avanzar, es OBLIGATORIO que sigas nuestro canal oficial.
 """
 
-YA_REGISTRADO = """
-✅ Ya completaste el registro de correo.
+PIDE_CANAL = """
+Para poder viralizarte y tener acceso premium debes UNIRTE a nuestro canal oficial.
 
-Si necesitas soporte, accede al menú abajo.
-"""
-
-MENU_REGISTRADO = """
-Puedes acceder a todas las funciones desde el menú.
+1. Haz clic en "Unirme al Canal".
+2. Luego toca "Ya me uní al canal" para continuar.
 """
 
 FAQ = """
 *FAQ VX – Preguntas Frecuentes*
-- ¿Qué es VX?  
-VX es la comunidad líder para aprender a crear y monetizar contenido viral en X y otras redes.
-- ¿Qué es Whop?  
-Whop es la plataforma de membresías premium que usamos para dar acceso exclusivo y seguro.
-- ¿Cómo accedo al grupo y al canal?  
-Usa los botones del menú para entrar directo.
-- ¿Qué hago si tengo problemas?  
-Usa el botón de Soporte en el menú.
+- ¿Por qué solo usando Discord puedo viralizarme?
+  > Solo allí tienes el apoyo, feedback y red para escalar tu alcance y ventas.
+- ¿Por qué Whop y no otro sistema?
+  > Whop te asegura acceso premium, pagos seguros y soporte real.
+- ¿Si no compro ahora, pierdo todo?
+  > No, tu email queda registrado y recibirás novedades. Pero el acceso real es premium.
+- ¿Si tengo dudas?
+  > Usa el botón de Soporte y uno de nuestro equipo te responde.
 """
 
 TUTORIAL_DISCORD = """
 🎬 *Tutorial Discord:*
-1. Descarga la app: [Discord.com](https://discord.com/download)
-2. Crea una cuenta gratis.
-3. Únete usando el link que te enviaremos tras tu registro.
-4. Usa el canal de Soporte para resolver cualquier duda.
+1. Descarga la app en [Discord.com](https://discord.com/download)
+2. Crea tu cuenta gratis.
+3. Únete usando el link que te enviaremos tras tu compra en Whop.
+4. Si tienes cualquier duda, usa el botón de Soporte.
 """
 
 SOPORTE = """
 🛡️ *Soporte VX:*
-Si tienes cualquier problema, escríbenos aquí o usa el canal de Soporte en Discord.
+Si tienes cualquier problema, escribe aquí o usa el botón de Soporte.
+Un miembro de nuestro equipo te responderá lo antes posible.
 """
 
 AYUDA = """
-¿Necesitas ayuda?
-• Escribe *Quiero Viralizar* para comenzar el onboarding.
-• Si ya lo hiciste, usa el menú para acceder a recursos y soporte.
-"""
+*Debes seguir el flujo usando solo los botones o escribir tu correo cuando se te pida.*
 
-MAILRELAY_OK = """
-✅ ¡Te hemos suscrito exitosamente! 
-
-Recibirás información exclusiva y recursos premium en tu correo.
-"""
-
-MAILRELAY_ERROR = """
-❌ No pudimos registrar tu correo en la plataforma. Por favor, intenta de nuevo o usa otro correo.
-"""
-
-MAILRELAY_YA_EXISTE = """
-⚠️ Este correo ya está registrado en nuestra lista.
-Si ya eres parte, revisa tu correo (incluyendo Spam o Promociones) para ver tus accesos y recursos.
+Nadie puede escribir libremente en este chat. Si necesitas ayuda, usa el menú.
 """
 
 WHOP_ENTREGA = """
 🎟️ *Acceso Premium VX*
 
-¡Todo listo!  
-Este es tu acceso exclusivo a la plataforma premium:  
+¡Ahora sí!  
+Este es tu acceso exclusivo a la plataforma premium donde comprarás tu membresía (27 USD):
+
 👉 [Entrar a Whop]({whop_link})
 
+*Solo al pagar y unirte a Discord recibirás apoyo, estrategias y resultados reales.*
+
 Si tienes dudas, usa el menú de soporte.
-"""
-
-MI_PERFIL = """
-👤 *Tus datos registrados:*
-- ID: `{user_id}`
-- Email: `{email}`
-- Estado: `{estado}`
-
-¿Algo está mal? Usa el botón de soporte.
-"""
-
-REINICIO = """
-🔁 Has reiniciado tu registro.
-
-Escribe *Quiero Viralizar* para comenzar de nuevo.
 """
