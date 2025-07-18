@@ -1,5 +1,3 @@
-# mensajes/telegram.py
-
 BIENVENIDA = """
 👋 ¡Bienvenido a VXbot!
 
@@ -80,10 +78,6 @@ MAILRELAY_YA_EXISTE = """
 Si ya eres parte, revisa tu correo (incluyendo Spam o Promociones) para ver tus accesos y recursos.
 """
 
-VALIDANDO_EMAIL = """
-⏳ Validando tu correo en la plataforma...
-"""
-
 WHOP_ENTREGA = """
 🎟️ *Acceso Premium VX*
 
@@ -92,4 +86,19 @@ Este es tu acceso exclusivo a la plataforma premium:
 👉 [Entrar a Whop]({whop_link})
 
 Si tienes dudas, usa el menú de soporte.
+"""
+
+MI_PERFIL = """
+👤 *Tus datos registrados:*
+- ID: `{user_id}`
+- Email: `{email}`
+- Estado: `{estado}`
+
+¿Algo está mal? Usa el botón de soporte.
+"""
+
+REINICIO = """
+🔁 Has reiniciado tu registro.
+
+Escribe *Quiero Viralizar* para comenzar de nuevo.
 """
