@@ -5,3 +5,4 @@ pytz
 aiohttp
 pynacl
 aiolimiter
+aiogram==2.25.1
