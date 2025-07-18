@@ -1,10 +1,9 @@
 import os
 import requests
-import json
 
 MAILRELAY_API_KEY = os.getenv("MAILRELAY_API_KEY")
 MAILRELAY_URL = "https://innovaguard.ipzmarketing.com/api/v1/subscribers"
-GRUPO_ID = 2  # <--- Asegúrate que este es el ID real de "Viral X - Telegram Bot"
+GRUPO_ID = 2  # <-- ID real de tu grupo "Viral X - Telegram Bot"
 
 def suscribir_email(email):
     if not MAILRELAY_API_KEY or "innovaguard" not in MAILRELAY_URL:
@@ -73,8 +72,16 @@ def buscar_id_suscriptor(email, headers):
         print(f"[MAILRELAY] GET suscriptor ({email}) status: {r.status_code}, response: {r.text}")
         if r.status_code == 200:
             datos = r.json()
-            if datos and "subscribers" in datos and datos["subscribers"]:
-                return datos["subscribers"][0]["id"]
+            # Si devuelve una lista (array)
+            if isinstance(datos, list) and len(datos) > 0:
+                for suscriptor in datos:
+                    if suscriptor.get("email", "").lower() == email.lower():
+                        return suscriptor["id"]
+            # Si devuelve un dict con "subscribers"
+            elif isinstance(datos, dict) and "subscribers" in datos and datos["subscribers"]:
+                for suscriptor in datos["subscribers"]:
+                    if suscriptor.get("email", "").lower() == email.lower():
+                        return suscriptor["id"]
     except Exception as e:
         print(f"[MAILRELAY] No se pudo obtener ID para {email}: {e}")
     return None
