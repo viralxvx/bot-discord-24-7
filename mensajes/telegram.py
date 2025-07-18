@@ -64,3 +64,28 @@ AYUDA = """
 • Escribe *Quiero Viralizar* para comenzar el onboarding.
 • Si ya lo hiciste, usa el menú para acceder a recursos y soporte.
 """
+
+MAILRELAY_OK = """
+✅ ¡Te hemos suscrito exitosamente! 
+
+Recibirás información exclusiva y recursos premium en tu correo.
+"""
+
+MAILRELAY_ERROR = """
+❌ No pudimos registrar tu correo en la plataforma. Por favor, intenta de nuevo o usa otro correo.
+"""
+
+MAILRELAY_YA_EXISTE = """
+⚠️ Este correo ya está registrado en nuestra lista.
+Si ya eres parte, revisa tu correo (incluyendo Spam o Promociones) para ver tus accesos y recursos.
+"""
+
+WHOP_ENTREGA = """
+🎟️ *Acceso Premium VX*
+
+¡Todo listo!  
+Este es tu acceso exclusivo a la plataforma premium:  
+👉 [Entrar a Whop]({whop_link})
+
+Si tienes dudas, usa el menú de soporte.
+"""
