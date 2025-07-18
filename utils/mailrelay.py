@@ -3,7 +3,8 @@ import requests
 
 MAILRELAY_API_KEY = os.getenv("MAILRELAY_API_KEY")
 MAILRELAY_URL = "https://innovaguard.ipzmarketing.com/api/v1/subscribers"
-GRUPO_ID = 2  # El grupo correcto "Viral X - Telegram Bot"
+GRUPO_ID = 2  # Grupo Viral X - Telegram Bot
+GRUPO_NOMBRE = "Viral X - Telegram Bot"  # Debe coincidir EXACTAMENTE con el nombre en Mailrelay
 
 def suscribir_email(email):
     if not MAILRELAY_API_KEY or "innovaguard" not in MAILRELAY_URL:
@@ -17,7 +18,8 @@ def suscribir_email(email):
     data = {
         "email": email,
         "status": "active",
-        "groups": [{"group_id": GRUPO_ID}]
+        "groups": [{"group_id": GRUPO_ID, "name": GRUPO_NOMBRE}],
+        "groups_ids": [GRUPO_ID]
     }
     print(f"\n[MAILRELAY] Intentando crear suscriptor: {email} en grupo {GRUPO_ID}")
     try:
@@ -31,7 +33,6 @@ def suscribir_email(email):
                 json_resp = r.json()
             except Exception:
                 json_resp = {}
-            # Si ya existe
             if "email" in json_resp.get("errors", {}):
                 errors = json_resp["errors"]["email"]
                 for err in errors:
@@ -41,12 +42,14 @@ def suscribir_email(email):
                         if not subscriber_id:
                             print(f"[MAILRELAY] No se pudo encontrar el ID del suscriptor.")
                             return False, "YA_EXISTE"
-                        # Consulta grupos actuales
-                        grupos_actuales = obtener_grupos_suscriptor(subscriber_id, headers)
+                        grupos_actuales, nombres_actuales = obtener_grupos_suscriptor(subscriber_id, headers)
                         print(f"[MAILRELAY] Grupos actuales del suscriptor: {grupos_actuales}")
-                        # Formateamos para Mailrelay
-                        nuevos_grupos = [{"group_id": gid} for gid in set(grupos_actuales + [GRUPO_ID])]
-                        actualizado = actualizar_grupos_suscriptor(subscriber_id, nuevos_grupos, headers)
+                        nuevos_grupos = [{"group_id": gid, "name": n} for gid, n in zip(grupos_actuales, nombres_actuales)]
+                        # Añade grupo 2 si no está
+                        if GRUPO_ID not in grupos_actuales:
+                            nuevos_grupos.append({"group_id": GRUPO_ID, "name": GRUPO_NOMBRE})
+                        group_ids_final = list(set(grupos_actuales + [GRUPO_ID]))
+                        actualizado = actualizar_grupos_suscriptor(subscriber_id, nuevos_grupos, group_ids_final, headers)
                         print(f"[MAILRELAY] PATCH (añadir grupo): status: {actualizado}")
                         if actualizado:
                             print(f"[MAILRELAY] Suscriptor {email} añadido al grupo {GRUPO_ID}.")
@@ -87,22 +90,24 @@ def obtener_grupos_suscriptor(subscriber_id, headers):
         print(f"[MAILRELAY] GET grupos ({subscriber_id}) status: {r.status_code}, response: {r.text}")
         if r.status_code == 200:
             datos = r.json()
-            # ¡Ahora también acepta formato [{"group_id": 1, ...}]!
             grupos = []
+            nombres = []
             if "groups" in datos and datos["groups"]:
                 for grupo in datos["groups"]:
                     gid = grupo["group_id"] if isinstance(grupo, dict) else grupo
+                    name = grupo.get("name", "") if isinstance(grupo, dict) else ""
                     if isinstance(gid, int):
                         grupos.append(gid)
-            return grupos
+                        nombres.append(name)
+            return grupos, nombres
     except Exception as e:
         print(f"[MAILRELAY] No se pudo obtener grupos de {subscriber_id}: {e}")
-    return []
+    return [], []
 
-def actualizar_grupos_suscriptor(subscriber_id, grupos, headers):
+def actualizar_grupos_suscriptor(subscriber_id, grupos, groups_ids, headers):
     try:
         url = MAILRELAY_URL + f"/{subscriber_id}"
-        data = {"groups": grupos}
+        data = {"groups": grupos, "groups_ids": groups_ids}
         r = requests.patch(url, json=data, headers=headers, timeout=10)
         print(f"[MAILRELAY] PATCH grupos ({subscriber_id}) status: {r.status_code}, response: {r.text}")
         return r.status_code in [200, 204]
