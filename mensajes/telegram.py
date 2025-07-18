@@ -80,6 +80,10 @@ MAILRELAY_YA_EXISTE = """
 Si ya eres parte, revisa tu correo (incluyendo Spam o Promociones) para ver tus accesos y recursos.
 """
 
+VALIDANDO_EMAIL = """
+⏳ Validando tu correo en la plataforma...
+"""
+
 WHOP_ENTREGA = """
 🎟️ *Acceso Premium VX*
 
