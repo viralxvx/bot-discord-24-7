@@ -11,6 +11,7 @@ from aiogram.types import InputFile
 import aiohttp
 
 # ========== CONFIG & VALIDACIÓN DE VARIABLES ==========
+
 def get_env(name, required=True):
     value = os.getenv(name)
     if required and (value is None or value.strip() == ""):
@@ -47,6 +48,17 @@ discord_bot = commands.Bot(command_prefix="!", intents=intents)
 # ========== TELEGRAM ==========
 tg_bot = Bot(token=TELEGRAM_TOKEN)
 tg_dp = Dispatcher(tg_bot)
+
+# ========== COMANDO /getid EN TELEGRAM ==========
+@tg_dp.message_handler(commands=['getid'])
+async def handle_getid(message: types.Message):
+    chat = message.chat
+    resp = f"📢 *Chat info:*\n" \
+           f"• *Title*: {chat.title or '(Sin título)'}\n" \
+           f"• *Type*: {chat.type}\n" \
+           f"• *ID*: `{chat.id}`"
+    await message.reply(resp, parse_mode="Markdown")
+    logging.info(f"[TG] /getid en chat '{chat.title or chat.username}' (type: {chat.type}) id: {chat.id}")
 
 # ========== DISCORD → TELEGRAM ==========
 @discord_bot.event
@@ -91,7 +103,6 @@ async def on_message(message):
 # ========== TELEGRAM → DISCORD ==========
 @tg_dp.message_handler(lambda m: m.chat.id == TELEGRAM_GROUP_ID)
 async def tg_to_discord(message: types.Message):
-    # Filtrar mensajes de bots
     if message.from_user.is_bot:
         return
     try:
