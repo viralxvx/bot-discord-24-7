@@ -1,2 +1,1 @@
-worker: python integraciones/telegram_discord.py
-worker: python integraciones/telegram_to_discord_webhook.py
+worker: python integraciones/telegram_discord_bridge.py
