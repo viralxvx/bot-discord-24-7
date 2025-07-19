@@ -1,20 +1,20 @@
 import os
 import logging
-import asyncio
 import aiohttp
 import discord
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InputFile
-from aiogram.utils import executor
+from aiogram.utils.executor import start_polling
 from dotenv import load_dotenv
+import asyncio
 
 load_dotenv()
 
 # --- Variables de entorno ---
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-DISCORD_CANAL_ID = int(os.getenv("DISCORD_CANAL_TELEGRAM"))    # Canal Discord (numérico)
+DISCORD_CANAL_ID = int(os.getenv("DISCORD_CANAL_TELEGRAM"))
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_INTEGRACION")
-TELEGRAM_GRUPO_ID = int(os.getenv("TELEGRAM_GRUPO_ID"))        # -1002692314719
+TELEGRAM_GRUPO_ID = int(os.getenv("TELEGRAM_GRUPO_ID"))
 
 if not all([DISCORD_TOKEN, DISCORD_CANAL_ID, TELEGRAM_TOKEN, TELEGRAM_GRUPO_ID]):
     raise Exception("❌ Faltan variables de entorno: revisa los tokens y IDs.")
@@ -126,11 +126,11 @@ async def on_message(message):
     except Exception as e:
         logging.error(f"[Discord→Tg] Error replicando: {e}")
 
-# --- Arranque ambos bots ---
+# --- ARRANQUE FINAL DE AMBOS BOTS, SIN BLOQUEAR EL EVENT LOOP ---
 async def main():
-    loop = asyncio.get_event_loop()
-    loop.create_task(discord_bot.start(DISCORD_TOKEN))
-    executor.start_polling(tg_dp, skip_updates=True)
+    discord_task = asyncio.create_task(discord_bot.start(DISCORD_TOKEN))
+    tg_polling_task = asyncio.create_task(tg_dp.start_polling(skip_updates=True))
+    await asyncio.gather(discord_task, tg_polling_task)
 
 if __name__ == "__main__":
     logging.info("🔗 Integración Discord ↔️ Telegram corriendo...")
