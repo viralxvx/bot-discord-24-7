@@ -2,77 +2,73 @@
 
 import os
 import asyncio
+import logging
 import discord
-from aiogram import Bot, Dispatcher, types
-from aiogram.utils import executor
-from dotenv import load_dotenv
-import aiohttp
+from discord.ext import commands
+from aiogram import Bot as TGBot, Dispatcher as TGDispatcher, types as tg_types
+from aiogram.utils.exceptions import BotBlocked
 
-load_dotenv()
-
+# ========== CONFIG ==========
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-DISCORD_CANAL_TELEGRAM = int(os.getenv("DISCORD_CANAL_TELEGRAM"))  # ID del canal de Discord
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_INTEGRACION")  # Usa otro token de bot solo para integración
-TELEGRAM_CANAL = os.getenv("TELEGRAM_CANAL")  # Solo username, sin @ (ej: viralxvx)
+DISCORD_CANAL_TELEGRAM = int(os.getenv("DISCORD_CANAL_TELEGRAM"))  # numérico
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_INTEGRACION")
+TELEGRAM_CANAL = os.getenv("TELEGRAM_CANAL")  # username público, sin @
 
-# ---------- Discord a Telegram ----------
-intents = discord.Intents.default()
-intents.messages = True
-intents.message_content = True
+if not all([DISCORD_TOKEN, DISCORD_CANAL_TELEGRAM, TELEGRAM_TOKEN, TELEGRAM_CANAL]):
+    raise Exception("❌ Faltan variables de entorno en el microservicio de integración.")
 
-class DiscordBridgeClient(discord.Client):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.telegram_bot = Bot(token=TELEGRAM_TOKEN, parse_mode="HTML")
+logging.basicConfig(level=logging.INFO)
 
-    async def on_ready(self):
-        print(f"[DiscordBridge] ✅ Integración activa como {self.user}")
-
-    async def on_message(self, message):
-        if message.author.bot: return
-        if message.channel.id != DISCORD_CANAL_TELEGRAM: return
-        text = f"<b>[Discord]</b> <i>{message.author.display_name}:</i> {message.content}"
-        try:
-            await self.telegram_bot.send_message(chat_id=f"@{TELEGRAM_CANAL}", text=text)
-            print(f"[Discord → Telegram] {text}")
-        except Exception as e:
-            print(f"❌ Error enviando a Telegram: {e}")
-
-discord_client = DiscordBridgeClient(intents=intents)
-
-# ---------- Telegram a Discord ----------
-
-from aiogram import Bot as TGBot, Dispatcher as TGDispatcher, types as TGTypes
-
+# ========== TELEGRAM SETUP ==========
 tg_bot = TGBot(token=TELEGRAM_TOKEN)
 tg_dp = TGDispatcher(tg_bot)
 
-@tg_dp.channel_post_handler()
-async def tg_to_discord(message: TGTypes.Message):
-    # Solo canal específico
-    if message.chat.username != TELEGRAM_CANAL:
+# ========== DISCORD SETUP ==========
+intents = discord.Intents.default()
+intents.messages = True
+intents.message_content = True
+discord_bot = commands.Bot(command_prefix="!", intents=intents)
+
+# ---- DISCORD a TELEGRAM ----
+@discord_bot.event
+async def on_ready():
+    print(f"✅ Discord ↔ Telegram integración activa como {discord_bot.user}")
+
+@discord_bot.event
+async def on_message(message):
+    if message.author.bot:
         return
-    text = f"[Telegram] {message.from_user.full_name if message.from_user else 'Canal'}: {message.text or '[no texto]'}"
-    async with discord_client.http._HTTPClient__session.post(
-        f"https://discord.com/api/v9/channels/{DISCORD_CANAL_TELEGRAM}/messages",
-        json={"content": text},
-        headers={
-            "Authorization": f"Bot {DISCORD_TOKEN}",
-            "Content-Type": "application/json"
-        }
-    ) as resp:
-        if resp.status == 200 or resp.status == 204:
-            print(f"[Telegram → Discord] {text}")
-        else:
-            print(f"❌ Error enviando a Discord: {await resp.text()}")
+    if message.channel.id == DISCORD_CANAL_TELEGRAM:
+        text = f"[Discord] {message.author.display_name}: {message.content}"
+        try:
+            await tg_bot.send_message(chat_id=f"@{TELEGRAM_CANAL}", text=text)
+            print(f"✅ Discord → Telegram: {text}")
+        except Exception as e:
+            print(f"❌ Error enviando a Telegram: {e}")
+    await discord_bot.process_commands(message)
 
-async def aiogram_start():
-    executor.start_polling(tg_dp, skip_updates=True)
+# ---- TELEGRAM a DISCORD ----
+@tg_dp.message_handler(lambda m: m.chat.type in ["channel", "supergroup", "group", "private"])
+async def handle_telegram_msg(message: tg_types.Message):
+    if message.text:
+        text = f"[TG] {message.from_user.full_name}: {message.text}" if message.from_user else f"[TG]: {message.text}"
+        try:
+            channel = discord_bot.get_channel(DISCORD_CANAL_TELEGRAM)
+            if channel:
+                await channel.send(text)
+                print(f"✅ Telegram → Discord: {text}")
+            else:
+                print("❌ Canal de Discord no encontrado.")
+        except Exception as e:
+            print(f"❌ Error enviando a Discord: {e}")
 
-# ---------- MAIN ----------
+# ========== ARRANQUE ==========
+async def main():
+    await asyncio.gather(
+        discord_bot.start(DISCORD_TOKEN),
+        tg_dp.start_polling()
+    )
+
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    # Inicia ambos bots en paralelo
-    loop.create_task(aiogram_start())
-    loop.create_task(discord_client.start(DISCORD_TOKEN))
-    loop.run_forever()
+    print("🔗 Integración Discord ↔ Telegram corriendo...")
+    asyncio.run(main())
