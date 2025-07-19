@@ -1,5 +1,4 @@
 # integraciones/telegram_discord_bridge.py
-
 import os
 import logging
 import asyncio
@@ -26,7 +25,6 @@ def get_env_int(name):
 # -------- MODO DE ENVÍO: 1=webhook, 2=directo, 3=fallback --------
 # SOLO CAMBIA ESTE VALOR para cambiar comportamiento
 MODO_ENVIO = int(os.getenv("MODO_ENVIO", "3"))  # Usa "1", "2" o "3"
-
 DISCORD_TOKEN = get_env("DISCORD_TOKEN")
 DISCORD_WEBHOOK_URL = get_env("DISCORD_WEBHOOK_URL", required=(MODO_ENVIO in [1, 3]))
 DISCORD_CHANNEL_ID = get_env_int("DISCORD_CHANNEL_ID")  # Canal directo
@@ -58,50 +56,65 @@ async def enviar_a_discord(msg, file_path=None, filename=None):
     Modo 3: Webhook, si falla, Canal Directo (fallback)
     """
     logging.info(f"[enviar_a_discord] INICIO. MODO_ENVIO={MODO_ENVIO} | msg: {msg[:70]} | file: {filename}")
-    # ----- MODO 1: SOLO WEBHOOK -----
-    if MODO_ENVIO == 1:
-        await enviar_via_webhook(msg, file_path, filename)
-    # ----- MODO 2: SOLO CANAL DIRECTO -----
-    elif MODO_ENVIO == 2:
-        await enviar_via_canal(msg, file_path, filename)
-    # ----- MODO 3: WEBHOOK + FALLBACK -----
-    elif MODO_ENVIO == 3:
-        try:
+    try:
+        # ----- MODO 1: SOLO WEBHOOK -----
+        if MODO_ENVIO == 1:
+            logging.info("[enviar_a_discord] Intentando enviar via webhook...")
             await enviar_via_webhook(msg, file_path, filename)
-        except Exception as e:
-            logging.error(f"❌ Webhook falló, usando canal directo (fallback): {e}")
+        # ----- MODO 2: SOLO CANAL DIRECTO -----
+        elif MODO_ENVIO == 2:
+            logging.info("[enviar_a_discord] Intentando enviar via canal directo...")
             await enviar_via_canal(msg, file_path, filename)
-    else:
-        logging.error(f"❌ MODO_ENVIO inválido: {MODO_ENVIO}")
+        # ----- MODO 3: WEBHOOK + FALLBACK -----
+        elif MODO_ENVIO == 3:
+            logging.info("[enviar_a_discord] Intentando enviar via webhook (fallback activado)...")
+            try:
+                await enviar_via_webhook(msg, file_path, filename)
+            except Exception as e:
+                logging.error(f"❌ Webhook falló, usando canal directo (fallback): {e}")
+                await enviar_via_canal(msg, file_path, filename)
+        else:
+            logging.error(f"❌ MODO_ENVIO inválido: {MODO_ENVIO}")
+    except Exception as e:
+        logging.error(f"❌ Error en enviar_a_discord: {e}")
 
 async def enviar_via_webhook(msg, file_path=None, filename=None):
     if not DISCORD_WEBHOOK_URL:
         raise Exception("Webhook URL no configurado")
+    logging.info("[enviar_via_webhook] Iniciando sesión HTTP para webhook...")
     async with aiohttp.ClientSession() as session:
         if file_path and filename:
+            logging.info(f"[enviar_via_webhook] Enviando archivo adjunto: {filename}")
             with open(file_path, "rb") as f:
                 form = aiohttp.FormData()
                 form.add_field("content", msg)
                 form.add_field("file", f, filename=filename)
                 async with session.post(DISCORD_WEBHOOK_URL, data=form) as resp:
                     if resp.status not in [200, 204]:
-                        raise Exception(f"Webhook error {resp.status}")
+                        error_text = await resp.text()
+                        raise Exception(f"Webhook error {resp.status}: {error_text}")
                     logging.info(f"✅ [Tg→Discord] Archivo enviado via webhook")
         else:
+            logging.info("[enviar_via_webhook] Enviando mensaje de texto...")
             async with session.post(DISCORD_WEBHOOK_URL, json={"content": msg}) as resp:
                 if resp.status not in [200, 204]:
-                    raise Exception(f"Webhook error {resp.status}")
+                    error_text = await resp.text()
+                    raise Exception(f"Webhook error {resp.status}: {error_text}")
                 logging.info(f"✅ [Tg→Discord] Texto enviado via webhook")
 
 async def enviar_via_canal(msg, file_path=None, filename=None):
     canal_id = DISCORD_CHANNEL_ID or DISCORD_CANAL_ID
+    logging.info(f"[enviar_via_canal] Buscando canal Discord ID: {canal_id}")
     canal = discord_bot.get_channel(canal_id)
     if not canal:
         raise Exception(f"No se encontró el canal Discord {canal_id}")
+    logging.info(f"[enviar_via_canal] Canal encontrado: {canal.name}")
     if file_path and filename:
+        logging.info(f"[enviar_via_canal] Enviando archivo adjunto: {filename}")
         await canal.send(msg, file=File(file_path, filename=filename))
         logging.info(f"✅ [Tg→Discord] Archivo enviado via canal directo")
     else:
+        logging.info("[enviar_via_canal] Enviando mensaje de texto...")
         await canal.send(msg)
         logging.info(f"✅ [Tg→Discord] Texto enviado via canal directo")
 
@@ -123,7 +136,7 @@ async def on_message(message):
         if message.content.strip():
             text = f"[Discord] {message.author.display_name}: {message.content}"
             async with aiohttp.ClientSession() as session:
-                url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+                url = f"https://api.telegram.org/bot {TELEGRAM_TOKEN}/sendMessage"
                 payload = {
                     "chat_id": TELEGRAM_CHANNEL_ID,
                     "text": text
@@ -144,10 +157,10 @@ async def on_message(message):
                     # Tipo de archivo
                     if attachment.content_type and "image" in attachment.content_type:
                         data.add_field("photo", file_bytes, filename=attachment.filename)
-                        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+                        url = f"https://api.telegram.org/bot {TELEGRAM_TOKEN}/sendPhoto"
                     else:
                         data.add_field("document", file_bytes, filename=attachment.filename)
-                        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
+                        url = f"https://api.telegram.org/bot {TELEGRAM_TOKEN}/sendDocument"
                     # Caption con info del usuario
                     if message.content:
                         data.add_field("caption", f"[Discord] {message.author.display_name}: {message.content}")
@@ -239,7 +252,6 @@ async def main():
         logging.info(f"    Webhook configurado: {'Sí' if DISCORD_WEBHOOK_URL else 'No'}")
     except Exception as e:
         logging.error(f"❌ Error verificando configuración: {e}")
-
     logging.info("📡 Iniciando polling de Telegram...")
     tg_task = asyncio.create_task(tg_dp.start_polling())
     logging.info("🎮 Conectando bot de Discord...")
