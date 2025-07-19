@@ -27,7 +27,7 @@ def get_env_int(name):
 
 DISCORD_TOKEN = get_env("DISCORD_TOKEN")
 DISCORD_CANAL_ID = get_env_int("DISCORD_CANAL_TELEGRAM")
-DISCORD_WEBHOOK_URL = get_env("DISCORD_WEBHOOK_URL")  # Puede ser "" si no quieres usar webhook
+DISCORD_WEBHOOK_URL = get_env("DISCORD_WEBHOOK_URL")
 TELEGRAM_TOKEN = get_env("TELEGRAM_TOKEN_INTEGRACION")
 TELEGRAM_GROUP_ID = get_env_int("TELEGRAM_GROUP_ID")
 
@@ -74,8 +74,8 @@ async def on_message(message):
 
     # Texto
     if message.content.strip():
-        text = f"[Discord] {message.author.display_name}: {message.content}"
         async with aiohttp.ClientSession() as session:
+            text = f"[Discord] {message.author.display_name}: {message.content}"
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
             payload = {
                 "chat_id": TELEGRAM_GROUP_ID,
