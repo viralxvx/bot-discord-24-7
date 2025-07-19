@@ -1,3 +1,5 @@
+# integraciones/telegram_discord_bridge.py
+
 import os
 import logging
 import asyncio
@@ -27,17 +29,19 @@ def get_env_int(name):
 
 DISCORD_TOKEN = get_env("DISCORD_TOKEN")
 DISCORD_CANAL_ID = get_env_int("DISCORD_CANAL_TELEGRAM")
-DISCORD_WEBHOOK_URL = get_env("DISCORD_WEBHOOK_URL")
+DISCORD_WEBHOOK_URL = get_env("DISCORD_WEBHOOK_URL")  # Puede ser "" si no quieres usar webhook
 TELEGRAM_TOKEN = get_env("TELEGRAM_TOKEN_INTEGRACION")
-TELEGRAM_GROUP_ID = get_env_int("TELEGRAM_GROUP_ID")
+TELEGRAM_CHANNEL_ID = get_env_int("TELEGRAM_CHANNEL_ID")  # SOLO canal, ej: -100xxxxxxxxxx
 
 # ========== LOGGING ==========
+
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] %(levelname)s - %(message)s"
 )
 
 # ========== DISCORD ==========
+
 intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
@@ -46,21 +50,12 @@ intents.guilds = True
 discord_bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ========== TELEGRAM ==========
+
 tg_bot = Bot(token=TELEGRAM_TOKEN)
 tg_dp = Dispatcher(tg_bot)
 
-# ========== COMANDO /getid EN TELEGRAM ==========
-@tg_dp.message_handler(commands=['getid'])
-async def handle_getid(message: types.Message):
-    chat = message.chat
-    resp = f"📢 *Chat info:*\n" \
-           f"• *Title*: {chat.title or '(Sin título)'}\n" \
-           f"• *Type*: {chat.type}\n" \
-           f"• *ID*: `{chat.id}`"
-    await message.reply(resp, parse_mode="Markdown")
-    logging.info(f"[TG] /getid en chat '{chat.title or chat.username}' (type: {chat.type}) id: {chat.id}")
-
 # ========== DISCORD → TELEGRAM ==========
+
 @discord_bot.event
 async def on_ready():
     logging.info(f"✅ Discord ↔️ Telegram integración activa como {discord_bot.user}")
@@ -74,11 +69,11 @@ async def on_message(message):
 
     # Texto
     if message.content.strip():
+        text = f"[Discord] {message.author.display_name}: {message.content}"
         async with aiohttp.ClientSession() as session:
-            text = f"[Discord] {message.author.display_name}: {message.content}"
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
             payload = {
-                "chat_id": TELEGRAM_GROUP_ID,
+                "chat_id": TELEGRAM_CHANNEL_ID,
                 "text": text
             }
             async with session.post(url, data=payload) as resp:
@@ -90,7 +85,7 @@ async def on_message(message):
         async with aiohttp.ClientSession() as session:
             file_bytes = await attachment.read()
             data = aiohttp.FormData()
-            data.add_field("chat_id", str(TELEGRAM_GROUP_ID))
+            data.add_field("chat_id", str(TELEGRAM_CHANNEL_ID))
             if attachment.content_type and "image" in attachment.content_type:
                 data.add_field("photo", file_bytes, filename=attachment.filename)
                 url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
@@ -101,9 +96,11 @@ async def on_message(message):
                 logging.info(f"➡️ [Discord→Tg] Archivo status: {resp.status} ({attachment.filename})")
 
 # ========== TELEGRAM → DISCORD ==========
-@tg_dp.message_handler(lambda m: m.chat.id == TELEGRAM_GROUP_ID)
+
+@tg_dp.message_handler(lambda m: m.chat.id == TELEGRAM_CHANNEL_ID)
 async def tg_to_discord(message: types.Message):
-    if message.from_user.is_bot:
+    # Filtrar mensajes de bots
+    if message.from_user and message.from_user.is_bot:
         return
     try:
         # Mensajes de texto
@@ -163,7 +160,18 @@ async def tg_to_discord(message: types.Message):
     except Exception as e:
         logging.error(f"[Tg→Discord] Error procesando mensaje: {e}")
 
+# ========== COMANDO /getid (te devuelve el ID del canal) ==========
+
+@tg_dp.message_handler(commands=['getid'])
+async def handle_getid(message: types.Message):
+    chat = message.chat
+    chat_type = chat.type
+    chat_id = chat.id
+    name = chat.title or chat.full_name or "(sin nombre)"
+    await message.reply(f"[TG] /getid en chat '{name}' (type: {chat_type}) id: {chat_id}")
+
 # ========== MAIN (EJECUCIÓN CONCURRENTE) ==========
+
 async def main():
     logging.info("🔗 Integración Discord ↔️ Telegram corriendo...")
     tg_task = asyncio.create_task(tg_dp.start_polling())
