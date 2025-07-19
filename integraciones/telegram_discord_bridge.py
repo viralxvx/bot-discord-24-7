@@ -25,7 +25,7 @@ def get_env_int(name):
 
 # -------- MODO DE ENVÍO: 1=webhook, 2=directo, 3=fallback --------
 # SOLO CAMBIA ESTE VALOR para cambiar comportamiento
-MODO_ENVIO = int(os.getenv("MODO_ENVIO", "2"))  # Usa "1", "2" o "3"
+MODO_ENVIO = int(os.getenv("MODO_ENVIO", "3"))  # Usa "1", "2" o "3"
 
 DISCORD_TOKEN = get_env("DISCORD_TOKEN")
 DISCORD_WEBHOOK_URL = get_env("DISCORD_WEBHOOK_URL", required=(MODO_ENVIO in [1, 3]))
