@@ -41,6 +41,7 @@ intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
 intents.guilds = True
+
 discord_bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ========== TELEGRAM ==========
@@ -49,8 +50,8 @@ tg_dp = Dispatcher(tg_bot)
 
 # ========== UTILITY: ENVIAR A DISCORD ==========
 async def enviar_a_discord(msg, file_path=None, filename=None):
-    logging.info(f"[enviar_a_discord] INICIO. msg='{msg[:80]}', file_path={file_path}, filename={filename}")
     try:
+        logging.info(f"[enviar_a_discord] INICIO. msg: {msg}, file: {filename}")
         if DISCORD_WEBHOOK_URL:
             async with aiohttp.ClientSession() as session:
                 if file_path and filename:
@@ -59,7 +60,6 @@ async def enviar_a_discord(msg, file_path=None, filename=None):
                         form.add_field("content", msg)
                         form.add_field("file", f, filename=filename)
                         async with session.post(DISCORD_WEBHOOK_URL, data=form) as resp:
-                            logging.info(f"[enviar_a_discord] Webhook archivo status: {resp.status}")
                             if resp.status == 200:
                                 logging.info(f"✅ [Tg→Discord] Archivo enviado via webhook")
                             else:
@@ -67,14 +67,12 @@ async def enviar_a_discord(msg, file_path=None, filename=None):
                                 raise Exception("Webhook failed")
                 else:
                     async with session.post(DISCORD_WEBHOOK_URL, json={"content": msg}) as resp:
-                        logging.info(f"[enviar_a_discord] Webhook texto status: {resp.status}")
                         if resp.status == 200:
                             logging.info(f"✅ [Tg→Discord] Texto enviado via webhook")
                         else:
                             logging.error(f"❌ Webhook falló ({resp.status}), intentando canal...")
                             raise Exception("Webhook failed")
         else:
-            # Método directo por canal
             canal = discord_bot.get_channel(DISCORD_CANAL_ID)
             if canal:
                 if file_path and filename:
@@ -85,6 +83,7 @@ async def enviar_a_discord(msg, file_path=None, filename=None):
                     logging.info(f"✅ [Tg→Discord] Texto enviado via canal")
             else:
                 logging.error(f"❌ No se encontró el canal Discord {DISCORD_CANAL_ID}")
+
     except Exception as e:
         logging.error(f"❌ Error en enviar_a_discord: {e}")
         try:
@@ -113,7 +112,6 @@ async def on_message(message):
         return
     try:
         logging.info(f"[Discord→Tg] Recibido mensaje: {message.content}")
-        # Enviar texto
         if message.content.strip():
             text = f"[Discord] {message.author.display_name}: {message.content}"
             async with aiohttp.ClientSession() as session:
@@ -128,21 +126,18 @@ async def on_message(message):
                     else:
                         error_text = await resp.text()
                         logging.error(f"❌ [Discord→Tg] Error {resp.status}: {error_text}")
-        # Enviar archivos adjuntos
         for attachment in message.attachments:
             try:
                 async with aiohttp.ClientSession() as session:
                     file_bytes = await attachment.read()
                     data = aiohttp.FormData()
                     data.add_field("chat_id", str(TELEGRAM_CHANNEL_ID))
-                    # Determinar tipo de archivo
                     if attachment.content_type and "image" in attachment.content_type:
                         data.add_field("photo", file_bytes, filename=attachment.filename)
                         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
                     else:
                         data.add_field("document", file_bytes, filename=attachment.filename)
                         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
-                    # Caption con info del usuario
                     if message.content:
                         data.add_field("caption", f"[Discord] {message.author.display_name}: {message.content}")
                     async with session.post(url, data=data) as resp:
@@ -156,32 +151,28 @@ async def on_message(message):
     except Exception as e:
         logging.error(f"❌ Error en on_message: {e}")
 
-# ========== TELEGRAM → DISCORD ==========
+# ========== TELEGRAM → DISCORD (HANDLER ÚNICO Y FILTRA ADENTRO) ==========
 @tg_dp.channel_post_handler()
-async def debug_all_channel_posts(message: types.Message):
+async def telegram_to_discord(message: types.Message):
+    # -------- LOG DEBUG COMPLETO --------
     logging.info(f"🐛 DEBUG - Canal post detectado:")
     logging.info(f"    RAW: {message}")
     logging.info(f"    Chat ID: {message.chat.id}")
-    logging.info(f"    Chat title: {message.chat.title}")
+    logging.info(f"    Chat title: {getattr(message.chat, 'title', None)}")
     logging.info(f"    Text: {message.text}")
     logging.info(f"    Caption: {getattr(message, 'caption', None)}")
     logging.info(f"    Photo: {getattr(message, 'photo', [])}")
     logging.info(f"    Document: {getattr(message, 'document', None)}")
     logging.info(f"    TELEGRAM_CHANNEL_ID configurado: {TELEGRAM_CHANNEL_ID}")
-    if message.chat.id == TELEGRAM_CHANNEL_ID:
-        logging.info("✅ IDs coinciden - procesando mensaje...")
-    else:
-        logging.warning(f"⚠️ IDs diferentes. Esperado: {TELEGRAM_CHANNEL_ID}, Recibido: {message.chat.id}")
-
-@tg_dp.channel_post_handler(chat_id=TELEGRAM_CHANNEL_ID)
-async def telegram_to_discord(message: types.Message):
-    logging.info(f"🎯 Handler canal activado - Chat: {message.chat.id}")
+    # -------- PROCESO PRINCIPAL --------
+    if message.chat.id != TELEGRAM_CHANNEL_ID:
+        logging.info(f"⏭️ Ignorado canal: {message.chat.id} ≠ {TELEGRAM_CHANNEL_ID}")
+        return
+    logging.info(f"🎯 Handler canal ACTIVADO - Chat: {message.chat.id}")
     try:
         logging.info("[Tg→Discord] Handler ENTRÓ al try.")
-        # Texto plano (NO loops de Discord)
-        logging.info(">> Antes del chequeo de texto")
         if message.text and not message.text.startswith('[Discord]'):
-            logging.info(">> Antes de enviar_a_discord")
+            logging.info(">> Antes de enviar_a_discord (texto)")
             msg = f"[Telegram] {message.text}"
             await enviar_a_discord(msg)
             logging.info(f"✅ [Tg→Discord] Texto enviado exitosamente: {message.text}")
@@ -189,8 +180,6 @@ async def telegram_to_discord(message: types.Message):
             logging.info(f"⏭️ Mensaje ignorado (proviene de Discord): {message.text}")
         else:
             logging.info("⏭️ Mensaje sin texto o vacío, revisando otros tipos...")
-
-        # Foto
         if message.photo:
             try:
                 logging.info(">> Foto detectada, procesando...")
@@ -206,8 +195,6 @@ async def telegram_to_discord(message: types.Message):
                     pass
             except Exception as e:
                 logging.error(f"❌ Error enviando imagen: {e}")
-
-        # Documento
         if message.document:
             try:
                 logging.info(">> Documento detectado, procesando...")
@@ -222,13 +209,12 @@ async def telegram_to_discord(message: types.Message):
                     pass
             except Exception as e:
                 logging.error(f"❌ Error enviando documento: {e}")
-
     except Exception as e:
         logging.error(f"❌ Error general en telegram_to_discord: {e}")
         import traceback
         logging.error(traceback.format_exc())
 
-# ========== COMANDOS ÚTILES ==========
+# ========== COMANDOS DE UTILIDAD (GETID, ETC) ==========
 @tg_dp.message_handler(commands=["getid"])
 async def cmd_getid(message: types.Message):
     try:
@@ -252,6 +238,8 @@ async def cmd_getid(message: types.Message):
         error_msg = f"❌ Error obteniendo información: {e}"
         await message.reply(error_msg)
         logging.error(error_msg)
+
+# ... (puedes dejar los otros comandos como /channelid, /myid, /status, etc., igual que antes) ...
 
 # ========== VERIFICACIÓN DE CONFIGURACIÓN ==========
 async def verificar_configuracion():
@@ -294,7 +282,7 @@ async def main():
 if __name__ == "__main__":
     try:
         required_vars = [
-            "DISCORD_TOKEN", "DISCORD_CANAL_TELEGRAM", 
+            "DISCORD_TOKEN", "DISCORD_CANAL_TELEGRAM",
             "TELEGRAM_TOKEN_INTEGRACION", "TELEGRAM_CHANNEL_ID"
         ]
         missing_vars = []
