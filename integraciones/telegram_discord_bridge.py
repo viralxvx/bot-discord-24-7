@@ -52,7 +52,6 @@ last_telegram_message_id = None
 
 # ========== UTILITY: ENVIAR A DISCORD ==========
 async def enviar_a_discord(msg, file_path=None, filename=None):
-    """Envía mensaje a Discord con fallback webhook → canal directo"""
     logging.info(f"[enviar_a_discord] INICIO. msg: {msg}, file: {file_path}")
     try:
         if DISCORD_WEBHOOK_URL:
@@ -153,10 +152,18 @@ async def on_message(message):
     except Exception as e:
         logging.error(f"❌ Error en on_message: {e}")
 
-# ========== TELEGRAM → DISCORD ==========
+# ========== TELEGRAM (CANAL) → DISCORD (SOLO UN HANDLER) ==========
 @tg_dp.channel_post_handler()
-async def debug_all_channel_posts(message: types.Message):
+async def telegram_canal_unico(message: types.Message):
+    """
+    Handler ÚNICO que:
+    - Muestra logs completos (tipo debug)
+    - Si es el canal comunidad, ENVÍA a Discord
+    - DEDUPLICA si repiten el mismo message_id
+    """
     global last_telegram_message_id
+
+    # LOGS ULTRA DETALLADOS
     logging.info(f"🐛 DEBUG - Canal post detectado:")
     logging.info(f"    RAW: {message}")
     logging.info(f"    Chat ID: {message.chat.id}")
@@ -167,71 +174,61 @@ async def debug_all_channel_posts(message: types.Message):
     logging.info(f"    Document: {getattr(message, 'document', None)}")
     logging.info(f"    TELEGRAM_CHANNEL_ID configurado: {TELEGRAM_CHANNEL_ID}")
 
-    # DEDUPLICAR: solo procesa mensajes nuevos (evita doble post si Telegram notifica por grupo y canal)
+    # Solo procesa mensajes del canal principal (comunidad)
     if message.chat.id == TELEGRAM_CHANNEL_ID:
+        # DEDUPLICACIÓN:
         if message.message_id == last_telegram_message_id:
             logging.warning(f"⏭️ Mensaje duplicado detectado. Ignorando message_id={message.message_id}")
             return
         last_telegram_message_id = message.message_id
         logging.info("✅ IDs coinciden - procesando mensaje canal principal...")
+
+        try:
+            # TEXTO
+            if message.text and not message.text.startswith('[Discord]'):
+                logging.info(f">> Antes de enviar_a_discord (texto)")
+                msg = f"[Telegram] {message.text}"
+                await enviar_a_discord(msg)
+                logging.info(f"✅ [Tg→Discord] Texto enviado exitosamente: {message.text}")
+            elif message.text and message.text.startswith('[Discord]'):
+                logging.info(f"⏭️ Mensaje ignorado (proviene de Discord)")
+            # FOTO
+            if message.photo:
+                try:
+                    photo = message.photo[-1]
+                    file = await photo.download()
+                    caption = message.caption or "Imagen desde Telegram"
+                    msg = f"[Telegram] {caption}"
+                    logging.info(f">> Antes de enviar_a_discord (foto)")
+                    await enviar_a_discord(msg, file_path=file.name, filename=f"telegram_image_{photo.file_id}.jpg")
+                    logging.info(f"✅ [Tg→Discord] Imagen enviada")
+                    try:
+                        os.remove(file.name)
+                    except: pass
+                except Exception as e:
+                    logging.error(f"❌ Error enviando imagen: {e}")
+            # DOCUMENTO
+            if message.document:
+                try:
+                    file = await message.document.download()
+                    caption = message.caption or "Archivo desde Telegram"
+                    msg = f"[Telegram] {caption}"
+                    logging.info(f">> Antes de enviar_a_discord (documento)")
+                    await enviar_a_discord(msg, file_path=file.name, filename=message.document.file_name)
+                    logging.info(f"✅ [Tg→Discord] Documento enviado")
+                    try:
+                        os.remove(file.name)
+                    except: pass
+                except Exception as e:
+                    logging.error(f"❌ Error enviando documento: {e}")
+        except Exception as e:
+            logging.error(f"❌ Error general en telegram_to_discord: {e}")
+            import traceback
+            logging.error(traceback.format_exc())
     else:
         logging.warning(f"⚠️ IDs diferentes. Esperado: {TELEGRAM_CHANNEL_ID}, Recibido: {message.chat.id}")
 
-@tg_dp.channel_post_handler(chat_id=TELEGRAM_CHANNEL_ID)
-async def telegram_to_discord(message: types.Message):
-    global last_telegram_message_id
-    logging.info(f"🎯 Handler canal ACTIVADO - Chat: {message.chat.id}")
-    # DEDUPLICAR aquí también por si aiogram los procesa en paralelo
-    if message.message_id == last_telegram_message_id:
-        logging.warning(f"⏭️ [Tg→Discord] Mensaje duplicado detectado. Ignorando message_id={message.message_id}")
-        return
-    last_telegram_message_id = message.message_id
-    logging.info(f"[Tg→Discord] Handler ENTRÓ al try.")
-
-    try:
-        # TEXTO
-        if message.text and not message.text.startswith('[Discord]'):
-            logging.info(f">> Antes de enviar_a_discord (texto)")
-            msg = f"[Telegram] {message.text}"
-            await enviar_a_discord(msg)
-            logging.info(f"✅ [Tg→Discord] Texto enviado exitosamente: {message.text}")
-        elif message.text and message.text.startswith('[Discord]'):
-            logging.info(f"⏭️ Mensaje ignorado (proviene de Discord)")
-        # FOTO
-        if message.photo:
-            try:
-                photo = message.photo[-1]
-                file = await photo.download()
-                caption = message.caption or "Imagen desde Telegram"
-                msg = f"[Telegram] {caption}"
-                logging.info(f">> Antes de enviar_a_discord (foto)")
-                await enviar_a_discord(msg, file_path=file.name, filename=f"telegram_image_{photo.file_id}.jpg")
-                logging.info(f"✅ [Tg→Discord] Imagen enviada")
-                try:
-                    os.remove(file.name)
-                except: pass
-            except Exception as e:
-                logging.error(f"❌ Error enviando imagen: {e}")
-        # DOCUMENTO
-        if message.document:
-            try:
-                file = await message.document.download()
-                caption = message.caption or "Archivo desde Telegram"
-                msg = f"[Telegram] {caption}"
-                logging.info(f">> Antes de enviar_a_discord (documento)")
-                await enviar_a_discord(msg, file_path=file.name, filename=message.document.file_name)
-                logging.info(f"✅ [Tg→Discord] Documento enviado")
-                try:
-                    os.remove(file.name)
-                except: pass
-            except Exception as e:
-                logging.error(f"❌ Error enviando documento: {e}")
-    except Exception as e:
-        logging.error(f"❌ Error general en telegram_to_discord: {e}")
-        import traceback
-        logging.error(traceback.format_exc())
-
-# ========== COMANDOS DE UTILIDAD ==========
+# ========== COMANDOS DE UTILIDAD (igual que antes) ==========
 @tg_dp.message_handler(commands=["getid"])
 async def cmd_getid(message: types.Message):
     try:
