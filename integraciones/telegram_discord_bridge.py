@@ -50,13 +50,11 @@ tg_dp = Dispatcher(tg_bot)
 
 # ===================== ENVÍO A DISCORD =====================
 async def enviar_a_discord(msg, file_path=None, filename=None):
-    """
-    Modo 1: Solo Webhook
-    Modo 2: Solo Canal Directo
-    Modo 3: Webhook, si falla, Canal Directo (fallback)
-    """
     logging.info(f"[enviar_a_discord] INICIO. MODO_ENVIO={MODO_ENVIO} | msg: {msg[:70]} | file: {filename}")
     try:
+        # Agregar un breve retraso para pruebas
+        await asyncio.sleep(1)
+        
         # ----- MODO 1: SOLO WEBHOOK -----
         if MODO_ENVIO == 1:
             logging.info("[enviar_a_discord] Intentando enviar via webhook...")
@@ -81,26 +79,30 @@ async def enviar_a_discord(msg, file_path=None, filename=None):
 async def enviar_via_webhook(msg, file_path=None, filename=None):
     if not DISCORD_WEBHOOK_URL:
         raise Exception("Webhook URL no configurado")
-    logging.info("[enviar_via_webhook] Iniciando sesión HTTP para webhook...")
     async with aiohttp.ClientSession() as session:
-        if file_path and filename:
-            logging.info(f"[enviar_via_webhook] Enviando archivo adjunto: {filename}")
-            with open(file_path, "rb") as f:
-                form = aiohttp.FormData()
-                form.add_field("content", msg)
-                form.add_field("file", f, filename=filename)
-                async with session.post(DISCORD_WEBHOOK_URL, data=form) as resp:
+        try:
+            if file_path and filename:
+                logging.info(f"[enviar_via_webhook] Enviando archivo adjunto: {filename}")
+                with open(file_path, "rb") as f:
+                    form = aiohttp.FormData()
+                    form.add_field("content", msg)
+                    form.add_field("file", f, filename=filename)
+                    async with session.post(DISCORD_WEBHOOK_URL, data=form) as resp:
+                        if resp.status not in [200, 204]:
+                            error_text = await resp.text()
+                            raise Exception(f"Webhook error {resp.status}: {error_text}")
+                        logging.info(f"✅ [Tg→Discord] Archivo enviado via webhook")
+            else:
+                logging.info("[enviar_via_webhook] Enviando mensaje de texto...")
+                async with session.post(DISCORD_WEBHOOK_URL, json={"content": msg}) as resp:
                     if resp.status not in [200, 204]:
                         error_text = await resp.text()
                         raise Exception(f"Webhook error {resp.status}: {error_text}")
-                    logging.info(f"✅ [Tg→Discord] Archivo enviado via webhook")
-        else:
-            logging.info("[enviar_via_webhook] Enviando mensaje de texto...")
-            async with session.post(DISCORD_WEBHOOK_URL, json={"content": msg}) as resp:
-                if resp.status not in [200, 204]:
-                    error_text = await resp.text()
-                    raise Exception(f"Webhook error {resp.status}: {error_text}")
-                logging.info(f"✅ [Tg→Discord] Texto enviado via webhook")
+                    logging.info(f"✅ [Tg→Discord] Texto enviado via webhook")
+        except aiohttp.ClientError as e:
+            logging.error(f"❌ Error de red en webhook: {e}")
+        except Exception as e:
+            logging.error(f"❌ Error inesperado en webhook: {e}")
 
 async def enviar_via_canal(msg, file_path=None, filename=None):
     canal_id = DISCORD_CHANNEL_ID or DISCORD_CANAL_ID
@@ -109,14 +111,17 @@ async def enviar_via_canal(msg, file_path=None, filename=None):
     if not canal:
         raise Exception(f"No se encontró el canal Discord {canal_id}")
     logging.info(f"[enviar_via_canal] Canal encontrado: {canal.name}")
-    if file_path and filename:
-        logging.info(f"[enviar_via_canal] Enviando archivo adjunto: {filename}")
-        await canal.send(msg, file=File(file_path, filename=filename))
-        logging.info(f"✅ [Tg→Discord] Archivo enviado via canal directo")
-    else:
-        logging.info("[enviar_via_canal] Enviando mensaje de texto...")
-        await canal.send(msg)
-        logging.info(f"✅ [Tg→Discord] Texto enviado via canal directo")
+    try:
+        if file_path and filename:
+            logging.info(f"[enviar_via_canal] Enviando archivo adjunto: {filename}")
+            await canal.send(msg, file=File(file_path, filename=filename))
+            logging.info(f"✅ [Tg→Discord] Archivo enviado via canal directo")
+        else:
+            logging.info("[enviar_via_canal] Enviando mensaje de texto...")
+            await canal.send(msg)
+            logging.info(f"✅ [Tg→Discord] Texto enviado via canal directo")
+    except Exception as e:
+        logging.error(f"❌ Error enviando mensaje a canal Discord: {e}")
 
 # ===================== DISCORD → TELEGRAM =====================
 @discord_bot.event
