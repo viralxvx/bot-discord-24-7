@@ -23,10 +23,10 @@ from utils.mailrelay import suscribir_email
 load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 REDIS_URL = os.getenv("REDIS_URL")
-CANAL_USERNAME = os.getenv("TELEGRAM_CANAL", "viralxvx")
-WHOP_LINK = "https://whop.com/viralxvxpremium/?store=true"
+CANAL_USERNAME = os.getenv("TELEGRAM_CANAL", "viralxvx")   # Solo username (sin @ ni link)
 CHAT_LINK = os.getenv("TELEGRAM_CHAT", "https://t.me/+PaqyU7Z-VQQ0ZTBh")
-ADMIN_ID = os.getenv("ADMIN_ID")
+WHOP_LINK = "https://whop.com/viralxvxpremium/?store=true"
+ADMIN_ID = os.getenv("ADMIN_ID")  # Si quieres soporte directo
 
 if not TELEGRAM_TOKEN:
     raise Exception("❌ Falta TELEGRAM_TOKEN en las variables de entorno")
@@ -43,7 +43,22 @@ dp.middleware.setup(LoggingMiddleware())
 TIEMPO_RECORDATORIO_HRS = 24
 TIEMPO_EXPULSION_HRS = 72
 
-# === Estados y helpers
+# ===== Helper para guardar y limpiar mensajes =====
+def add_bot_message(user_id, message_id):
+    redis_client.lpush(f"user:messages:{user_id}", message_id)
+    redis_client.ltrim(f"user:messages:{user_id}", 0, 49)  # Máx 50 mensajes
+
+async def limpiar_historial_usuario(user_id):
+    key = f"user:messages:{user_id}"
+    ids = redis_client.lrange(key, 0, 49)
+    for msg_id in ids:
+        try:
+            await bot.delete_message(user_id, int(msg_id))
+        except Exception:
+            continue
+    redis_client.delete(key)
+
+# ===== Estados y helpers =====
 def get_user_state(user_id):
     return redis_client.hget(f"user:telegram:{user_id}", "state") or "inicio"
 
@@ -66,82 +81,54 @@ def get_main_menu():
     kb = InlineKeyboardMarkup(row_width=2)
     kb.add(
         InlineKeyboardButton("❓ FAQ / Ayuda", callback_data="faq"),
-        InlineKeyboardButton("📺 Tutorial Discord", callback_data="tutorial_discord"),
-        InlineKeyboardButton("📢 Canal Oficial", url=f"https://t.me/{CANAL_USERNAME}"),
-        InlineKeyboardButton("💬 Grupo/Chat", url=CHAT_LINK),
-        InlineKeyboardButton("💳 Acceso Discord", url=WHOP_LINK),
-        InlineKeyboardButton("👤 Mi perfil", callback_data="perfil"),
         InlineKeyboardButton("🛡️ Soporte", callback_data="soporte"),
-        InlineKeyboardButton("🔄 Volver a empezar", callback_data="volver_empezar"),
+        InlineKeyboardButton("📢 Canal Oficial", url=f"https://t.me/{CANAL_USERNAME}"),
+        InlineKeyboardButton("📺 Tutorial Discord", callback_data="tutorial_discord"),
+        InlineKeyboardButton("💬 Grupo/Chat", url=CHAT_LINK)
     )
     return kb
 
-# === LIMPIA HISTORIAL Y ENVÍA SOLO LA BIENVENIDA ===
-async def limpiar_historial_usuario(user_id):
-    """Borra todos los mensajes en el chat privado y deja solo la bienvenida."""
-    try:
-        chat = await bot.get_chat(user_id)
-        async for msg in bot.iter_history(user_id, limit=100):
-            try:
-                await bot.delete_message(user_id, msg.message_id)
-            except Exception:
-                continue
-        kb = InlineKeyboardMarkup()
-        kb.add(InlineKeyboardButton("🚀 Quiero Viralizar", callback_data="quiero_viralizar"))
-        await bot.send_message(user_id, msj.BIENVENIDA, reply_markup=kb)
-    except Exception as e:
-        print(f"[WARN] No se pudo limpiar historial para {user_id}: {e}")
-
-# === BIENVENIDA SOLO EN CHAT PRIVADO ===
+# ===== BIENVENIDA CON LIMPIEZA =====
 @dp.message_handler(commands=["start"])
 async def cmd_start(message: types.Message):
-    if message.chat.type != "private":
-        return
     user_id = message.from_user.id
-    set_user_state(user_id, "inicio")
     await limpiar_historial_usuario(user_id)
-
-# Cuando el bot se reinicia, limpia chats de usuarios recientes
-async def limpiar_todos_al_iniciar():
-    print("🧹 Limpiando historial de usuarios al iniciar...")
-    # Limpiamos solo los 50 usuarios más recientes para no exceder límites de Telegram
-    keys = list(redis_client.scan_iter("user:telegram:*"))
-    for key in keys[:50]:
-        user_id = key.split(":")[-1]
-        await limpiar_historial_usuario(user_id)
+    set_user_state(user_id, "inicio")
+    kb = InlineKeyboardMarkup()
+    kb.add(InlineKeyboardButton("🚀 Quiero Viralizar", callback_data="quiero_viralizar"))
+    msg = await message.answer(msj.BIENVENIDA, reply_markup=kb)
+    add_bot_message(user_id, msg.message_id)
 
 @dp.callback_query_handler(lambda c: c.data == "quiero_viralizar")
 async def handle_quiero_viralizar(callback_query: types.CallbackQuery):
-    if callback_query.message.chat.type != "private":
-        return
     user_id = callback_query.from_user.id
     set_user_state(user_id, "esperando_email")
     await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(user_id, msj.PIDE_EMAIL, reply_markup=ReplyKeyboardRemove())
+    msg = await bot.send_message(user_id, msj.PIDE_EMAIL, reply_markup=ReplyKeyboardRemove())
+    add_bot_message(user_id, msg.message_id)
 
 @dp.message_handler(lambda message: get_user_state(message.from_user.id) == "esperando_email")
 async def recibir_email(message: types.Message):
-    if message.chat.type != "private":
-        return
     user_id = message.from_user.id
     email = message.text.strip()
     if not is_valid_email(email):
-        await message.reply(msj.EMAIL_INVALIDO)
+        msg = await message.reply(msj.EMAIL_INVALIDO)
+        add_bot_message(user_id, msg.message_id)
         return
     save_user_email(user_id, email)
     set_user_state(user_id, "esperando_canal")
-    await message.reply(msj.EMAIL_OK.format(email=email))
+    msg1 = await message.reply(msj.EMAIL_OK.format(email=email))
     kb = InlineKeyboardMarkup()
     kb.add(
         InlineKeyboardButton("✅ Ya me uní al canal", callback_data="verificar_canal"),
         InlineKeyboardButton("📢 Unirme al Canal", url=f"https://t.me/{CANAL_USERNAME}")
     )
-    await message.reply(msj.PIDE_CANAL, reply_markup=kb)
+    msg2 = await message.reply(msj.PIDE_CANAL, reply_markup=kb)
+    add_bot_message(user_id, msg1.message_id)
+    add_bot_message(user_id, msg2.message_id)
 
 @dp.callback_query_handler(lambda c: c.data == "verificar_canal")
 async def verificar_canal(callback_query: types.CallbackQuery):
-    if callback_query.message.chat.type != "private":
-        return
     user_id = callback_query.from_user.id
     try:
         member = await bot.get_chat_member(chat_id=f"@{CANAL_USERNAME}", user_id=user_id)
@@ -153,63 +140,41 @@ async def verificar_canal(callback_query: types.CallbackQuery):
         return
     set_user_state(user_id, "whop_ok")
     await bot.answer_callback_query(callback_query.id, text="¡Perfecto! Ya eres parte del canal.", show_alert=False)
-    await bot.send_message(user_id, msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
+    msg = await bot.send_message(user_id, msj.WHOP_ENTREGA.format(whop_link=WHOP_LINK), reply_markup=get_main_menu())
+    add_bot_message(user_id, msg.message_id)
 
-@dp.message_handler(lambda message: message.chat.type != "private")
-async def bloquear_grupo(message: types.Message):
-    await message.delete()
-
+# ==== SOLO PERMITE FLUJO Y BLOQUEA RESTO ====
 @dp.message_handler(lambda message: get_user_state(message.from_user.id) not in ["esperando_email"])
 async def bloquear_mensajes(message: types.Message):
-    if message.chat.type != "private":
-        return
-    await message.delete()
-    await bot.send_message(message.from_user.id, msj.AYUDA, reply_markup=None)
+    try:
+        await message.delete()
+    except Exception:
+        pass
+    msg = await bot.send_message(message.from_user.id, msj.AYUDA, reply_markup=None)
+    add_bot_message(message.from_user.id, msg.message_id)
 
-# MENÚ AVANZADO SOLO EN PRIVADO
+# ==== MENÚ AVANZADO (solo en el bot privado) ====
 @dp.callback_query_handler(lambda c: c.data == "faq")
 async def menu_faq(callback_query: types.CallbackQuery):
-    if callback_query.message.chat.type != "private":
-        return
+    msg = await bot.send_message(callback_query.from_user.id, msj.FAQ, reply_markup=get_main_menu())
+    add_bot_message(callback_query.from_user.id, msg.message_id)
     await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(callback_query.from_user.id, msj.FAQ, reply_markup=get_main_menu())
 
 @dp.callback_query_handler(lambda c: c.data == "tutorial_discord")
 async def menu_tutorial(callback_query: types.CallbackQuery):
-    if callback_query.message.chat.type != "private":
-        return
+    msg = await bot.send_message(callback_query.from_user.id, msj.TUTORIAL_DISCORD, reply_markup=get_main_menu())
+    add_bot_message(callback_query.from_user.id, msg.message_id)
     await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(callback_query.from_user.id, msj.TUTORIAL_DISCORD, reply_markup=get_main_menu())
 
 @dp.callback_query_handler(lambda c: c.data == "soporte")
 async def menu_soporte(callback_query: types.CallbackQuery):
-    if callback_query.message.chat.type != "private":
-        return
+    msg = await bot.send_message(callback_query.from_user.id, msj.SOPORTE, reply_markup=get_main_menu())
+    add_bot_message(callback_query.from_user.id, msg.message_id)
     await bot.answer_callback_query(callback_query.id)
-    await bot.send_message(callback_query.from_user.id, msj.SOPORTE, reply_markup=get_main_menu())
     if ADMIN_ID:
         await bot.send_message(int(ADMIN_ID), f"🛡️ Usuario {callback_query.from_user.id} ha solicitado soporte.")
 
-@dp.callback_query_handler(lambda c: c.data == "volver_empezar")
-async def volver_empezar(callback_query: types.CallbackQuery):
-    if callback_query.message.chat.type != "private":
-        return
-    user_id = callback_query.from_user.id
-    set_user_state(user_id, "inicio")
-    await limpiar_historial_usuario(user_id)
-
-@dp.callback_query_handler(lambda c: c.data == "perfil")
-async def mi_perfil(callback_query: types.CallbackQuery):
-    if callback_query.message.chat.type != "private":
-        return
-    user_id = callback_query.from_user.id
-    email = get_user_email(user_id)
-    estado = get_user_state(user_id)
-    await bot.answer_callback_query(callback_query.id)
-    texto = f"👤 *Tu perfil:*\n\nEstado actual: `{estado}`\nCorreo registrado: `{email or 'No registrado'}`"
-    await bot.send_message(user_id, texto, reply_markup=get_main_menu(), parse_mode="Markdown")
-
-# === LIMPIEZA AUTOMÁTICA Y /inactivos ADMIN ===
+# ==== LIMPIEZA AUTOMÁTICA Y /inactivos ADMIN ====
 async def limpieza_inactivos():
     print("🔎 [LIMPIEZA] Iniciando limpieza automática...")
     now = datetime.utcnow()
@@ -226,6 +191,7 @@ async def limpieza_inactivos():
         except:
             ts = now
         horas = (now - ts).total_seconds() / 3600
+        # Solo limpiar atascados, no premium
         if user_state in ["inicio", "esperando_email", "esperando_canal"]:
             if horas > TIEMPO_EXPULSION_HRS and not email:
                 try:
@@ -233,25 +199,27 @@ async def limpieza_inactivos():
                         user_id, 
                         "⚠️ No completaste tu registro y serás eliminado por inactividad.\nSi fue un error, vuelve a iniciar escribiendo /start."
                     )
-                except Exception as e:
-                    print(f"[WARN] No se pudo notificar a {user_id}: {e}")
+                except Exception:
+                    pass
                 redis_client.delete(key)
+                redis_client.delete(f"user:messages:{user_id}")
                 count_expulsados += 1
                 print(f"[EXPULSADO] Usuario {user_id} eliminado por inactividad ({int(horas)}h).")
             elif email and horas > TIEMPO_RECORDATORIO_HRS:
                 kb = InlineKeyboardMarkup()
-                kb.add(InlineKeyboardButton("🔄 Reiniciar proceso", callback_data="volver_empezar"))
+                kb.add(InlineKeyboardButton("🔄 Reiniciar proceso", callback_data="quiero_viralizar"))
                 try:
-                    await bot.send_message(
+                    msg = await bot.send_message(
                         user_id,
                         "👋 Aún no completaste tu acceso premium.\nPulsa abajo para reiniciar el proceso o pide ayuda en Soporte.",
                         reply_markup=kb
                     )
+                    add_bot_message(user_id, msg.message_id)
                     redis_client.hset(key, "last_update", now.isoformat())
                     count_recordados += 1
                     print(f"[RECORDATORIO] Usuario {user_id} recordado por inactividad ({int(horas)}h).")
-                except Exception as e:
-                    print(f"[WARN] No se pudo recordar {user_id}: {e}")
+                except Exception:
+                    pass
     print(f"✅ [LIMPIEZA] Finalizada. Expulsados: {count_expulsados} | Recordados: {count_recordados}")
 
 async def schedule_limpieza():
@@ -279,6 +247,5 @@ async def cmd_inactivos(message: types.Message):
 if __name__ == "__main__":
     print("✅ Bot de Telegram VXbot FINAL listo y corriendo.")
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(limpiar_todos_al_iniciar())  # Limpiar todos los usuarios al reiniciar
     loop.create_task(schedule_limpieza())  # Arranca limpieza automática cada 24h
     executor.start_polling(dp, skip_updates=True)
