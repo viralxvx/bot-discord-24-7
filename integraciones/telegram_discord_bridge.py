@@ -2,134 +2,133 @@ import os
 import logging
 import aiohttp
 import discord
+import asyncio
+
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InputFile
-from aiogram.utils.executor import start_polling
+from aiogram.utils import executor
 from dotenv import load_dotenv
-import asyncio
 
 load_dotenv()
 
-# --- Variables de entorno ---
+# === Variables de entorno ===
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-DISCORD_CANAL_ID = int(os.getenv("DISCORD_CANAL_TELEGRAM"))
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_INTEGRACION")
-TELEGRAM_GRUPO_ID = int(os.getenv("TELEGRAM_GRUPO_ID"))
+DISCORD_CANAL_ID = int(os.getenv("DISCORD_CANAL_TELEGRAM"))  # canal Discord para reflejar (ej: 1395768275769757806)
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")  # Si usas webhook para enviar archivos, etc
 
-if not all([DISCORD_TOKEN, DISCORD_CANAL_ID, TELEGRAM_TOKEN, TELEGRAM_GRUPO_ID]):
-    raise Exception("❌ Faltan variables de entorno: revisa los tokens y IDs.")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_INTEGRACION")  # SOLO para integración, diferente al bot principal
+TELEGRAM_GROUP_ID = int(os.getenv("TELEGRAM_GROUP_ID"))   # Ejemplo: -1002692314719 (grupo/canal público)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="[%(asctime)s] %(levelname)s - %(message)s",
-)
+if not DISCORD_TOKEN or not TELEGRAM_TOKEN or not DISCORD_CANAL_ID or not TELEGRAM_GROUP_ID:
+    raise Exception("❌ Faltan variables de entorno críticas (DISCORD_TOKEN, TELEGRAM_TOKEN_INTEGRACION, DISCORD_CANAL_TELEGRAM, TELEGRAM_GROUP_ID)")
 
-# --- Telegram ---
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s - %(message)s')
+
+# === Discord Client ===
+intents = discord.Intents.default()
+intents.message_content = True
+intents.messages = True
+discord_bot = discord.Client(intents=intents)
+
+# === Telegram Bot ===
 tg_bot = Bot(token=TELEGRAM_TOKEN)
 tg_dp = Dispatcher(tg_bot)
 
-# --- Discord ---
-intents = discord.Intents.default()
-intents.messages = True
-intents.message_content = True
-discord_bot = discord.Client(intents=intents)
-
-# --- TELEGRAM → DISCORD ---
-@tg_dp.message_handler(content_types=types.ContentTypes.ANY)
-async def tg_to_discord(message: types.Message):
-    if message.chat.id != TELEGRAM_GRUPO_ID:
-        logging.warning(f"[Tg→Discord] Ignorado: {message.chat.type} ({message.chat.id})")
-        return
-
-    try:
-        text = (message.text or message.caption or "").strip()
-        files = []
-
-        # Adjuntos: fotos, docs, video, audio
-        if message.photo:
-            photo = message.photo[-1]
-            file = await tg_bot.get_file(photo.file_id)
-            file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file.file_path}"
-            files.append(("photo", file_url))
-        elif message.document:
-            file = await tg_bot.get_file(message.document.file_id)
-            file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file.file_path}"
-            files.append(("document", file_url))
-        elif message.video:
-            file = await tg_bot.get_file(message.video.file_id)
-            file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file.file_path}"
-            files.append(("video", file_url))
-        elif message.audio:
-            file = await tg_bot.get_file(message.audio.file_id)
-            file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file.file_path}"
-            files.append(("audio", file_url))
-
-        username = message.from_user.full_name if message.from_user else "Desconocido"
-        final_text = f"[Telegram] {username}: {text or '[Archivo adjunto]'}"
-        discord_channel = discord_bot.get_channel(DISCORD_CANAL_ID)
-        if not discord_channel:
-            logging.error(f"[Tg→Discord] No se pudo acceder al canal Discord {DISCORD_CANAL_ID}")
-            return
-
-        if text:
-            await discord_channel.send(final_text)
-
-        for tipo, url in files:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as resp:
-                    if resp.status == 200:
-                        data = await resp.read()
-                        filename = url.split("/")[-1]
-                        discord_file = discord.File(fp=bytearray(data), filename=filename)
-                        await discord_channel.send(file=discord_file)
-                        logging.info(f"[Tg→Discord] Archivo ({tipo}) enviado: {filename}")
-                    else:
-                        logging.error(f"[Tg→Discord] Fallo descarga archivo ({tipo}): {url}")
-
-        logging.info(f"[Tg→Discord] Replicado: {final_text}")
-
-    except Exception as e:
-        logging.error(f"[Tg→Discord] Error replicando: {e}")
-
-# --- DISCORD → TELEGRAM ---
+# ======= DISCORD → TELEGRAM =======
 @discord_bot.event
 async def on_ready():
     logging.info(f"✅ Discord ↔️ Telegram integración activa como {discord_bot.user}")
 
 @discord_bot.event
 async def on_message(message):
-    if message.author.bot or message.channel.id != DISCORD_CANAL_ID:
+    if message.author.bot:
         return
+    if message.channel.id != DISCORD_CANAL_ID:
+        return
+    text = f"[Discord] {message.author.display_name}: {message.content}"
+    logging.info(f"🟣 [Discord→Tg] Mensaje en canal Discord {message.channel.id}: {message.id}")
 
-    try:
-        text = message.content or ""
-        author = message.author.display_name
-        final_text = f"[Discord] {author}: {text or '[Archivo adjunto]'}"
-        files = message.attachments
+    # Archivos
+    files = []
+    if message.attachments:
+        for attachment in message.attachments:
+            files.append(attachment.url)
 
-        if text:
-            await tg_bot.send_message(TELEGRAM_GRUPO_ID, final_text)
+    # Enviar texto a Telegram
+    if message.content.strip():
+        try:
+            await tg_bot.send_message(chat_id=TELEGRAM_GROUP_ID, text=text)
+            logging.info("➡️ [Discord→Tg] Texto enviado.")
+        except Exception as e:
+            logging.error(f"❌ [Discord→Tg] Error enviando texto: {e}")
 
-        for adj in files:
-            file_bytes = await adj.read()
-            filename = adj.filename
-            if adj.content_type and adj.content_type.startswith("image"):
-                await tg_bot.send_photo(TELEGRAM_GRUPO_ID, file_bytes, caption=final_text if not text else None)
-            elif adj.content_type and adj.content_type.startswith("video"):
-                await tg_bot.send_video(TELEGRAM_GRUPO_ID, file_bytes, caption=final_text if not text else None)
-            else:
-                await tg_bot.send_document(TELEGRAM_GRUPO_ID, file_bytes, caption=final_text if not text else None)
-            logging.info(f"[Discord→Tg] Archivo enviado: {filename}")
+    # Enviar archivos a Telegram
+    for url in files:
+        try:
+            await tg_bot.send_document(chat_id=TELEGRAM_GROUP_ID, document=url)
+            logging.info(f"➡️ [Discord→Tg] Archivo enviado: {url}")
+        except Exception as e:
+            logging.error(f"❌ [Discord→Tg] Error enviando archivo: {e}")
 
-        logging.info(f"[Discord→Tg] Replicado: {final_text}")
+# ======= TELEGRAM → DISCORD =======
+@tg_dp.message_handler(lambda msg: msg.chat.id == TELEGRAM_GROUP_ID)
+async def handle_telegram_message(message: types.Message):
+    # Texto
+    if message.text:
+        content = f"[Telegram] {message.from_user.first_name}: {message.text}"
+        logging.info(f"🟢 [Tg→Discord] Texto recibido: {content}")
 
-    except Exception as e:
-        logging.error(f"[Discord→Tg] Error replicando: {e}")
+        # Si tienes un webhook para archivos/embeds:
+        if DISCORD_WEBHOOK_URL:
+            data = {"content": content}
+            async with aiohttp.ClientSession() as session:
+                async with session.post(DISCORD_WEBHOOK_URL, json=data) as resp:
+                    if resp.status == 204 or resp.status == 200:
+                        logging.info(f"➡️ [Tg→Discord] Texto enviado por webhook.")
+                    else:
+                        logging.warning(f"❌ [Tg→Discord] Error webhook: {await resp.text()}")
+        else:
+            # Envía como mensaje normal
+            channel = discord_bot.get_channel(DISCORD_CANAL_ID)
+            if channel:
+                await channel.send(content)
+                logging.info(f"➡️ [Tg→Discord] Texto enviado a canal Discord.")
 
-# --- ARRANQUE FINAL DE AMBOS BOTS, SIN BLOQUEAR EL EVENT LOOP ---
+    # Archivos/documentos/imágenes
+    elif message.document or message.photo:
+        # Usa el archivo más grande (última foto suele ser la mejor calidad)
+        if message.document:
+            file_id = message.document.file_id
+            file_name = message.document.file_name
+        else:
+            file_id = message.photo[-1].file_id
+            file_name = "foto_telegram.jpg"
+        file = await tg_bot.get_file(file_id)
+        file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file.file_path}"
+
+        # Webhook soporta files si es multipart/form-data, aquí lo simplificamos como enlace
+        content = f"[Telegram] {message.from_user.first_name} envió un archivo: {file_name or 'archivo'}\n{file_url}"
+        logging.info(f"🟢 [Tg→Discord] Archivo recibido: {file_url}")
+
+        # Envía por webhook
+        if DISCORD_WEBHOOK_URL:
+            data = {"content": content}
+            async with aiohttp.ClientSession() as session:
+                async with session.post(DISCORD_WEBHOOK_URL, json=data) as resp:
+                    if resp.status == 204 or resp.status == 200:
+                        logging.info(f"➡️ [Tg→Discord] Archivo enviado por webhook.")
+                    else:
+                        logging.warning(f"❌ [Tg→Discord] Error webhook archivo: {await resp.text()}")
+        else:
+            channel = discord_bot.get_channel(DISCORD_CANAL_ID)
+            if channel:
+                await channel.send(content)
+                logging.info(f"➡️ [Tg→Discord] Archivo enviado a canal Discord.")
+
+# ========== EJECUCIÓN ==========
 async def main():
     discord_task = asyncio.create_task(discord_bot.start(DISCORD_TOKEN))
-    tg_polling_task = asyncio.create_task(tg_dp.start_polling(skip_updates=True))
+    tg_polling_task = asyncio.create_task(tg_dp.start_polling())
     await asyncio.gather(discord_task, tg_polling_task)
 
 if __name__ == "__main__":
