@@ -46,7 +46,7 @@ discord_bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ===================== TELEGRAM BOT =====================
 tg_bot = Bot(token=TELEGRAM_TOKEN)
-tg_dp = Dispatcher()  # Cambio aquí - sin pasar el bot al constructor
+tg_dp = Dispatcher(tg_bot)  # Volver al formato original de aiogram v2
 
 # ===================== ENVÍO A DISCORD =====================
 async def enviar_a_discord(msg, file_path=None, filename=None):
@@ -96,7 +96,7 @@ async def enviar_via_webhook(msg, file_path=None, filename=None):
                     form.add_field("file", f, filename=filename)
                     
                     async with session.post(DISCORD_WEBHOOK_URL, data=form) as resp:
-                        logging.info(f"[enviar_via_webhook] Respuesta del servidor: Status={resp.status}, Text={await resp.text()}")
+                        logging.info(f"[enviar_via_webhook] Respuesta del servidor: Status={resp.status}")
                         
                         if resp.status not in [200, 204]:
                             error_text = await resp.text()
@@ -106,7 +106,7 @@ async def enviar_via_webhook(msg, file_path=None, filename=None):
             else:
                 logging.info("[enviar_via_webhook] Enviando mensaje de texto...")
                 async with session.post(DISCORD_WEBHOOK_URL, json={"content": msg}) as resp:
-                    logging.info(f"[enviar_via_webhook] Respuesta del servidor: Status={resp.status}, Text={await resp.text()}")
+                    logging.info(f"[enviar_via_webhook] Respuesta del servidor: Status={resp.status}")
                     
                     if resp.status not in [200, 204]:
                         error_text = await resp.text()
@@ -211,14 +211,31 @@ async def on_message(message):
         logging.error(f"❌ Error en on_message: {e}")
 
 # ===================== TELEGRAM → DISCORD =====================
-# Handler principal que procesa TODOS los mensajes del canal específico
-async def telegram_to_discord_handler(message: types.Message):
-    """Handler principal para procesar mensajes de Telegram a Discord"""
+# Handler de debug que captura TODO
+@tg_dp.channel_post_handler()
+async def debug_all_channel_posts(message: types.Message):
+    # Log ultra detallado
+    logging.info(f"🐛 DEBUG - Canal post detectado:")
+    logging.info(f"    RAW: {message}")
+    logging.info(f"    Chat ID: {getattr(message.chat, 'id', None)}")
+    logging.info(f"    Chat title: {getattr(message.chat, 'title', None)}")
+    logging.info(f"    Text: {getattr(message, 'text', None)}")
+    logging.info(f"    Caption: {getattr(message, 'caption', None)}")
+    logging.info(f"    Photo: {getattr(message, 'photo', None)}")
+    logging.info(f"    Document: {getattr(message, 'document', None)}")
+    logging.info(f"    TELEGRAM_CHANNEL_ID configurado: {TELEGRAM_CHANNEL_ID}")
+    
+    if message.chat.id == TELEGRAM_CHANNEL_ID:
+        logging.info("✅ IDs coinciden - procesando mensaje canal principal...")
+        # Aquí llamamos directamente al procesador
+        await process_telegram_message(message)
+    else:
+        logging.warning(f"⚠️ IDs diferentes. Esperado: {TELEGRAM_CHANNEL_ID}, Recibido: {message.chat.id}")
+
+# Función principal de procesamiento
+async def process_telegram_message(message: types.Message):
+    """Procesa mensajes de Telegram y los envía a Discord"""
     try:
-        # Verificar que sea del canal correcto
-        if message.chat.id != TELEGRAM_CHANNEL_ID:
-            return
-            
         logging.info(f"🎯 PROCESANDO MENSAJE DE TELEGRAM - Chat: {message.chat.id}")
         logging.info(f"    Text: {message.text}")
         logging.info(f"    Caption: {message.caption}")
@@ -238,18 +255,18 @@ async def telegram_to_discord_handler(message: types.Message):
         # Procesar fotos
         if message.photo:
             logging.info(f"[Tg→Discord] Procesando imagen...")
-            photo = message.photo[-1]
-            file = await tg_bot.download_file_by_id(photo.file_id)
+            photo = message.photo[-1]  # Tomar la imagen de mayor resolución
             file_path = f"/tmp/telegram_image_{photo.file_id}.jpg"
             
-            with open(file_path, 'wb') as f:
-                f.write(file.read())
+            # Descargar archivo
+            await photo.download(file_path)
             
             caption = message.caption or "Imagen desde Telegram"
             msg = f"[Telegram] {caption}"
             await enviar_a_discord(msg, file_path=file_path, filename=f"telegram_image_{photo.file_id}.jpg")
             logging.info(f"✅ [Tg→Discord] Imagen enviada")
             
+            # Limpiar archivo temporal
             try:
                 os.remove(file_path)
             except:
@@ -258,29 +275,26 @@ async def telegram_to_discord_handler(message: types.Message):
         # Procesar documentos
         if message.document:
             logging.info(f"[Tg→Discord] Procesando documento...")
-            file = await tg_bot.download_file_by_id(message.document.file_id)
             file_path = f"/tmp/{message.document.file_name}"
             
-            with open(file_path, 'wb') as f:
-                f.write(file.read())
+            # Descargar archivo
+            await message.document.download(file_path)
             
             caption = message.caption or "Archivo desde Telegram"
             msg = f"[Telegram] {caption}"
             await enviar_a_discord(msg, file_path=file_path, filename=message.document.file_name)
             logging.info(f"✅ [Tg→Discord] Documento enviado: {message.document.file_name}")
             
+            # Limpiar archivo temporal
             try:
                 os.remove(file_path)
             except:
                 pass
                 
     except Exception as e:
-        logging.error(f"❌ Error general en telegram_to_discord_handler: {e}")
+        logging.error(f"❌ Error general en process_telegram_message: {e}")
         import traceback
         logging.error(traceback.format_exc())
-
-# Registrar el handler para mensajes de canal
-tg_dp.channel_post.register(telegram_to_discord_handler)
 
 # ===================== MAIN =====================
 async def main():
@@ -291,7 +305,7 @@ async def main():
         logging.info(f"✅ Canal Telegram encontrado: {chat.title} ({chat.id})")
         
         try:
-            member = await tg_bot.get_chat_member(TELEGRAM_CHANNEL_ID, (await tg_bot.get_me()).id)
+            member = await tg_bot.get_chat_member(TELEGRAM_CHANNEL_ID, tg_bot.id)
             logging.info(f"🤖 Bot status en canal: {member.status}")
             if member.status not in ['administrator', 'creator']:
                 logging.warning("⚠️ ADVERTENCIA: El bot NO es administrador del canal")
@@ -309,7 +323,7 @@ async def main():
     
     # Crear tareas asíncronas
     logging.info("📡 Iniciando polling de Telegram...")
-    tg_task = asyncio.create_task(tg_dp.start_polling(tg_bot))
+    tg_task = asyncio.create_task(tg_dp.start_polling())
     
     logging.info("🎮 Conectando bot de Discord...")
     dc_task = asyncio.create_task(discord_bot.start(DISCORD_TOKEN))
