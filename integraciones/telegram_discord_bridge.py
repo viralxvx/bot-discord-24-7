@@ -41,17 +41,20 @@ intents = discord.Intents.default()
 intents.messages = True
 intents.message_content = True
 intents.guilds = True
-
 discord_bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ========== TELEGRAM ==========
 tg_bot = Bot(token=TELEGRAM_TOKEN)
 tg_dp = Dispatcher(tg_bot)
 
+# ========== DEDUPLICACIÓN MENSAJES TELEGRAM ==========
+last_telegram_message_id = None
+
 # ========== UTILITY: ENVIAR A DISCORD ==========
 async def enviar_a_discord(msg, file_path=None, filename=None):
+    """Envía mensaje a Discord con fallback webhook → canal directo"""
+    logging.info(f"[enviar_a_discord] INICIO. msg: {msg}, file: {file_path}")
     try:
-        logging.info(f"[enviar_a_discord] INICIO. msg: {msg}, file: {filename}")
         if DISCORD_WEBHOOK_URL:
             async with aiohttp.ClientSession() as session:
                 if file_path and filename:
@@ -83,7 +86,6 @@ async def enviar_a_discord(msg, file_path=None, filename=None):
                     logging.info(f"✅ [Tg→Discord] Texto enviado via canal")
             else:
                 logging.error(f"❌ No se encontró el canal Discord {DISCORD_CANAL_ID}")
-
     except Exception as e:
         logging.error(f"❌ Error en enviar_a_discord: {e}")
         try:
@@ -111,7 +113,7 @@ async def on_message(message):
     if message.channel.id != DISCORD_CANAL_ID:
         return
     try:
-        logging.info(f"[Discord→Tg] Recibido mensaje: {message.content}")
+        logging.info(f"[Discord→Tg] Recibido mensaje: {message.content[:100]}")
         if message.content.strip():
             text = f"[Discord] {message.author.display_name}: {message.content}"
             async with aiohttp.ClientSession() as session:
@@ -151,62 +153,77 @@ async def on_message(message):
     except Exception as e:
         logging.error(f"❌ Error en on_message: {e}")
 
-# ========== TELEGRAM → DISCORD (HANDLER ÚNICO Y FILTRA ADENTRO) ==========
+# ========== TELEGRAM → DISCORD ==========
 @tg_dp.channel_post_handler()
-async def telegram_to_discord(message: types.Message):
-    # -------- LOG DEBUG COMPLETO --------
+async def debug_all_channel_posts(message: types.Message):
+    global last_telegram_message_id
     logging.info(f"🐛 DEBUG - Canal post detectado:")
     logging.info(f"    RAW: {message}")
     logging.info(f"    Chat ID: {message.chat.id}")
-    logging.info(f"    Chat title: {getattr(message.chat, 'title', None)}")
+    logging.info(f"    Chat title: {message.chat.title}")
     logging.info(f"    Text: {message.text}")
     logging.info(f"    Caption: {getattr(message, 'caption', None)}")
-    logging.info(f"    Photo: {getattr(message, 'photo', [])}")
+    logging.info(f"    Photo: {getattr(message, 'photo', None)}")
     logging.info(f"    Document: {getattr(message, 'document', None)}")
     logging.info(f"    TELEGRAM_CHANNEL_ID configurado: {TELEGRAM_CHANNEL_ID}")
-    # -------- PROCESO PRINCIPAL --------
-    if message.chat.id != TELEGRAM_CHANNEL_ID:
-        logging.info(f"⏭️ Ignorado canal: {message.chat.id} ≠ {TELEGRAM_CHANNEL_ID}")
-        return
+
+    # DEDUPLICAR: solo procesa mensajes nuevos (evita doble post si Telegram notifica por grupo y canal)
+    if message.chat.id == TELEGRAM_CHANNEL_ID:
+        if message.message_id == last_telegram_message_id:
+            logging.warning(f"⏭️ Mensaje duplicado detectado. Ignorando message_id={message.message_id}")
+            return
+        last_telegram_message_id = message.message_id
+        logging.info("✅ IDs coinciden - procesando mensaje canal principal...")
+    else:
+        logging.warning(f"⚠️ IDs diferentes. Esperado: {TELEGRAM_CHANNEL_ID}, Recibido: {message.chat.id}")
+
+@tg_dp.channel_post_handler(chat_id=TELEGRAM_CHANNEL_ID)
+async def telegram_to_discord(message: types.Message):
+    global last_telegram_message_id
     logging.info(f"🎯 Handler canal ACTIVADO - Chat: {message.chat.id}")
+    # DEDUPLICAR aquí también por si aiogram los procesa en paralelo
+    if message.message_id == last_telegram_message_id:
+        logging.warning(f"⏭️ [Tg→Discord] Mensaje duplicado detectado. Ignorando message_id={message.message_id}")
+        return
+    last_telegram_message_id = message.message_id
+    logging.info(f"[Tg→Discord] Handler ENTRÓ al try.")
+
     try:
-        logging.info("[Tg→Discord] Handler ENTRÓ al try.")
+        # TEXTO
         if message.text and not message.text.startswith('[Discord]'):
-            logging.info(">> Antes de enviar_a_discord (texto)")
+            logging.info(f">> Antes de enviar_a_discord (texto)")
             msg = f"[Telegram] {message.text}"
             await enviar_a_discord(msg)
             logging.info(f"✅ [Tg→Discord] Texto enviado exitosamente: {message.text}")
         elif message.text and message.text.startswith('[Discord]'):
-            logging.info(f"⏭️ Mensaje ignorado (proviene de Discord): {message.text}")
-        else:
-            logging.info("⏭️ Mensaje sin texto o vacío, revisando otros tipos...")
+            logging.info(f"⏭️ Mensaje ignorado (proviene de Discord)")
+        # FOTO
         if message.photo:
             try:
-                logging.info(">> Foto detectada, procesando...")
                 photo = message.photo[-1]
                 file = await photo.download()
                 caption = message.caption or "Imagen desde Telegram"
                 msg = f"[Telegram] {caption}"
+                logging.info(f">> Antes de enviar_a_discord (foto)")
                 await enviar_a_discord(msg, file_path=file.name, filename=f"telegram_image_{photo.file_id}.jpg")
                 logging.info(f"✅ [Tg→Discord] Imagen enviada")
                 try:
                     os.remove(file.name)
-                except Exception:
-                    pass
+                except: pass
             except Exception as e:
                 logging.error(f"❌ Error enviando imagen: {e}")
+        # DOCUMENTO
         if message.document:
             try:
-                logging.info(">> Documento detectado, procesando...")
                 file = await message.document.download()
                 caption = message.caption or "Archivo desde Telegram"
                 msg = f"[Telegram] {caption}"
+                logging.info(f">> Antes de enviar_a_discord (documento)")
                 await enviar_a_discord(msg, file_path=file.name, filename=message.document.file_name)
                 logging.info(f"✅ [Tg→Discord] Documento enviado")
                 try:
                     os.remove(file.name)
-                except Exception:
-                    pass
+                except: pass
             except Exception as e:
                 logging.error(f"❌ Error enviando documento: {e}")
     except Exception as e:
@@ -214,7 +231,7 @@ async def telegram_to_discord(message: types.Message):
         import traceback
         logging.error(traceback.format_exc())
 
-# ========== COMANDOS DE UTILIDAD (GETID, ETC) ==========
+# ========== COMANDOS DE UTILIDAD ==========
 @tg_dp.message_handler(commands=["getid"])
 async def cmd_getid(message: types.Message):
     try:
@@ -239,7 +256,15 @@ async def cmd_getid(message: types.Message):
         await message.reply(error_msg)
         logging.error(error_msg)
 
-# ... (puedes dejar los otros comandos como /channelid, /myid, /status, etc., igual que antes) ...
+@tg_dp.message_handler(commands=["help", "ayuda"])
+async def cmd_help(message: types.Message):
+    help_text = f"🤖 **COMANDOS DISPONIBLES**\n\n"
+    help_text += f"🆔 `/getid` - Info del chat actual\n"
+    help_text += f"❓ `/help` - Esta ayuda\n\n"
+    help_text += f"💡 **Tip:** Los IDs con `-100` son canales/supergrupos\n"
+    help_text += f"🔗 **Estado:** Integrando Discord ↔️ Telegram"
+    await message.reply(help_text, parse_mode='Markdown')
+    logging.info(f"[CMD] /help ejecutado")
 
 # ========== VERIFICACIÓN DE CONFIGURACIÓN ==========
 async def verificar_configuracion():
@@ -282,7 +307,7 @@ async def main():
 if __name__ == "__main__":
     try:
         required_vars = [
-            "DISCORD_TOKEN", "DISCORD_CANAL_TELEGRAM",
+            "DISCORD_TOKEN", "DISCORD_CANAL_TELEGRAM", 
             "TELEGRAM_TOKEN_INTEGRACION", "TELEGRAM_CHANNEL_ID"
         ]
         missing_vars = []
