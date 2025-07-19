@@ -19,11 +19,18 @@ def get_env(name, required=True):
         raise Exception(f"❌ FALTA VARIABLE DE ENTORNO: {name}")
     return value.strip() if value else value
 
+def get_env_int(name):
+    v = get_env(name)
+    try:
+        return int(v)
+    except:
+        raise Exception(f"❌ VARIABLE DE ENTORNO {name} debe ser un número entero. Valor actual: {v}")
+
 DISCORD_TOKEN = get_env("DISCORD_TOKEN")
-DISCORD_CANAL_ID = int(get_env("DISCORD_CANAL_TELEGRAM"))
-DISCORD_WEBHOOK_URL = get_env("DISCORD_WEBHOOK_URL")  # Puede ser "" si no quieres usar webhook
+DISCORD_CANAL_ID = get_env_int("DISCORD_CANAL_TELEGRAM")
+DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "").strip()  # Opcional
 TELEGRAM_TOKEN = get_env("TELEGRAM_TOKEN_INTEGRACION")
-TELEGRAM_CHANNEL_USERNAME = get_env("TELEGRAM_CHANNEL_USERNAME")  # Ej: viralxvx (sin @)
+TELEGRAM_CHANNEL_ID = get_env_int("TELEGRAM_CHANNEL_ID")  # Canal real: -1002858211109
 
 # ========== LOGGING ==========
 logging.basicConfig(
@@ -44,7 +51,6 @@ tg_bot = Bot(token=TELEGRAM_TOKEN)
 tg_dp = Dispatcher(tg_bot)
 
 # ========== DISCORD → TELEGRAM ==========
-
 @discord_bot.event
 async def on_ready():
     logging.info(f"✅ Discord ↔️ Telegram integración activa como {discord_bot.user}")
@@ -62,7 +68,7 @@ async def on_message(message):
         async with aiohttp.ClientSession() as session:
             url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
             payload = {
-                "chat_id": f"@{TELEGRAM_CHANNEL_USERNAME}",
+                "chat_id": TELEGRAM_CHANNEL_ID,
                 "text": text
             }
             async with session.post(url, data=payload) as resp:
@@ -74,7 +80,7 @@ async def on_message(message):
         async with aiohttp.ClientSession() as session:
             file_bytes = await attachment.read()
             data = aiohttp.FormData()
-            data.add_field("chat_id", f"@{TELEGRAM_CHANNEL_USERNAME}")
+            data.add_field("chat_id", str(TELEGRAM_CHANNEL_ID))
             if attachment.content_type and "image" in attachment.content_type:
                 data.add_field("photo", file_bytes, filename=attachment.filename)
                 url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
@@ -85,15 +91,15 @@ async def on_message(message):
                 logging.info(f"➡️ [Discord→Tg] Archivo status: {resp.status} ({attachment.filename})")
 
 # ========== TELEGRAM → DISCORD ==========
-
-@tg_dp.message_handler(lambda m: m.chat.username and m.chat.username.lower() == TELEGRAM_CHANNEL_USERNAME.lower())
+@tg_dp.message_handler(lambda m: m.chat.id == TELEGRAM_CHANNEL_ID)
 async def tg_to_discord(message: types.Message):
+    # Filtrar mensajes de bots
     if message.from_user and message.from_user.is_bot:
         return
     try:
         # Mensajes de texto
         if message.text:
-            msg = f"[Telegram] {message.from_user.full_name}: {message.text}"
+            msg = f"[Telegram] {message.from_user.full_name if message.from_user else 'Canal'}: {message.text}"
             if DISCORD_WEBHOOK_URL:
                 async with aiohttp.ClientSession() as session:
                     payload = {"content": msg}
@@ -110,7 +116,7 @@ async def tg_to_discord(message: types.Message):
             file = await message.photo[-1].download()
             file_name = file.name
             caption = message.caption or ""
-            content = f"[Telegram] {message.from_user.full_name}: {caption}"
+            content = f"[Telegram] {message.from_user.full_name if message.from_user else 'Canal'}: {caption}"
             if DISCORD_WEBHOOK_URL:
                 with open(file_name, "rb") as f:
                     async with aiohttp.ClientSession() as session:
@@ -130,7 +136,7 @@ async def tg_to_discord(message: types.Message):
             file = await message.document.download()
             file_name = file.name
             caption = message.caption or ""
-            content = f"[Telegram] {message.from_user.full_name}: {caption}"
+            content = f"[Telegram] {message.from_user.full_name if message.from_user else 'Canal'}: {caption}"
             if DISCORD_WEBHOOK_URL:
                 with open(file_name, "rb") as f:
                     async with aiohttp.ClientSession() as session:
@@ -149,13 +155,12 @@ async def tg_to_discord(message: types.Message):
         logging.error(f"[Tg→Discord] Error procesando mensaje: {e}")
 
 # ========== COMANDO /getid ==========
-
 @tg_dp.message_handler(commands=['getid'])
 async def handle_getid(message: types.Message):
     chat = message.chat
     chat_type = chat.type
     chat_id = chat.id
-    name = chat.title or chat.full_name or "(sin nombre)"
+    name = getattr(chat, "title", None) or getattr(chat, "full_name", "(sin nombre)")
     await message.reply(f"[TG] /getid en chat '{name}' (type: {chat_type}) id: {chat_id}")
 
 # ========== MAIN (EJECUCIÓN CONCURRENTE) ==========
