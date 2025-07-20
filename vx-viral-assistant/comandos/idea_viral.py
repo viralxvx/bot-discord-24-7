@@ -1,10 +1,8 @@
 # comandos/idea_viral.py
-
 import discord
 from discord.ext import commands
 from discord import app_commands
 import openai
-
 from config import (
     OPENAI_API_KEY,
     CANAL_COMANDOS_ID,
@@ -15,12 +13,13 @@ from mensajes.asistente_viral_mensajes import (
     MENSAJE_FUERA_DE_CANAL
 )
 
+# Configurar OpenAI con la nueva sintaxis
 openai.api_key = OPENAI_API_KEY
 
 class IdeaViral(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot):  # Corregido: __init__ en lugar de **init**
         self.bot = bot
-
+    
     # Comando slash registrado correctamente con descripción de parámetros
     @app_commands.command(
         name="idea_viral",
@@ -32,13 +31,15 @@ class IdeaViral(commands.Cog):
         if interaction.channel.id not in [CANAL_COMANDOS_ID, CANAL_GPT_ID]:
             await interaction.response.send_message(MENSAJE_FUERA_DE_CANAL, ephemeral=True)
             return
-
+        
         await interaction.response.defer()
-
+        
         try:
             print(f"🟡 Generando idea para: {tema}")
-
-            respuesta = openai.ChatCompletion.create(
+            
+            # Usar la nueva sintaxis de OpenAI (v1.0+)
+            client = openai.OpenAI(api_key=OPENAI_API_KEY)
+            respuesta = client.chat.completions.create(
                 model="gpt-4o",
                 messages=[
                     {"role": "system", "content": INSTRUCCION_IDEA},
@@ -47,23 +48,24 @@ class IdeaViral(commands.Cog):
                 temperature=0.8,
                 max_tokens=700
             )
-
+            
             idea = respuesta.choices[0].message.content.strip()
-
+            
             embed = discord.Embed(
                 title="💡 Idea Viral para X",
                 description=idea,
                 color=0x1DA1F2
             )
             embed.set_footer(text="Generado por el Asistente Viral | VX")
-
+            
             await interaction.followup.send(embed=embed)
-
+            
+            # Intentar enviar DM al usuario
             try:
                 await interaction.user.send(embed=embed)
             except:
                 print(f"⚠️ No se pudo enviar DM a {interaction.user.display_name}")
-
+                
         except Exception as e:
             print(f"❌ Error con OpenAI: {e}")
             await interaction.followup.send("❌ Ocurrió un error al generar la idea. Notifica al administrador.")
