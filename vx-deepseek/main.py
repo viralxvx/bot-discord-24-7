@@ -1,70 +1,72 @@
 import os
-import discord
-import logging
-import asyncio
+import json
 import httpx
+import asyncio
+import logging
+import discord
+from discord.ext import commands
 
-# ================= CONFIGURACIÓN =================
+# ========== CONFIGURACIÓN ==========
 TOKEN = os.getenv("DISCORD_TOKEN")
-CANAL_GPT_ID = int(os.getenv("CANAL_GPT_ID"))  
-PUTER_API_URL = "https://api.puter.com/v1/chat/completions"
-HEADERS = {"Content-Type": "application/json"}
-MODEL = "deepseek-chat"  # Cambia aquí el modelo si quieres probar otro
+CANAL_GPT_ID = int(os.getenv("CANAL_GPT_ID"))
 
-# ================ LOGGING =======================
+# ========== LOGGING ==========
 logging.basicConfig(level=logging.INFO)
-log = logging.getLogger("vx-deepseek")
+logger = logging.getLogger("vx-deepseek")
 
-# ================ CLIENTE DISCORD ================
+# ========== CLIENTE DISCORD ==========
 intents = discord.Intents.default()
+intents.messages = True
 intents.message_content = True
-client = discord.Client(intents=intents)
 
-# ================ FUNCIÓN IA ======================
-async def get_ai_response(prompt):
-    try:
-        async with httpx.AsyncClient() as client_http:
-            res = await client_http.post(
-                PUTER_API_URL,
-                headers=HEADERS,
-                json={
-                    "model": MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-                timeout=30
-            )
-            if res.status_code == 200:
-                data = res.json()
-                return data["choices"][0]["message"]["content"]
-            else:
-                log.error(f"❌ Error {res.status_code}: {res.text}")
-                return "Ocurrió un error con DeepSeek AI."
-    except Exception as e:
-        log.exception("Error al obtener respuesta de DeepSeek:")
-        return "No se pudo procesar la solicitud."
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-# =============== EVENTO DE MENSAJE =================
-@client.event
+# ========== EVENTO: CONEXIÓN ==========
+@bot.event
 async def on_ready():
-    log.info(f"✅ vx-deepseek conectado como {client.user}")
+    logger.info(f"✅ vx-deepseek conectado como {bot.user}")
 
-@client.event
+# ========== EVENTO: MENSAJE NUEVO ==========
+@bot.event
 async def on_message(message):
-    if message.author.bot or message.channel.id != CANAL_GPT_ID:
+    if message.author.bot:
         return
 
-    prompt = message.content.strip()
-    if not prompt:
+    if message.channel.id != CANAL_GPT_ID:
         return
 
-    log.info(f"🧠 Solicitud de {message.author.name}: {prompt}")
-    async with message.channel.typing():
-        respuesta = await get_ai_response(prompt)
-        await message.reply(respuesta[:1900], mention_author=False)
+    contenido = message.content.strip()
+    autor = message.author.name
+    logger.info(f"🧠 Solicitud de {autor}: {contenido}")
 
-# ================== INICIAR BOT ====================
+    await responder_con_deepseek(contenido, message)
+
+# ========== FUNCION: ENVIAR A DEEPSEEK CHAT ==========
+async def responder_con_deepseek(prompt, mensaje_original):
+    payload = {
+        "model": "deepseek-chat",
+        "messages": [
+            {"role": "user", "content": prompt}
+        ]
+    }
+
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post("https://api.puter.com/v1/chat/completions", json=payload, headers=headers)
+
+        if response.status_code == 200:
+            data = response.json()
+            texto = data["choices"][0]["message"]["content"]
+            await mensaje_original.channel.send(f"💬 {texto}")
+        else:
+            logger.error(f"❌ Error {response.status_code}: {response.text}")
+            await mensaje_original.channel.send("❌ No se pudo obtener respuesta de DeepSeek.")
+    except Exception as e:
+        logger.error(f"❌ Error inesperado: {e}")
+        await mensaje_original.channel.send("❌ Ocurrió un error inesperado.")
+
+# ========== INICIO ==========
 if __name__ == "__main__":
-    if not TOKEN or not CANAL_GPT_ID:
-        log.error("❌ Faltan variables de entorno requeridas.")
-    else:
-        client.run(TOKEN)
+    bot.run(TOKEN)
