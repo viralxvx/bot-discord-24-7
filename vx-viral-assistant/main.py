@@ -14,9 +14,23 @@ class VXBot(commands.Bot):
         super().__init__(command_prefix="/", intents=intents)
 
     async def setup_hook(self):
+        # Cargar comando
         await self.add_cog(idea_viral.IdeaViral(self))
-        await self.tree.sync(guild=discord.Object(id=GUILD_ID))
-        print("🤖 Asistente de hilos virales activo y comandos sincronizados.")
+        print("✅ Comando /idea_viral cargado correctamente.")
+
+        # Borrar comandos antiguos del servidor (previene conflictos)
+        try:
+            self.tree.clear_commands(guild=discord.Object(id=GUILD_ID))
+            print("🧹 Comandos antiguos eliminados.")
+        except Exception as e:
+            print(f"❌ Error al limpiar comandos antiguos: {e}")
+
+        # Sincronizar comandos nuevos
+        try:
+            synced = await self.tree.sync(guild=discord.Object(id=GUILD_ID))
+            print(f"🔁 Comandos sincronizados: {[cmd.name for cmd in synced]}")
+        except Exception as e:
+            print(f"❌ Error al sincronizar comandos: {e}")
 
 bot = VXBot()
 
