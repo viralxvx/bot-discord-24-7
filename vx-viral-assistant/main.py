@@ -1,42 +1,44 @@
-# main.py
+import logging
+from fastapi import FastAPI, Request
+from pydantic import BaseModel
+import openai
+import os
 
-import discord
-from discord.ext import commands
-import asyncio
-from config import DISCORD_TOKEN, GUILD_ID
+# Configuración inicial
+logging.basicConfig(level=logging.INFO)
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
-class VXBot(commands.Bot):
-    def __init__(self):
-        intents = discord.Intents.default()
-        intents.message_content = True
-        super().__init__(command_prefix="!", intents=intents)
+app = FastAPI()
 
-    async def setup_hook(self):
-        try:
-            await self.load_extension('comandos.idea_viral')
-            print("✅ Extensión idea_viral cargada")
-        except Exception as e:
-            print(f"❌ Error cargando idea_viral: {e}")
-            return
+# Log de inicio
+logging.info("✅ Microservicio vx-viral-assistant iniciado correctamente y listo para recibir comandos.")
 
-        try:
-            guild = discord.Object(id=GUILD_ID)
-            synced = await self.tree.sync(guild=guild)
-            print(f"🔁 Comandos sincronizados en GUILD {GUILD_ID}: {[cmd.name for cmd in synced]}")
-        except Exception as e:
-            print(f"❌ Error sincronizando comandos: {e}")
+# Estructura esperada de entrada
+class IdeaRequest(BaseModel):
+    prompt: str
+    user_id: int
+    username: str
 
-    async def on_ready(self):
-        print(f"✅ Conectado como {self.user}")
-
-async def main():
-    bot = VXBot()
+@app.post("/generar-idea")
+async def generar_idea(req: IdeaRequest):
     try:
-        await bot.start(DISCORD_TOKEN)
-    except Exception as e:
-        print(f"❌ Error al iniciar el bot: {e}")
-    finally:
-        await bot.close()
+        logging.info(f"✅ Solicitud recibida de /idea_viral por @{req.username} (ID: {req.user_id})")
+        logging.info(f"🧠 Prompt enviado a GPT: {req.prompt}")
 
-if __name__ == "__main__":
-    asyncio.run(main())
+        response = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "Eres un asistente experto en ideas virales para X (Twitter). Responde solo con la idea, sin rodeos."},
+                {"role": "user", "content": req.prompt}
+            ],
+            temperature=0.7,
+            max_tokens=300
+        )
+
+        resultado = response.choices[0].message.content.strip()
+        logging.info(f"📩 Respuesta generada: {resultado}")
+        return {"resultado": resultado}
+
+    except Exception as e:
+        logging.error(f"❌ Error procesando la solicitud de @{req.username} (ID: {req.user_id}): {e}")
+        return {"error": "❌ Error generando la idea. Notifica al administrador."}
