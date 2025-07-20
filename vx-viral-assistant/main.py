@@ -1,52 +1,43 @@
-# main.py o tu archivo principal del bot
+# main.py
+
 import discord
 from discord.ext import commands
-import asyncio
-import os
 from config import DISCORD_TOKEN
-
-# Configurar intents (incluyendo message content intent)
-intents = discord.Intents.default()
-intents.message_content = True  # Añadir esto para eliminar el warning
+import asyncio
 
 class VXBot(commands.Bot):
     def __init__(self):
-        super().__init__(
-            command_prefix='!',
-            intents=intents,
-            help_command=None
-        )
-    
+        intents = discord.Intents.default()
+        intents.message_content = True  # elimina el warning y permite registrar interacciones si lo usas en futuro
+        super().__init__(command_prefix="!", intents=intents)
+
     async def setup_hook(self):
-        # Cargar comandos
+        # Cargar la extensión del comando idea_viral
         try:
             await self.load_extension('comandos.idea_viral')
             print("✅ Extensión idea_viral cargada")
         except Exception as e:
             print(f"❌ Error cargando idea_viral: {e}")
             return
-        
-        # Verificar que los comandos estén en el árbol
+
+        # Mostrar comandos cargados antes de sincronizar
         print(f"📋 Comandos en el árbol antes de sync: {[cmd.name for cmd in self.tree.get_commands()]}")
-        
-        # NO limpiar comandos si acabamos de cargarlos
-        # self.tree.clear_commands(guild=None)
-        
-        # Sincronizar comandos slash
+
+        # Sincronizar los comandos (sin borrar los de otros servicios)
         try:
             synced = await self.tree.sync()
             print(f"🔁 Comandos sincronizados: {[cmd.name for cmd in synced]}")
             print(f"📊 Total comandos sincronizados: {len(synced)}")
         except Exception as e:
             print(f"❌ Error sincronizando comandos: {e}")
-    
+
     async def on_ready(self):
         print(f"✅ Conectado como {self.user}")
         print(f"🆔 ID del bot: {self.user.id}")
 
+# Ejecutar el bot de forma segura
 async def main():
     bot = VXBot()
-    
     try:
         await bot.start(DISCORD_TOKEN)
     except KeyboardInterrupt:
