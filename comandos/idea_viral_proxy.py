@@ -19,8 +19,13 @@ class IdeaViralProxy(commands.Cog):
         await interaction.response.defer(thinking=True)
 
         try:
+            payload = {
+                "usuario": interaction.user.name,
+                "user_id": interaction.user.id
+            }
+
             async with aiohttp.ClientSession() as session:
-                async with session.post(f"{ASISTENTE_API_URL}/generar_idea") as respuesta:
+                async with session.post(f"{ASISTENTE_API_URL}/generar_idea", json=payload) as respuesta:
                     print(f"[DEBUG] Status respuesta API: {respuesta.status}")
                     if respuesta.status == 200:
                         data = await respuesta.json()
@@ -28,6 +33,8 @@ class IdeaViralProxy(commands.Cog):
                         await interaction.followup.send(f"💡 **Idea viral generada:**\n{idea}")
                     else:
                         print(f"[ERROR] Código HTTP {respuesta.status}")
+                        text = await respuesta.text()
+                        print(f"[ERROR] Respuesta completa: {text}")
                         await interaction.followup.send("❌ Error generando la idea. Notifica al administrador.")
         except Exception as e:
             print(f"❌ Error en idea_viral_proxy: {e}")
