@@ -56,7 +56,7 @@ async def hablar(request: Request):
         logging.info(f"🧠 Solicitud de conversación recibida de {autor}: {mensaje}")
 
         respuesta = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": "Eres un asistente conversacional inteligente en Discord"},
                 {"role": "user", "content": mensaje}
