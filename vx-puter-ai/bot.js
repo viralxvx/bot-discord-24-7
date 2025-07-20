@@ -1,9 +1,9 @@
-require('dotenv').config();
-const { Client, GatewayIntentBits } = require('discord.js');
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+import dotenv from 'dotenv';
+dotenv.config();
+import { Client, GatewayIntentBits } from 'discord.js';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
-// Configuración stealth para evitar bloqueos
 puppeteer.use(StealthPlugin());
 
 const client = new Client({
@@ -16,14 +16,22 @@ const client = new Client({
 
 let browser, page;
 
-// ... (el resto de tu código de modelos y handlers)
+const MODELOS = {
+  claude: 'openrouter:anthropic/claude-sonnet-4',
+  gpt4: 'openrouter:openai/gpt-4o',
+  llama: 'openrouter:meta-llama/llama-3.1-8b-instruct',
+  gemini: 'openrouter:google/gemini-2.5-flash',
+  mistral: 'openrouter:mistralai/mistral-7b-instruct'
+};
+
+let userModels = {};
 
 async function iniciarPuter() {
   try {
     console.log('🚀 Iniciando Puppeteer...');
     
     browser = await puppeteer.launch({
-      headless: true,
+      headless: 'new',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -34,12 +42,11 @@ async function iniciarPuter() {
         '--disable-gpu',
         '--single-process'
       ],
-      ignoreHTTPSErrors: true
+      ignoreHTTPSErrors: true,
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || null
     });
 
     page = await browser.newPage();
-    
-    // Configurar User-Agent y encabezados
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
     
     console.log('🌐 Navegando a puter.com...');
@@ -48,17 +55,14 @@ async function iniciarPuter() {
       timeout: 60000
     });
 
-    // Inyectar Puter.js manualmente
     console.log('⬆️ Inyectando Puter.js...');
     await page.addScriptTag({ url: 'https://js.puter.com/v2/' });
     
-    // Esperar con verificación redundante
     await page.waitForFunction(() => typeof window.puter !== 'undefined', {
       timeout: 30000,
       polling: 500
     });
     
-    // Verificación adicional
     const puterLoaded = await page.evaluate(() => {
       return typeof window.puter === 'object' && 
              typeof window.puter.ai === 'object' &&
@@ -67,13 +71,12 @@ async function iniciarPuter() {
     
     if (!puterLoaded) throw new Error('Puter.js no se inicializó correctamente');
     
-    console.log('✅ Puter.js cargado correctamente en Puppeteer');
+    console.log('✅ Puter.js cargado correctamente');
     return true;
     
   } catch (err) {
     console.error('❌ Error crítico en iniciarPuter:', err);
     
-    // Capturar screenshot para diagnóstico
     try {
       await page.screenshot({ path: 'error.png' });
       console.log('📸 Captura de pantalla guardada: error.png');
@@ -89,14 +92,13 @@ async function iniciarPuter() {
 client.once('ready', async () => {
   console.log(`🤖 Bot conectado como ${client.user.tag}`);
   
-  // Intentar hasta 3 veces con retry
   let attempts = 0;
   while (attempts < 3) {
     attempts++;
     console.log(`🔄 Intento ${attempts}/3 de iniciar Puter.js`);
     
     if (await iniciarPuter()) break;
-    await new Promise(resolve => setTimeout(resolve, 10000)); // Espera 10 segundos
+    await new Promise(resolve => setTimeout(resolve, 10000));
   }
   
   if (attempts >= 3) {
@@ -104,4 +106,9 @@ client.once('ready', async () => {
   }
 });
 
-// ... (el resto de tu código de handlers de mensajes)
+client.on('messageCreate', async (message) => {
+  // ... (mantén igual el resto del handler de mensajes)
+  // Solo cambia los requires por imports arriba
+});
+
+client.login(process.env.DISCORD_TOKEN);
