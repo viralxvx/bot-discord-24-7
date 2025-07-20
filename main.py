@@ -34,6 +34,7 @@ EXTENSIONES = [
     "comandos.migrar_paneles",   # <--- PANEL PREMIUM MIGRATION
     "comandos.forzar_panel",     # <--- NUEVO: COMANDO PREMIUM INDIVIDUAL
     "comandos.idea_viral_proxy",  # <--- NUEVO comando proxy hacia el microservicio
+    "comandos.hablar",
 ]
 
 log_message = None  # Mensaje embed en canal de logs
