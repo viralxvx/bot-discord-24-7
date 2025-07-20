@@ -2,7 +2,6 @@
 
 import discord
 from discord.ext import commands
-import asyncio
 from config import DISCORD_TOKEN, GUILD_ID
 from comandos import idea_viral
 
@@ -10,18 +9,19 @@ intents = discord.Intents.default()
 intents.messages = True
 intents.guilds = True
 
-bot = commands.Bot(command_prefix="/", intents=intents)
+class VXBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix="/", intents=intents)
+
+    async def setup_hook(self):
+        await self.add_cog(idea_viral.IdeaViral(self))
+        await self.tree.sync(guild=discord.Object(id=GUILD_ID))
+        print("🤖 Asistente de hilos virales activo y comandos sincronizados.")
+
+bot = VXBot()
 
 @bot.event
 async def on_ready():
-    try:
-        synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
-        print(f"🤖 Asistente de hilos virales activo. Comandos sincronizados: {[cmd.name for cmd in synced]}")
-    except Exception as e:
-        print(f"❌ Error al sincronizar comandos: {e}")
+    print(f"✅ Conectado como {bot.user}")
 
-async def setup():
-    await bot.add_cog(idea_viral.IdeaViral(bot))
-
-bot.loop.create_task(setup())
 bot.run(DISCORD_TOKEN)
