@@ -1,41 +1,55 @@
-# main.py
-
+# main.py o tu archivo principal del bot
 import discord
 from discord.ext import commands
-from config import DISCORD_TOKEN, GUILD_ID
-from comandos import idea_viral
+import asyncio
+import os
+from config import DISCORD_TOKEN
 
+# Configurar intents (incluyendo message content intent)
 intents = discord.Intents.default()
-intents.messages = True
-intents.guilds = True
+intents.message_content = True  # Añadir esto para eliminar el warning
 
 class VXBot(commands.Bot):
     def __init__(self):
-        super().__init__(command_prefix="/", intents=intents)
-
+        super().__init__(
+            command_prefix='!',
+            intents=intents,
+            help_command=None
+        )
+    
     async def setup_hook(self):
-        # Cargar comando
-        await self.add_cog(idea_viral.IdeaViral(self))
-        print("✅ Comando /idea_viral cargado correctamente.")
-
-        # Borrar comandos antiguos del servidor (previene conflictos)
+        # Cargar comandos
         try:
-            self.tree.clear_commands(guild=discord.Object(id=GUILD_ID))
-            print("🧹 Comandos antiguos eliminados.")
+            await self.load_extension('comandos.idea_viral')
         except Exception as e:
-            print(f"❌ Error al limpiar comandos antiguos: {e}")
-
-        # Sincronizar comandos nuevos
+            print(f"❌ Error cargando idea_viral: {e}")
+        
+        # Limpiar comandos antiguos
+        self.tree.clear_commands(guild=None)
+        print("🧹 Comandos antiguos eliminados.")
+        
+        # Sincronizar comandos slash
         try:
-            synced = await self.tree.sync(guild=discord.Object(id=GUILD_ID))
+            synced = await self.tree.sync()
             print(f"🔁 Comandos sincronizados: {[cmd.name for cmd in synced]}")
         except Exception as e:
-            print(f"❌ Error al sincronizar comandos: {e}")
+            print(f"❌ Error sincronizando comandos: {e}")
+    
+    async def on_ready(self):
+        print(f"✅ Conectado como {self.user}")
+        print(f"🆔 ID del bot: {self.user.id}")
 
-bot = VXBot()
+async def main():
+    bot = VXBot()
+    
+    try:
+        await bot.start(DISCORD_TOKEN)
+    except KeyboardInterrupt:
+        print("🛑 Bot detenido manualmente")
+    except Exception as e:
+        print(f"❌ Error iniciando el bot: {e}")
+    finally:
+        await bot.close()
 
-@bot.event
-async def on_ready():
-    print(f"✅ Conectado como {bot.user}")
-
-bot.run(DISCORD_TOKEN)
+if __name__ == "__main__":
+    asyncio.run(main())
