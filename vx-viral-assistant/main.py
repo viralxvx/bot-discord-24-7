@@ -3,13 +3,10 @@ import os
 import logging
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from openai import OpenAI
 import uvicorn
-import openai
 
-# ================== CONFIGURACIÓN ==================
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-# ================== LOGGING PATCH (UVICORN BUG FIX) ==================
+# ========== LOGGING PATCH (para evitar errores de formato) ==========
 class SafeFormatter(logging.Formatter):
     def formatMessage(self, record):
         try:
@@ -22,7 +19,7 @@ logger = logging.getLogger("uvicorn.access")
 for handler in logger.handlers:
     handler.setFormatter(SafeFormatter('%(asctime)s - %(levelname)s - %(message)s'))
 
-# ================== FASTAPI INIT ==================
+# ========== FASTAPI INIT ==========
 app = FastAPI()
 
 app.add_middleware(
@@ -33,59 +30,53 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ================== ENDPOINT: IDEA VIRAL ==================
+# ========== CLIENTE OPENAI ==========
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# ========== ENDPOINT: /idea_viral ==========
 @app.post("/idea_viral")
 async def idea_viral(request: Request):
     data = await request.json()
     prompt = data.get("prompt", "")
     autor = data.get("autor", "")
-
     logger.info(f"🔹 Solicitud recibida de {autor} con prompt: {prompt}")
 
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "Responde con ideas virales breves, visuales y potentes, ideales para crecer en X."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        content = response.choices[0].message.content.strip()
-        return {"respuesta": content}
+    return {
+        "respuesta": f"🎯 Hola {autor}, una idea viral sobre '{prompt}' sería: Comparte un antes y después impactante acompañado de una lección poderosa. Usa contraste visual + emoción."
+    }
 
-    except Exception as e:
-        logger.error(f"❌ Error generando idea viral: {e}")
-        return {"respuesta": "❌ Error generando la idea viral. Intenta de nuevo más tarde."}
-
-# ================== ENDPOINT: HABLAR LIBRE ==================
+# ========== ENDPOINT: /hablar (ChatGPT libre) ==========
 @app.post("/hablar")
 async def hablar(request: Request):
-    data = await request.json()
-    mensaje = data.get("mensaje", "")
-    autor = data.get("autor", "anónimo")
-
-    logger.info(f"🧠 Solicitud de conversación recibida de {autor}: {mensaje}")
-
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": "Responde como ChatGPT en una conversación informal, clara y útil."},
-                {"role": "user", "content": mensaje}
-            ]
-        )
-        contenido = response.choices[0].message.content.strip()
-        return {"respuesta": contenido}
-    except Exception as e:
-        logger.error(f"❌ Error en /hablar: {e}")
-        return {"respuesta": "❌ Ocurrió un error procesando tu mensaje."}
+        data = await request.json()
+        mensaje = data.get("mensaje", "")
+        autor = data.get("autor", "")
 
-# ================== TEST DE SALUD ==================
+        logging.info(f"🧠 Solicitud de conversación recibida de {autor}: {mensaje}")
+
+        respuesta = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "Eres un asistente conversacional inteligente en Discord"},
+                {"role": "user", "content": mensaje}
+            ],
+            temperature=0.8
+        )
+
+        texto = respuesta.choices[0].message.content.strip()
+        return {"respuesta": texto}
+
+    except Exception as e:
+        logging.error(f"❌ Error en /hablar: {e}")
+        return {"respuesta": "⚠️ Error procesando tu mensaje. Contacta al administrador."}
+
+# ========== ENDPOINT: /health ==========
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "mensaje": "Servicio activo"}
 
-# ================== INICIO UVICORN ==================
+# ========== INICIO UVICORN ==========
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
