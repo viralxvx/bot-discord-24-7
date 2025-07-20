@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import openai
-from config import OPENAI_API_KEY, CANAL_COMANDOS_ID
+from config import OPENAI_API_KEY, CANAL_COMANDOS_ID, CANAL_GPT_ID
 from mensajes.asistente_viral_mensajes import INSTRUCCION_IDEA, MENSAJE_FUERA_DE_CANAL
 
 openai.api_key = OPENAI_API_KEY
@@ -15,8 +15,7 @@ class IdeaViral(commands.Cog):
 
     @app_commands.command(name="idea_viral", description="🧠 Genera una idea creativa para un hilo viral en X.")
     async def idea_viral(self, interaction: discord.Interaction, tema: str):
-        # Verifica si el comando se ejecuta en el canal correcto
-        if interaction.channel.id != CANAL_COMANDOS_ID:
+        if interaction.channel.id not in [CANAL_COMANDOS_ID, CANAL_GPT_ID]:
             await interaction.response.send_message(MENSAJE_FUERA_DE_CANAL, ephemeral=True)
             return
 
@@ -43,13 +42,14 @@ class IdeaViral(commands.Cog):
             embed.set_footer(text="Generado por el Asistente Viral | VX")
 
             await interaction.followup.send(embed=embed, ephemeral=False)
+
             try:
                 await interaction.user.send(embed=embed)
             except:
-                pass  # En caso de que tenga los DMs cerrados
+                pass  # DM cerrado
 
         except Exception as e:
-            await interaction.followup.send(f"❌ Ocurrió un error al generar la idea:\n`{str(e)}`")
+            await interaction.followup.send(f"❌ Error al generar la idea:\n`{str(e)}`")
 
 async def setup(bot):
     await bot.add_cog(IdeaViral(bot))
