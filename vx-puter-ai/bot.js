@@ -26,6 +26,7 @@ const MODELOS = {
 };
 
 let userModels = {};
+const canalAI = process.env.VX_AI_CANAL;
 
 async function iniciarPuter() {
   try {
@@ -48,7 +49,7 @@ async function iniciarPuter() {
 
     page = await browser.newPage();
     
-    // Configurar User-Agent y encabezados
+    // Configurar User-Agent
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
     
     console.log('🌐 Navegando a puter.com...');
@@ -57,17 +58,17 @@ async function iniciarPuter() {
       timeout: 60000
     });
 
-    // Inyectar Puter.js manualmente
+    // Inyectar Puter.js
     console.log('⬆️ Inyectando Puter.js...');
     await page.addScriptTag({ url: 'https://js.puter.com/v2/' });
     
-    // Esperar con verificación redundante
+    // Esperar a que Puter.js cargue
     await page.waitForFunction(() => typeof window.puter !== 'undefined', {
       timeout: 30000,
       polling: 500
     });
     
-    // Verificación adicional
+    // Verificar funciones esenciales
     const puterLoaded = await page.evaluate(() => {
       return typeof window.puter === 'object' && 
              typeof window.puter.ai === 'object' &&
@@ -76,13 +77,13 @@ async function iniciarPuter() {
     
     if (!puterLoaded) throw new Error('Puter.js no se inicializó correctamente');
     
-    console.log('✅ Puter.js cargado correctamente en Puppeteer');
+    console.log('✅ Puter.js cargado correctamente');
     return true;
     
   } catch (err) {
     console.error('❌ Error crítico en iniciarPuter:', err);
     
-    // Capturar screenshot para diagnóstico solo si page existe
+    // Capturar screenshot solo si page existe
     try {
       if (page) {
         await page.screenshot({ path: 'error.png' });
@@ -102,15 +103,16 @@ async function iniciarPuter() {
 
 client.once('ready', async () => {
   console.log(`🤖 Bot conectado como ${client.user.tag}`);
+  console.log(`📌 Canal de IA configurado: ${canalAI ? '#' + canalAI : 'NO CONFIGURADO'}`);
   
-  // Intentar hasta 3 veces con retry
+  // Intentar iniciar Puter.js
   let attempts = 0;
   while (attempts < 3) {
     attempts++;
     console.log(`🔄 Intento ${attempts}/3 de iniciar Puter.js`);
     
     if (await iniciarPuter()) break;
-    await new Promise(resolve => setTimeout(resolve, 10000)); // Espera 10 segundos
+    await new Promise(resolve => setTimeout(resolve, 10000));
   }
   
   if (attempts >= 3) {
@@ -119,80 +121,66 @@ client.once('ready', async () => {
 });
 
 client.on('messageCreate', async (message) => {
+  // Ignorar mensajes de bots y si no tenemos página activa
   if (message.author.bot || !page) return;
-
+  
+  // Verificar si estamos en el canal correcto
+  const enCanalAI = canalAI && message.channel.id === canalAI;
+  
+  // Solo responder en el canal designado
+  if (!enCanalAI) return;
+  
   const userId = message.author.id;
-  const content = message.content.trim();
-
-  // !ai prompt
-  if (content.startsWith('!ai ')) {
-    const prompt = content.slice(4);
-    const modelo = userModels[userId] || MODELOS.claude;
-
-    try {
-      await message.channel.sendTyping();
-
-      const respuesta = await page.evaluate(async (prompt, modelo) => {
-        const resp = await window.puter.ai.chat(prompt, {
-          model: modelo,
-          temperature: 0.7
-        });
-        return resp.message.content;
-      }, prompt, modelo);
-
-      if (respuesta.length > 2000) {
-        const partes = respuesta.match(/.{1,1900}/g) || [];
-        for (let i = 0; i < partes.length && i < 3; i++) {
-          await message.reply(partes[i]);
-        }
-        if (partes.length > 3) await message.reply('... (respuesta truncada)');
-      } else {
-        await message.reply(respuesta);
-      }
-
-    } catch (err) {
-      console.error('❌ Error en !ai:', err);
-      await message.reply('⚠️ Ocurrió un error al procesar la respuesta.');
-    }
-  }
-
-  // !setmodel modelo
-  if (content.startsWith('!setmodel ')) {
-    const modelo = content.slice(10).trim().toLowerCase();
-    if (MODELOS[modelo]) {
-      userModels[userId] = MODELOS[modelo];
-      message.reply(`✅ Modelo cambiado a **${modelo}**`);
+  let prompt = message.content.trim();
+  
+  // Sistema para cambiar modelo mediante mención especial
+  const cambioModelo = prompt.match(/modelo:(\w+)/i);
+  if (cambioModelo) {
+    const modeloKey = cambioModelo[1].toLowerCase();
+    if (MODELOS[modeloKey]) {
+      userModels[userId] = MODELOS[modeloKey];
+      await message.reply(`✅ Modelo cambiado a **${modeloKey}**`);
+      prompt = prompt.replace(cambioModelo[0], '').trim(); // Eliminar comando del prompt
+      
+      // Si solo contenía el comando, no procesar IA
+      if (!prompt) return;
     } else {
-      message.reply(`❌ Modelo no válido. Usa: ${Object.keys(MODELOS).join(', ')}`);
+      const modelosDisponibles = Object.keys(MODELOS).join(', ');
+      await message.reply(`❌ Modelo no válido. Usa: ${modelosDisponibles}\nEjemplo: "modelo:gpt4"`);
+      return;
     }
   }
-
-  // !mymodel
-  if (content === '!mymodel') {
-    const actual = userModels[userId] || MODELOS.claude;
-    const nombre = Object.keys(MODELOS).find(k => MODELOS[k] === actual);
-    message.reply(`🤖 Tu modelo actual: **${nombre}**`);
-  }
-
-  // !models
-  if (content === '!models') {
-    const lista = Object.entries(MODELOS)
-      .map(([k, v]) => `• **${k}** → ${v.split('/').pop()}`).join('\n');
-    message.reply(`📚 Modelos disponibles:\n${lista}`);
-  }
-
-  // !help
-  if (content === '!help') {
-    const ayuda = `
-🤖 **Comandos disponibles:**
-
-\`!ai [prompt]\` — Envia una pregunta o idea
-\`!setmodel [modelo]\` — Cambia el modelo de IA
-\`!mymodel\` — Muestra tu modelo actual
-\`!models\` — Lista de modelos disponibles
-\`!help\` — Muestra este menú de ayuda
-    `;
-    message.reply(ayuda);
+  
+  // Obtener modelo del usuario o usar el predeterminado
+  const modelo = userModels[userId] || MODELOS.claude;
+  
+  try {
+    // Indicar que está escribiendo
+    await message.channel.sendTyping();
+    
+    // Enviar prompt a la IA
+    const respuesta = await page.evaluate(async (prompt, modelo) => {
+      const resp = await window.puter.ai.chat(prompt, {
+        model: modelo,
+        temperature: 0.7
+      });
+      return resp.message.content;
+    }, prompt, modelo);
+    
+    // Manejar respuestas largas
+    if (respuesta.length > 2000) {
+      const partes = respuesta.match(/.{1,1900}/g) || [];
+      for (let i = 0; i < partes.length && i < 3; i++) {
+        await message.reply(partes[i]);
+      }
+      if (partes.length > 3) await message.reply('... (respuesta truncada)');
+    } else {
+      await message.reply(respuesta);
+    }
+    
+  } catch (err) {
+    console.error('❌ Error en IA:', err);
+    await message.reply('⚠️ Ocurrió un error al procesar tu mensaje.');
   }
 });
 
