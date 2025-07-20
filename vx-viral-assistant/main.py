@@ -21,17 +21,22 @@ class VXBot(commands.Bot):
         # Cargar comandos
         try:
             await self.load_extension('comandos.idea_viral')
+            print("✅ Extensión idea_viral cargada")
         except Exception as e:
             print(f"❌ Error cargando idea_viral: {e}")
+            return
         
-        # Limpiar comandos antiguos
-        self.tree.clear_commands(guild=None)
-        print("🧹 Comandos antiguos eliminados.")
+        # Verificar que los comandos estén en el árbol
+        print(f"📋 Comandos en el árbol antes de sync: {[cmd.name for cmd in self.tree.get_commands()]}")
+        
+        # NO limpiar comandos si acabamos de cargarlos
+        # self.tree.clear_commands(guild=None)
         
         # Sincronizar comandos slash
         try:
             synced = await self.tree.sync()
             print(f"🔁 Comandos sincronizados: {[cmd.name for cmd in synced]}")
+            print(f"📊 Total comandos sincronizados: {len(synced)}")
         except Exception as e:
             print(f"❌ Error sincronizando comandos: {e}")
     
