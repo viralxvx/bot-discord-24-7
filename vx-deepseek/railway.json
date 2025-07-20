@@ -1,10 +1,10 @@
 {
   "build": {
     "env": {
-      "PYTHON_VERSION": "3.10"
+      "PYTHON_VERSION": "3.11"
     }
   },
   "deploy": {
-    "startCommand": "python main.py"
+    "startCommand": ["python", "main.py"]
   }
 }
