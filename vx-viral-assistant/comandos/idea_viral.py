@@ -13,7 +13,10 @@ class IdeaViral(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="idea_viral", description="🧠 Genera una idea viral desde el asistente GPT")
+    @app_commands.command(
+        name="gpt_idea_viral",  # Renombrado para evitar conflicto
+        description="🧠 Genera una idea viral desde el asistente GPT"
+    )
     @app_commands.describe(tema="Tema sobre el que deseas una idea")
     async def idea_viral(self, interaction: discord.Interaction, tema: str):
         if interaction.channel.id != CANAL_GPT_ID:
@@ -54,4 +57,4 @@ class IdeaViral(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(IdeaViral(bot))
-    print("✅ Comando /idea_viral cargado correctamente.")
+    print("✅ Comando /gpt_idea_viral cargado correctamente.")
