@@ -72,5 +72,14 @@ class IdeaViral(commands.Cog):
 
 # Método para que setup_hook lo cargue
 async def setup(bot):
-    await bot.add_cog(IdeaViral(bot))
+    cog = IdeaViral(bot)
+    await bot.add_cog(cog)
     print("✅ Comando /idea_viral cargado correctamente.")
+    
+    # Verificar que el comando esté en el cog
+    commands_in_cog = [cmd.name for cmd in cog.get_app_commands()]
+    print(f"📋 Comandos en el cog: {commands_in_cog}")
+    
+    # Verificar que esté en el árbol del bot
+    commands_in_tree = [cmd.name for cmd in bot.tree.get_commands()]
+    print(f"🌳 Comandos en el árbol del bot: {commands_in_tree}")
