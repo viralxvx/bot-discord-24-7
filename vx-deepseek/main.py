@@ -1,54 +1,70 @@
 import os
 import discord
-import aiohttp
+import logging
 import asyncio
+import httpx
 
+# ================= CONFIGURACIÓN =================
 TOKEN = os.getenv("DISCORD_TOKEN")
-CANAL_GPT_ID = int(os.getenv("CANAL_GPT_ID", "0"))
+CANAL_GPT_ID = int(os.getenv("CANAL_GPT_ID"))  # 1371956689439559850
+PUTER_API_URL = "https://api.puter.com/v1/chat/completions"
+HEADERS = {"Content-Type": "application/json"}
+MODEL = "deepseek-chat"  # Cambia aquí el modelo si quieres probar otro
 
+# ================ LOGGING =======================
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("vx-deepseek")
+
+# ================ CLIENTE DISCORD ================
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
-PUTER_SCRIPT = "https://js.puter.com/v2/"
-HTML_TEMPLATE = """
-<!DOCTYPE html>
-<html>
-<head><script src="{script}"></script></head>
-<body>
-<script>
-(async () => {{
-    const r = await puter.ai.chat("{prompt}", {{ model: "deepseek-chat" }});
-    window.parent.postMessage(r, "*");
-}})();
-</script>
-</body>
-</html>
-"""
-
-async def generar_respuesta(prompt):
-    html = HTML_TEMPLATE.format(script=PUTER_SCRIPT, prompt=prompt.replace('"', '\\"'))
-    async with aiohttp.ClientSession() as session:
-        async with session.post("https://html-render.puter.com", data=html.encode("utf-8")) as resp:
-            if resp.status == 200:
-                json = await resp.json()
-                return json.get("text", "[Respuesta vacía]")
+# ================ FUNCIÓN IA ======================
+async def get_ai_response(prompt):
+    try:
+        async with httpx.AsyncClient() as client_http:
+            res = await client_http.post(
+                PUTER_API_URL,
+                headers=HEADERS,
+                json={
+                    "model": MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                },
+                timeout=30
+            )
+            if res.status_code == 200:
+                data = res.json()
+                return data["choices"][0]["message"]["content"]
             else:
-                return "[Error al generar respuesta]"
+                log.error(f"❌ Error {res.status_code}: {res.text}")
+                return "Ocurrió un error con DeepSeek AI."
+    except Exception as e:
+        log.exception("Error al obtener respuesta de DeepSeek:")
+        return "No se pudo procesar la solicitud."
 
+# =============== EVENTO DE MENSAJE =================
 @client.event
 async def on_ready():
-    print(f"🤖 DeepSeek bot conectado como {client.user}")
+    log.info(f"✅ vx-deepseek conectado como {client.user}")
 
 @client.event
 async def on_message(message):
-    if message.author.bot:
-        return
-    if message.channel.id != CANAL_GPT_ID:
+    if message.author.bot or message.channel.id != CANAL_GPT_ID:
         return
 
-    await message.channel.typing()
-    respuesta = await generar_respuesta(message.content)
-    await message.reply(respuesta)
+    prompt = message.content.strip()
+    if not prompt:
+        return
 
-client.run(TOKEN)
+    log.info(f"🧠 Solicitud de {message.author.name}: {prompt}")
+    async with message.channel.typing():
+        respuesta = await get_ai_response(prompt)
+        await message.reply(respuesta[:1900], mention_author=False)
+
+# ================== INICIAR BOT ====================
+if __name__ == "__main__":
+    if not TOKEN or not CANAL_GPT_ID:
+        log.error("❌ Faltan variables de entorno requeridas.")
+    else:
+        client.run(TOKEN)
