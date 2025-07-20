@@ -1,3 +1,10 @@
+Perfecto, Miguel. Aquí tienes el archivo en formato **Markdown** que resume todo lo que me compartiste en esta conversación sobre Puter.js, modelos disponibles, y cómo vamos a trabajar con DeepSeek y Railway desde tu GitHub.
+
+Puedes guardar este archivo como `PuterDeepSeekVX.md` en tu repositorio.
+
+---
+
+````markdown
 # 🧠 Integración de Puter.js y DeepSeek en VXbot (Discord + Railway + GitHub)
 
 ## ✅ Infraestructura actual
@@ -53,3 +60,76 @@ puter.ai.chat("Hola, ¿cómo estás?", {
 }).then(response => {
     document.write(response.message.content);
 });
+````
+
+### ✅ Razonamiento complejo (DeepSeek Reasoner)
+
+```javascript
+puter.ai.chat("¿Cuál es el impacto ambiental de los vehículos eléctricos?", {
+    model: "deepseek-reasoner"
+}).then(response => {
+    document.write(response.message.content);
+});
+```
+
+---
+
+## 🧱 Estructura del microservicio `vx-deepseek`
+
+```
+vx-deepseek/
+├── main.py          # Código principal del microservicio
+├── requirements.txt # Dependencias (httpx, discord.py)
+├── Procfile         # Para iniciar en Railway: web: python main.py
+```
+
+---
+
+## 🛠️ Detalles técnicos adicionales
+
+* **El bot responde automáticamente sin necesidad de comando slash**
+* Se usa `httpx` para enviar el mensaje a Puter.js vía `https://api.puter.com/v1/chat/completions`
+* No se requiere clave API (Puter usa un sistema interno "User Pays")
+* Las respuestas se devuelven en el canal directamente
+* Se puede escalar a otros modelos en el futuro
+
+---
+
+## ⚠️ Errores encontrados y soluciones
+
+| Problema                          | Solución aplicada                                          |
+| --------------------------------- | ---------------------------------------------------------- |
+| `ModuleNotFoundError: httpx`      | Añadido a `requirements.txt`                               |
+| `403 Forbidden` en Puter          | Se verificó endpoint correcto para modelo `deepseek-chat`  |
+| `invalid type: string` en Railway | Se corrigió `Procfile` malformado, se quitó `railway.json` |
+
+---
+
+## 🔧 ¿Cómo levantar en Railway?
+
+1. Subir carpeta `/vx-deepseek` al repo
+2. Crear nuevo servicio en Railway → GitHub → seleccionar folder `/vx-deepseek`
+3. Railway detectará el `Procfile` y `requirements.txt` automáticamente
+4. Agregar variables como `DISCORD_TOKEN` y `CANAL_GPT_ID`
+5. Hacer deploy y ver logs
+
+---
+
+## 🔮 Próximos pasos
+
+* [ ] Verificar que DeepSeek responde bien desde Discord
+* [ ] Agregar soporte para múltiples modelos vía selección
+* [ ] Incluir opción de respuestas por DM + públicas
+* [ ] Panel de estadísticas de uso
+* [ ] Sistema de memoria por usuario (opcional con Redis)
+
+---
+
+📌 **Este documento sirve como guía base para seguir desarrollando el sistema VXbot con IA gratuita y modular.**
+
+```
+
+---
+
+¿Deseas que te lo suba como archivo `.md` directo a tu repositorio o lo pegamos manualmente en el `README` del microservicio?
+```
