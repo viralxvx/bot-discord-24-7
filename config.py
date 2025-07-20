@@ -14,6 +14,7 @@ DISCORD_TOKEN = get_env_variable("DISCORD_TOKEN")
 GUILD_ID = int(get_env_variable("GUILD_ID"))
 REDIS_URL = get_env_variable("REDIS_URL")
 STATE_PATH = get_env_variable("STATE_PATH")
+ASISTENTE_API_URL = get_env_variable("ASISTENTE_API_URL")
 ADMIN_ID = int(get_env_variable("ADMIN_ID"))
 
 # IDs de canales principales
