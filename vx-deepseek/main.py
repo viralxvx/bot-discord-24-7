@@ -6,7 +6,7 @@ import httpx
 
 # ================= CONFIGURACIÓN =================
 TOKEN = os.getenv("DISCORD_TOKEN")
-CANAL_GPT_ID = int(os.getenv("CANAL_GPT_ID"))  # 1371956689439559850
+CANAL_GPT_ID = int(os.getenv("CANAL_GPT_ID"))  
 PUTER_API_URL = "https://api.puter.com/v1/chat/completions"
 HEADERS = {"Content-Type": "application/json"}
 MODEL = "deepseek-chat"  # Cambia aquí el modelo si quieres probar otro
