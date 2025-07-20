@@ -1,4 +1,3 @@
-
 # comandos/idea_viral.py
 
 import discord
