@@ -1,21 +1,15 @@
 {
   "name": "vx-puter-ai",
   "version": "1.0.0",
-  "description": "Microservicio de Discord para múltiples IA usando Puter.js y jsdom",
   "main": "bot.js",
+  "type": "commonjs",
   "scripts": {
     "start": "node bot.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
     "jsdom": "^23.0.1",
-    "node-fetch": "^3.3.2",
+    "node-fetch": "^2.6.7",
     "dotenv": "^16.3.1"
-  },
-  "engines": {
-    "node": ">=18"
-  },
-  "keywords": ["discord", "ai", "puter.js", "deepseek", "claude", "gemini", "gpt4"],
-  "author": "Viral X | Miguel Peralta",
-  "license": "MIT"
+  }
 }
