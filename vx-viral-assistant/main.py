@@ -1,26 +1,28 @@
-import os
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-import openai
 import logging
+import openai
+import os
+from contextlib import asynccontextmanager
 
-# Configurar logging visible en Railway
+# === Configuración de logs ===
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# === CARGAR VARIABLES DE ENTORNO ===
+# === Configuración de OpenAI ===
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# === MODELO DE DATOS ===
-class IdeaRequest(BaseModel):
-    prompt: str
-    usuario: str
+# === Definir evento de ciclo de vida (startup) ===
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("✅ Microservicio vx-viral-assistant iniciado correctamente.")
+    yield
 
-# === INICIALIZAR APP FASTAPI ===
-app = FastAPI()
+# === Crear app con sistema lifespan actualizado ===
+app = FastAPI(lifespan=lifespan)
 
-# === PERMISOS CORS PARA PETICIONES EXTERNAS (opcional) ===
+# === CORS para permitir peticiones desde el bot de Discord ===
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,27 +31,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# === ENDPOINT PRINCIPAL ===
-@app.post("/generar_idea")
-async def generar_idea(req: IdeaRequest):
-    logger.info(f"🧠 Recibida solicitud de idea para: {req.usuario}")
+# === Modelo de entrada para la solicitud ===
+class IdeaRequest(BaseModel):
+    prompt: str
+    autor: str
+
+# === Ruta principal para recibir el comando de Discord ===
+@app.post("/idea_viral")
+async def generar_idea(request: IdeaRequest):
+    prompt_usuario = request.prompt.strip()
+    autor = request.autor.strip()
+
     try:
-        respuesta = openai.ChatCompletion.create(
+        logger.info(f"✉️ Solicitud recibida de: {autor}")
+        logger.info(f"📌 Prompt: {prompt_usuario}")
+
+        respuesta = await openai.ChatCompletion.acreate(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Eres un asistente experto en crear ideas virales para X. Responde con una idea clara y breve."},
-                {"role": "user", "content": req.prompt}
+                {"role": "system", "content": (
+                    "Eres un experto creando contenido viral en Twitter (𝕏). "
+                    "Tu trabajo es transformar cualquier idea en una publicación con alto potencial de viralidad. "
+                    "Tu estilo es claro, provocador y visualmente atractivo. Siempre piensas como un algoritmo."
+                )},
+                {"role": "user", "content": prompt_usuario}
             ],
-            max_tokens=300
+            temperature=0.7,
+            max_tokens=500
         )
-        idea = respuesta.choices[0].message["content"].strip()
-        logger.info("✅ Idea generada correctamente desde OpenAI")
-        return {"idea": idea}
-    except Exception as e:
-        logger.error(f"❌ Error al generar idea con OpenAI: {e}")
-        return {"error": "Error al generar la idea con OpenAI"}
 
-# === MENSAJE INICIAL DE STATUS ===
-@app.on_event("startup")
-async def startup_event():
-    logger.info("✅ Microservicio vx-viral-assistant iniciado correctamente.")
+        contenido = respuesta.choices[0].message.content.strip()
+        logger.info("✅ Respuesta generada correctamente.")
+        return {"respuesta": contenido}
+
+    except Exception as e:
+        logger.error(f"❌ Error generando la respuesta: {e}")
+        return {"error": "Hubo un problema generando la idea. Notifica al administrador."}
