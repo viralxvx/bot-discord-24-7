@@ -27,17 +27,17 @@ class IdeaViralProxy(commands.Cog):
                     json={"prompt": prompt, "autor": str(interaction.user)}
                 ) as respuesta:
 
-                    print(f"[DEBUG] Status respuesta API: {respuesta.status}")
+                    print(f"[DEBUG] Código de respuesta HTTP: {respuesta.status}")
                     if respuesta.status == 200:
                         data = await respuesta.json()
                         idea = data.get("respuesta", "⚠️ No se recibió una idea.")
                         await interaction.followup.send(f"💡 **Idea viral generada:**\n{idea}")
                     else:
-                        print(f"[ERROR] Código HTTP {respuesta.status}")
+                        print(f"[ERROR] Falló con código {respuesta.status}")
                         await interaction.followup.send("❌ Error generando la idea. Notifica al administrador.")
 
         except Exception as e:
-            print(f"❌ Error en idea_viral_proxy: {e}")
+            print(f"❌ Excepción en idea_viral_proxy: {e}")
             traceback.print_exc()
             await interaction.followup.send("❌ Error generando la idea. Notifica al administrador.")
 
