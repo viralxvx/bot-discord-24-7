@@ -7,6 +7,5 @@ INSTRUCCION_IDEA = (
 )
 
 MENSAJE_FUERA_DE_CANAL = (
-    "⛔ Este comando solo puede usarse en el canal autorizado de comandos.\n"
-    "Ve al canal 💻comandos para usar `/idea_viral`."
+    "⛔ Este comando solo puede usarse en el canal 💻comandos o en VX gpt."
 )
