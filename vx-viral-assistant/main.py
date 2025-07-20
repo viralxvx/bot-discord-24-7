@@ -1,29 +1,49 @@
 import logging
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from pydantic import BaseModel
 import openai
 import os
+from datetime import datetime
 
-# Configuración inicial
-logging.basicConfig(level=logging.INFO)
+# ========= CONFIGURACIÓN =========
+
+# Clave de OpenAI desde variable de entorno
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
+# Configurar logs: consola + archivo
+log_formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+log_file = "gpt_logs.log"
+
+# Handler para archivo
+file_handler = logging.FileHandler(log_file)
+file_handler.setFormatter(log_formatter)
+
+# Handler para consola
+console_handler = logging.StreamHandler()
+console_handler.setFormatter(log_formatter)
+
+# Configurar logger principal
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# Iniciar app
 app = FastAPI()
+logger.info("✅ Microservicio vx-viral-assistant iniciado correctamente.")
 
-# Log de inicio
-logging.info("✅ Microservicio vx-viral-assistant iniciado correctamente y listo para recibir comandos.")
-
-# Estructura esperada de entrada
+# ========= ESTRUCTURA DE ENTRADA =========
 class IdeaRequest(BaseModel):
     prompt: str
     user_id: int
     username: str
 
+# ========= ENDPOINT PRINCIPAL =========
 @app.post("/generar-idea")
 async def generar_idea(req: IdeaRequest):
     try:
-        logging.info(f"✅ Solicitud recibida de /idea_viral por @{req.username} (ID: {req.user_id})")
-        logging.info(f"🧠 Prompt enviado a GPT: {req.prompt}")
+        logger.info(f"🟢 Solicitud recibida de /idea_viral por @{req.username} (ID: {req.user_id})")
+        logger.info(f"🧠 Prompt: {req.prompt}")
 
         response = openai.ChatCompletion.create(
             model="gpt-4o",
@@ -36,9 +56,9 @@ async def generar_idea(req: IdeaRequest):
         )
 
         resultado = response.choices[0].message.content.strip()
-        logging.info(f"📩 Respuesta generada: {resultado}")
+        logger.info(f"✅ Respuesta generada para @{req.username}: {resultado}")
         return {"resultado": resultado}
 
     except Exception as e:
-        logging.error(f"❌ Error procesando la solicitud de @{req.username} (ID: {req.user_id}): {e}")
+        logger.error(f"❌ Error procesando solicitud de @{req.username}: {e}")
         return {"error": "❌ Error generando la idea. Notifica al administrador."}
