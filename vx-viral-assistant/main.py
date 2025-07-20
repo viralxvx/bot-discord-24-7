@@ -1,81 +1,97 @@
-from fastapi import FastAPI, Request
-from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
+import os
+import sys
+import asyncio
 import logging
 import openai
-import os
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from contextlib import asynccontextmanager
-import sys
 
-# === Configuración de logs seguros ===
-logging.basicConfig(
-    stream=sys.stdout,
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
+# ============ Parche de logging resiliente para Uvicorn ============
+from uvicorn.logging import DefaultFormatter
 
-# === Configuración de OpenAI ===
+class SafeFormatter(DefaultFormatter):
+    def formatMessage(self, record):
+        try:
+            return super().formatMessage(record)
+        except ValueError:
+            return f"{record.name} - {record.getMessage()}"
+
+# Configurar logs seguros
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+logger = logging.getLogger("uvicorn.access")
+for handler in logger.handlers:
+    handler.setFormatter(SafeFormatter(fmt="%(asctime)s - %(levelprefix)s %(message)s"))
+
+# ============ Configuración OpenAI ============
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# === Definir evento de ciclo de vida (startup) ===
+# ============ FastAPI con ciclo de vida ============
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("✅ Microservicio vx-viral-assistant iniciado correctamente.")
+    logging.info("✅ Microservicio vx-viral-assistant iniciado correctamente.")
     yield
 
-# === Crear app con sistema lifespan actualizado ===
 app = FastAPI(lifespan=lifespan)
 
-# === Middleware para registrar toda solicitud entrante ===
+# ============ Middleware ============
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     logger.info(f"📥 Solicitud recibida: {request.method} {request.url}")
-    response = await call_next(request)
-    return response
+    return await call_next(request)
 
-# === CORS para permitir peticiones desde el bot de Discord ===
+# CORS global
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# === Modelo de entrada para la solicitud ===
+# ============ Modelos ============
 class IdeaRequest(BaseModel):
     prompt: str
     autor: str
 
-# === Ruta principal para recibir el comando de Discord ===
+# ============ Endpoints ============
 @app.post("/idea_viral")
-async def generar_idea(request: IdeaRequest):
-    prompt_usuario = request.prompt.strip()
-    autor = request.autor.strip()
+async def idea_viral(req: IdeaRequest):
+    prompt = req.prompt.strip()
+    autor = req.autor.strip()
 
     try:
-        logger.info(f"✉️ Usuario: {autor}")
-        logger.info(f"📌 Prompt recibido: {prompt_usuario}")
+        logger.info(f"✉️ Autor: {autor}")
+        logger.info(f"🧠 Prompt recibido: {prompt}")
 
-        respuesta = await openai.ChatCompletion.acreate(
+        completion = await openai.ChatCompletion.acreate(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": (
-                    "Eres un experto creando contenido viral en Twitter (𝕏). "
-                    "Tu trabajo es transformar cualquier idea en una publicación con alto potencial de viralidad. "
-                    "Tu estilo es claro, provocador y visualmente atractivo. Siempre piensas como un algoritmo."
+                    "Eres un experto creando contenido viral para X (Twitter). "
+                    "Tu misión es transformar ideas en hilos con alto potencial de viralidad. "
+                    "Tu estilo es directo, provocador y visualmente claro. Siempre piensas como un algoritmo."
                 )},
-                {"role": "user", "content": prompt_usuario}
+                {"role": "user", "content": prompt}
             ],
             temperature=0.7,
             max_tokens=500
         )
 
-        contenido = respuesta.choices[0].message.content.strip()
-        logger.info("✅ Respuesta generada correctamente.")
-        return {"respuesta": contenido}
+        resultado = completion.choices[0].message.content.strip()
+        logger.info("✅ Idea generada con éxito.")
+        return {"respuesta": resultado}
 
     except Exception as e:
-        logger.error(f"❌ Error generando la respuesta: {e}")
+        logger.error(f"❌ Error generando idea: {e}")
         return {"error": "Hubo un problema generando la idea. Notifica al administrador."}
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "servicio": "vx-viral-assistant"}
+
+@app.post("/test_log")
+async def test_log(request: Request):
+    body = await request.json()
+    logger.info(f"🧪 Test de logs recibido: {body}")
+    return {"log": "OK"}
