@@ -1,4 +1,3 @@
-# main.py
 from fastapi import FastAPI, Request
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,15 +5,20 @@ import logging
 import openai
 import os
 from contextlib import asynccontextmanager
+import sys
 
-# === Configuración de logs ===
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("uvicorn.access")
+# === Configuración de logs seguros ===
+logging.basicConfig(
+    stream=sys.stdout,
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 # === Configuración de OpenAI ===
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
-# === Evento de ciclo de vida (startup) ===
+# === Definir evento de ciclo de vida (startup) ===
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("✅ Microservicio vx-viral-assistant iniciado correctamente.")
@@ -23,10 +27,10 @@ async def lifespan(app: FastAPI):
 # === Crear app con sistema lifespan actualizado ===
 app = FastAPI(lifespan=lifespan)
 
-# === Middleware para registrar solicitudes entrantes ===
+# === Middleware para registrar toda solicitud entrante ===
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    logger.info(f"📡 Solicitud recibida: {request.method} {request.url}")
+    logger.info(f"📥 Solicitud recibida: {request.method} {request.url}")
     response = await call_next(request)
     return response
 
@@ -51,8 +55,8 @@ async def generar_idea(request: IdeaRequest):
     autor = request.autor.strip()
 
     try:
-        logger.info(f"✉️ Solicitud recibida de: {autor}")
-        logger.info(f"📌 Prompt: {prompt_usuario}")
+        logger.info(f"✉️ Usuario: {autor}")
+        logger.info(f"📌 Prompt recibido: {prompt_usuario}")
 
         respuesta = await openai.ChatCompletion.acreate(
             model="gpt-4o",
@@ -70,7 +74,7 @@ async def generar_idea(request: IdeaRequest):
 
         contenido = respuesta.choices[0].message.content.strip()
         logger.info("✅ Respuesta generada correctamente.")
-        return {"idea": contenido}
+        return {"respuesta": contenido}
 
     except Exception as e:
         logger.error(f"❌ Error generando la respuesta: {e}")
