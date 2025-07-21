@@ -4,7 +4,7 @@ import requests
 HF_TOKEN = os.environ["HF_TOKEN"]
 MODEL = "moonshotai/Kimi-K2-Instruct"
 
-endpoint = f"https://api.endpoints.huggingface.cloud/v1/completions"
+endpoint = "https://api.huggingface.co/v1/chat/completions"
 headers = {
     "Authorization": f"Bearer {HF_TOKEN}",
     "Content-Type": "application/json",
