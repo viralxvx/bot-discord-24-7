@@ -3,8 +3,16 @@ dotenv.config();
 import { Client, GatewayIntentBits } from 'discord.js';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import express from 'express';
+import fs from 'fs';
 
-// Configuración stealth para evitar bloqueos
+// Health check endpoint
+const app = express();
+const PORT = process.env.PORT || 3000;
+app.get('/health', (req, res) => res.status(200).send('OK'));
+app.listen(PORT, () => console.log(`🩺 Health check running on port ${PORT}`));
+
+// Configuración stealth para Puppeteer
 puppeteer.use(StealthPlugin());
 
 const client = new Client({
@@ -42,7 +50,9 @@ async function iniciarPuter() {
         '--no-first-run',
         '--no-zygote',
         '--disable-gpu',
-        '--js-flags="--max-old-space-size=2048"'
+        '--single-process',
+        '--js-flags="--max-old-space-size=512"',
+        '--memory-pressure-off'
       ],
       ignoreHTTPSErrors: true,
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH
@@ -54,19 +64,19 @@ async function iniciarPuter() {
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
     
     // Configurar tiempo de espera
-    page.setDefaultTimeout(30000);
+    page.setDefaultTimeout(20000);
     
     console.log('🌐 Navegando a puter.com...');
     await page.goto('https://puter.com/', {
-      waitUntil: 'networkidle2',
-      timeout: 60000
+      waitUntil: 'domcontentloaded',
+      timeout: 30000
     });
 
     // Inyectar Puter.js
     console.log('⬆️ Inyectando Puter.js...');
     await page.addScriptTag({ url: 'https://js.puter.com/v2/' });
     
-    // Esperar a que Puter.js cargue con verificación mejorada
+    // Esperar a que Puter.js cargue
     await page.waitForFunction(() => {
       try {
         return typeof window.puter !== 'undefined' && 
@@ -76,7 +86,7 @@ async function iniciarPuter() {
         return false;
       }
     }, {
-      timeout: 60000,
+      timeout: 30000,
       polling: 1000
     });
     
@@ -85,17 +95,6 @@ async function iniciarPuter() {
     
   } catch (err) {
     console.error('❌ Error crítico en iniciarPuter:', err);
-    
-    try {
-      if (page) {
-        await page.screenshot({ path: 'error.png' });
-        console.log('📸 Captura de pantalla guardada: error.png');
-      }
-    } catch (screenshotErr) {
-      console.error('Error al capturar pantalla:', screenshotErr);
-    }
-    
-    if (browser) await browser.close();
     return false;
   }
 }
@@ -113,26 +112,19 @@ client.once('ready', async () => {
     if (await iniciarPuter()) break;
     await new Promise(resolve => setTimeout(resolve, 10000));
   }
-  
-  if (attempts >= 3) {
-    console.error('⚠️ Puter.js no pudo iniciarse después de 3 intentos');
-  }
 });
 
 client.on('messageCreate', async (message) => {
-  // Ignorar mensajes de bots y si no tenemos página activa
   if (message.author.bot || !page) return;
   
-  // Verificar si estamos en el canal correcto
+  // Verificar canal
   const enCanalAI = canalAI && message.channel.id === canalAI;
-  
-  // Solo responder en el canal designado
   if (!enCanalAI) return;
   
   const userId = message.author.id;
   let prompt = message.content.trim();
   
-  // Sistema para cambiar modelo mediante mención especial
+  // Cambiar modelo
   const cambioModelo = prompt.match(/modelo:(\w+)/i);
   if (cambioModelo) {
     const modeloKey = cambioModelo[1].toLowerCase();
@@ -140,80 +132,71 @@ client.on('messageCreate', async (message) => {
       userModels[userId] = MODELOS[modeloKey];
       await message.reply(`✅ Modelo cambiado a **${modeloKey}**`);
       prompt = prompt.replace(cambioModelo[0], '').trim();
-      
-      // Si solo contenía el comando, no procesar IA
       if (!prompt) return;
     } else {
-      const modelosDisponibles = Object.keys(MODELOS).join(', ');
-      await message.reply(`❌ Modelo no válido. Usa: ${modelosDisponibles}\nEjemplo: "modelo:gpt4"`);
+      await message.reply(`❌ Modelo no válido. Usa: ${Object.keys(MODELOS).join(', ')}`);
       return;
     }
   }
   
-  // Obtener modelo del usuario o usar el predeterminado
   const modelo = userModels[userId] || MODELOS.claude;
   
   try {
-    // Indicar que está escribiendo
     await message.channel.sendTyping();
     
-    console.log(`Procesando prompt: "${prompt}" con modelo: ${modelo}`);
+    console.log(`Procesando prompt: "${prompt.substring(0, 50)}..."`);
     
-    // Función de evaluación más robusta
+    // Función de evaluación optimizada
     const respuesta = await page.evaluate(async (prompt, modelo) => {
       try {
-        // Verificar que Puter.js sigue disponible
-        if (typeof window.puter === 'undefined') {
-          throw new Error('Puter.js no está disponible');
-        }
-        
         const resp = await window.puter.ai.chat(prompt, {
           model: modelo,
           temperature: 0.7,
-          max_tokens: 1000
+          max_tokens: 800
         });
-        
         return resp.message.content;
       } catch (e) {
-        // Capturar error en el contexto del navegador
         return `ERROR: ${e.message}`;
       }
     }, prompt, modelo);
     
-    // Manejar errores de Puter.js
     if (respuesta.startsWith('ERROR:')) {
       throw new Error(respuesta);
     }
     
-    console.log(`Respuesta recibida (${respuesta.length} caracteres)`);
+    console.log(`Respuesta recibida (${respuesta.length} chars)`);
     
-    // Manejar respuestas largas
-    if (respuesta.length > 2000) {
-      const partes = respuesta.match(/.{1,1900}/g) || [];
-      for (let i = 0; i < partes.length && i < 3; i++) {
-        await message.reply(partes[i]);
-      }
-      if (partes.length > 3) await message.reply('... (respuesta truncada)');
+    // Manejar respuestas largas con archivo
+    if (respuesta.length > 1500) {
+      const fileName = `respuesta-${Date.now()}.txt`;
+      fs.writeFileSync(fileName, respuesta);
+      await message.reply({
+        content: 'Respuesta demasiado larga. Aquí está el archivo:',
+        files: [fileName]
+      });
+      fs.unlinkSync(fileName);
     } else {
       await message.reply(respuesta);
     }
     
   } catch (err) {
     console.error('❌ Error en IA:', err.message);
-    
-    // Mensaje de error más específico
-    let errorMsg = '⚠️ Ocurrió un error al procesar tu mensaje.';
-    
-    if (err.message.includes('Puter.js no está disponible')) {
-      errorMsg += '\n🔁 Intentando reiniciar Puter.js...';
-      await iniciarPuter();
-    }
-    else if (err.message.includes('timeout')) {
-      errorMsg = '⏱️ La respuesta tardó demasiado. Intenta con un prompt más corto.';
-    }
-    
-    await message.reply(errorMsg);
+    await message.reply('⚠️ Ocurrió un error. Intenta de nuevo más tarde.');
   }
 });
 
 client.login(process.env.DISCORD_TOKEN);
+
+// Manejar señal SIGTERM
+process.on('SIGTERM', async () => {
+  console.log('🛑 Recibida señal SIGTERM. Cerrando limpiamente...');
+  
+  try {
+    if (browser) await browser.close();
+    console.log('✅ Navegador cerrado');
+  } catch (e) {
+    console.error('Error cerrando navegador:', e);
+  }
+  
+  process.exit(0);
+});
