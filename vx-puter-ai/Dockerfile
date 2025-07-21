@@ -48,8 +48,8 @@ WORKDIR /app
 # Copiar archivos de dependencias primero para aprovechar caché de Docker
 COPY package*.json ./
 
-# Instalar dependencias de producción
-RUN npm install --production
+# Instalar dependencias
+RUN npm install
 
 # Copiar el resto de los archivos de la aplicación
 COPY . .
