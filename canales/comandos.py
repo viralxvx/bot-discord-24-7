@@ -5,7 +5,7 @@ from discord.ext import commands
 import os
 import asyncio
 from config import CANAL_COMANDOS_ID
-from mensajes.comandos_texto import INSTRUCCIONES_COMANDOS, INSTRUCCIONES_SUGERENCIAS
+from mensajes.comandos_texto import INSTRUCCIONES_COMANDOS  # Solo usamos el de comandos
 
 class CanalComandos(commands.Cog):
     def __init__(self, bot):
@@ -26,23 +26,13 @@ class CanalComandos(commands.Cog):
             await canal.purge(limit=50)
             print("✅ Canal de comandos limpio.")
 
-            # Verificar mensajes existentes
-            mensajes_actuales = [msg async for msg in canal.history(limit=20)]
+            mensajes_actuales = [msg async for msg in canal.history(limit=10)]
 
-            # Enviar instrucciones generales si no existen
             if not any(msg.content == INSTRUCCIONES_COMANDOS for msg in mensajes_actuales):
                 await self.enviar_mensaje_con_reintento(canal, INSTRUCCIONES_COMANDOS)
                 print("📌 Instrucciones generales enviadas.")
             else:
                 print("📌 Las instrucciones generales ya están presentes.")
-
-            # Enviar instrucciones de sugerencias si no existen
-            if not any(msg.content == INSTRUCCIONES_SUGERENCIAS for msg in mensajes_actuales):
-                await self.enviar_mensaje_con_reintento(canal, INSTRUCCIONES_SUGERENCIAS)
-                print("📌 Instrucciones de sugerencias enviadas.")
-            else:
-                print("📌 Las instrucciones de sugerencias ya están presentes.")
-
         except Exception as e:
             print(f"❌ Error al configurar el canal de comandos: {e}")
 
