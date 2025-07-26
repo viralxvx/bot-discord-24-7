@@ -14,21 +14,23 @@ class MejoraVX(commands.Cog):
         try:
             canal = await self.bot.fetch_channel(CANAL_MEJORA_VX_ID)
         except Exception as e:
-            await log_error(f"No se pudo acceder al canal mejora-vx: {e}", self.bot, scope="mejora_vx")
+            await log_error(f"❌ No se pudo acceder al canal 🧠 mejora-vx: {e}", self.bot, scope="mejora_vx")
             return
 
         try:
+            # Elimina mensajes anteriores (incluso fijados si existen)
             async for msg in canal.history(limit=100):
                 await msg.delete()
 
+            # Envía y fija el mensaje correcto de sugerencias
             mensaje = await canal.send(MENSAJE_ANCLADO)
             await mensaje.pin()
 
-            print("✅ Mensaje anclado publicado y fijado en 🧠┃mejora-vx.")
-            await log_success("Mensaje fijo publicado y anclado correctamente.", self.bot, title="🧠 Mejora VX", scope="mejora_vx")
+            print("✅ Mensaje anclado publicado en 🧠┃mejora-vx.")
+            await log_success("Mensaje fijo publicado correctamente en 🧠 mejora-vx.", self.bot, title="🧠 Mejora VX", scope="mejora_vx")
 
         except Exception as e:
-            await log_error(f"❌ Error al limpiar o fijar mensaje en mejora-vx: {e}", self.bot, scope="mejora_vx")
+            await log_error(f"❌ Error al limpiar o fijar mensaje en 🧠 mejora-vx: {e}", self.bot, scope="mejora_vx")
 
     @commands.Cog.listener()
     async def on_ready(self):
