@@ -1,3 +1,5 @@
+# main.py
+
 import discord
 from discord.ext import commands
 import os
@@ -37,7 +39,8 @@ EXTENSIONES = [
     "comandos.idea_viral_proxy",  # NUEVO comando proxy hacia el microservicio
     "comandos.hablar",
     "comandos.testimonio",        # NUEVO: Comando de testimonio
-    "comandos.ver_testimonios"    # NUEVO: Comando admin de testimonios
+    "comandos.ver_testimonios",   # NUEVO: Comando admin de testimonios
+    "canales.mejora_vx"           # NUEVO: Canal de sugerencias públicas
 ]
 
 log_message = None
