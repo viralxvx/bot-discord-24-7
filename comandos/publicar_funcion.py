@@ -14,8 +14,8 @@ class PublicarFuncion(commands.Cog):
         description="(Solo admins) Publica una nueva función con formato premium."
     )
     @app_commands.describe(
-        titulo="Título de la función",
-        descripcion="Descripción o detalles de la función (usa Markdown si deseas)"
+        titulo="Título visual de la función",
+        descripcion="Texto completo (puede venir desde Word o Docs, se adaptará automáticamente)"
     )
     async def publicar_funcion(
         self,
@@ -38,9 +38,10 @@ class PublicarFuncion(commands.Cog):
             )
             return
 
-        # 🔧 LIMPIEZA: eliminar triple comillas y convertir \n\n en bloques
-        texto_limpio = descripcion.strip().replace('"""', '').replace("```", "")
-        bloques = [b.strip() for b in texto_limpio.split("\n\n") if b.strip()]
+        # 🔧 Limpiar triple comillas, separadores y espacios duplicados
+        texto = descripcion.replace('"""', '').replace("```", '').strip()
+        texto = texto.replace("\r\n", "\n").replace("\r", "\n")  # Estilo Word/Docs
+        bloques = [bloque.strip() for bloque in texto.split("\n\n") if bloque.strip()]
 
         embed = discord.Embed(
             title=f"🎉 {titulo.strip()}",
@@ -52,7 +53,7 @@ class PublicarFuncion(commands.Cog):
             for i, bloque in enumerate(bloques):
                 embed.add_field(name="‎" if i == 0 else "​", value=bloque, inline=False)
         else:
-            embed.description = texto_limpio
+            embed.description = texto
 
         embed.set_footer(text="Publicado por VXbot | Sistema premium")
         mensaje = await canal_funciones.send(embed=embed)
@@ -60,7 +61,7 @@ class PublicarFuncion(commands.Cog):
         url_funcion_real = f"https://discord.com/channels/{canal_funciones.guild.id}/{canal_funciones.id}/{mensaje.id}"
 
         await interaction.response.send_message(
-            f"✅ ¡Función publicada con éxito! [Ver publicación en el canal]({url_funcion_real})",
+            f"✅ ¡Función publicada con éxito! [Ver en canal]({url_funcion_real})",
             ephemeral=True
         )
 
