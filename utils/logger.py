@@ -29,7 +29,6 @@ REDIS_LOG_MESSAGE_KEY = "vxbot:logs:last_message_id"
 
 # ✅ FUNCIÓN PRINCIPAL: Log en Discord vía Webhook + consola
 async def log_discord(bot, message: str, status: str = "Activo", title: str = "Resumen de inicio del bot", scope: str = None):
-    # Log en consola (Railway)
     if scope:
         print(f"[{status}] {title} ({scope}): {message}")
     else:
@@ -63,7 +62,7 @@ async def log_discord(bot, message: str, status: str = "Activo", title: str = "R
     except Exception as e:
         print(f"❌ Error enviando log a Discord vía webhook: {e}")
 
-# ✅ OPCIONAL: Log desde otros lugares (automático en Discord y consola)
+# ✅ FUNCIÓN CENTRAL COMPATIBLE: Desde cualquier nivel
 def custom_log(bot, level: str, message: str, title: str = "Log", scope: str = None):
     if scope:
         logger_msg = f"[{scope}] {message}"
@@ -78,5 +77,27 @@ def custom_log(bot, level: str, message: str, title: str = "Log", scope: str = N
         logger.info(logger_msg)
 
     if bot:
-        status = "Error" if level == "error" else "Advertencia" if level == "warning" else "Activo"
+        status = (
+            "Error" if level == "error" else
+            "Advertencia" if level == "warning" else
+            "Success" if level == "success" else
+            "Activo"
+        )
         return bot.loop.create_task(log_discord(bot, message, status, title, scope))
+
+# ✅ VERSIONES SIMPLIFICADAS
+
+def log_error(message: str, bot=None, title="Error del sistema", scope=None):
+    logger.error(message)
+    if bot:
+        return bot.loop.create_task(log_discord(bot, message, "Error", title, scope))
+
+def log_warning(message: str, bot=None, title="Advertencia", scope=None):
+    logger.warning(message)
+    if bot:
+        return bot.loop.create_task(log_discord(bot, message, "Advertencia", title, scope))
+
+def log_success(message: str, bot=None, title="Éxito", scope=None):
+    logger.info(message)
+    if bot:
+        return bot.loop.create_task(log_discord(bot, message, "Success", title, scope))
