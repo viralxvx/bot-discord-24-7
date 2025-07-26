@@ -1,9 +1,11 @@
+# comandos/publicar_funcion.py
+
 import discord
 from discord.ext import commands
 from discord import app_commands
 from config import CANAL_FUNCIONES, ADMIN_ID
 
-class PublicarFuncion(commands.Cog):
+class PublicarFuncion(commands.Cog):  # ✅ nombre correcto
     def __init__(self, bot):
         self.bot = bot
 
@@ -21,7 +23,7 @@ class PublicarFuncion(commands.Cog):
         titulo: str,
         descripcion: str
     ):
-        # Solo admins autorizados
+        # Verificación de permisos
         if interaction.user.id != ADMIN_ID and not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message(
                 "⛔ No tienes permisos para usar este comando.",
@@ -37,15 +39,25 @@ class PublicarFuncion(commands.Cog):
             )
             return
 
+        # ✨ Formatear bloques para mantener el orden y evitar pegotes
+        bloques = [bloque.strip() for bloque in descripcion.split("\n\n") if bloque.strip()]
+
         embed = discord.Embed(
-            title=titulo,
-            description=descripcion,
+            title=f"🎉 {titulo}",
             color=0x0057b8
         )
         embed.set_thumbnail(url="https://drive.google.com/uc?export=download&id=1LGwse5dI_Q_PpQhhfpLBudteATKoy4Hj")
+
+        if len(bloques) > 1:
+            for i, bloque in enumerate(bloques):
+                embed.add_field(name="‎" if i == 0 else "​", value=bloque, inline=False)
+        else:
+            embed.description = bloques[0]
+
         embed.set_footer(text="Publicado por VXbot | Sistema premium")
         mensaje = await canal_funciones.send(embed=embed)
 
+        # URL pública
         url_funcion_real = f"https://discord.com/channels/{canal_funciones.guild.id}/{canal_funciones.id}/{mensaje.id}"
 
         await interaction.response.send_message(
@@ -54,4 +66,4 @@ class PublicarFuncion(commands.Cog):
         )
 
 async def setup(bot):
-    await bot.add_cog(PublicarFuncion(bot))
+    await bot.add_cog(PublicarFuncion(bot))  # ✅ coincidencia con el nombre de la clase
