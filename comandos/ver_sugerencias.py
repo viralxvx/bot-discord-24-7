@@ -1,141 +1,78 @@
+# comandos/ver_sugerencias.py
+
 import discord
 from discord import app_commands
 from discord.ext import commands
-import redis
-import json
-from datetime import datetime
-from config import REDIS_URL, ADMIN_ID
-
-MAX_SUGERENCIAS = 10
-
-ESTADOS = {
-    "pendiente": ("🔵", discord.Color.blue()),
-    "hecha": ("🟢", discord.Color.green()),
-    "descartada": ("🔴", discord.Color.red())
-}
+from config import ADMIN_ROLE_ID
+from utils.redis_conn import redis_conn
 
 class VerSugerencias(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
-        self.paginas = {}  # Guarda el estado de la paginación por usuario
-        self.mensajes_originales = {}  # Guarda el mensaje original por usuario para edición
 
-    @app_commands.command(name="ver_sugerencias", description="Ver sugerencias enviadas por los usuarios")
+    @app_commands.command(name="ver_sugerencias", description="Revisa las sugerencias del canal 🧠 mejora-vx (solo admins)")
     async def ver_sugerencias(self, interaction: discord.Interaction):
-        if interaction.user.id != ADMIN_ID:
-            await interaction.response.send_message("❌ No tienes permiso para usar este comando.", ephemeral=True)
+        if not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
+            await interaction.response.send_message("❌ No tienes permisos para usar este comando.", ephemeral=True)
             return
 
-        claves = self.redis.keys("sugerencia:*")
+        await interaction.response.defer(ephemeral=True)
+
+        # Buscar claves de sugerencias
+        claves = redis_conn.keys("sugerencia:*")
         if not claves:
-            await interaction.response.send_message("📭 No hay sugerencias registradas.", ephemeral=True)
+            await interaction.followup.send("📭 No hay sugerencias registradas.")
             return
 
-        claves.sort()
-        self.paginas[interaction.user.id] = claves
-        await self.mostrar_pagina(interaction, 0, inicial=True)
-
-    async def mostrar_pagina(self, interaction, pagina, inicial=False):
-        claves = self.paginas.get(interaction.user.id, [])
-        inicio = pagina * MAX_SUGERENCIAS
-        fin = inicio + MAX_SUGERENCIAS
-        claves_pagina = claves[inicio:fin]
-
+        # Crear embed resumen
         embeds = []
-        components = []
-
-        for clave in claves_pagina:
-            sugerencia = self.redis.hgetall(clave)
-            estado = sugerencia.get("estado", "pendiente")
-            contenido = sugerencia.get("contenido", "[Sin contenido]")
-            timestamp = sugerencia.get("fecha", "")
-            autor_id = sugerencia.get("usuario_id", None)
-
-            if autor_id:
-                try:
-                    usuario = await self.bot.fetch_user(int(autor_id))
-                    autor = usuario.mention
-                except:
-                    autor = "Usuario desconocido"
-            else:
-                autor = "Usuario desconocido"
-
-            emoji_estado, color = ESTADOS.get(estado, ("❔", discord.Color.light_grey()))
+        for clave in claves[:10]:  # Solo muestra las primeras 10 para no saturar
+            data = redis_conn.hgetall(clave)
+            estado = data.get("estado", "pendiente")
+            tipo = data.get("tipo", "sin_tipo")
+            contenido = data.get("contenido", "Sin contenido.")
+            autor_id = data.get("user_id", None)
+            fecha = data.get("fecha", "sin fecha")
+            sugerencia_id = clave.split(":")[-1]
 
             embed = discord.Embed(
-                title=f"📬 Sugerencia de {autor}",
-                description=f"{emoji_estado} **Estado:** {estado.capitalize()}\n📅 **Fecha:** {timestamp}\n\n🧠 **Contenido:**\n> {contenido}",
-                color=color
+                title=f"🧠 SUGERENCIA #{sugerencia_id}",
+                description=contenido,
+                color=discord.Color.orange() if estado == "pendiente" else (
+                    discord.Color.green() if estado == "hecha" else discord.Color.red()
+                )
             )
-            embed.set_footer(text=f"Clave Redis: {clave}")
+            embed.add_field(name="Tipo", value=tipo.capitalize(), inline=True)
+            embed.add_field(name="Estado", value=estado.capitalize(), inline=True)
+            embed.add_field(name="Fecha", value=fecha, inline=False)
+            if autor_id:
+                embed.set_footer(text=f"Autor: <@{autor_id}> • ID: {sugerencia_id}")
             embeds.append(embed)
 
-            custom_id_base = clave.replace(":", "_")
-            row = discord.ui.ActionRow(
-                discord.ui.Button(label="Hecha", style=discord.ButtonStyle.success, custom_id=f"hecha_{custom_id_base}"),
-                discord.ui.Button(label="Pendiente", style=discord.ButtonStyle.primary, custom_id=f"pendiente_{custom_id_base}"),
-                discord.ui.Button(label="Descartada", style=discord.ButtonStyle.danger, custom_id=f"descartada_{custom_id_base}")
-            )
-            components.append(row)
+        await interaction.followup.send(embeds=embeds)
 
-        navigation = discord.ui.ActionRow()
-        if inicio > 0:
-            navigation.add_item(discord.ui.Button(label="⬅️ Anterior", style=discord.ButtonStyle.secondary, custom_id="pagina_anterior"))
-        if fin < len(claves):
-            navigation.add_item(discord.ui.Button(label="Siguiente ➡️", style=discord.ButtonStyle.secondary, custom_id="pagina_siguiente"))
-        if navigation.children:
-            components.append(navigation)
-
-        if inicial:
-            message = await interaction.response.send_message(embeds=embeds, components=components, ephemeral=True)
-            self.mensajes_originales[interaction.user.id] = await interaction.original_response()
-        else:
-            msg = self.mensajes_originales.get(interaction.user.id)
-            if msg:
-                await msg.edit(embeds=embeds, components=components)
-
-    @commands.Cog.listener()
-    async def on_interaction(self, interaction: discord.Interaction):
-        if interaction.type != discord.InteractionType.component:
+    @app_commands.command(name="marcar_sugerencia", description="Marca una sugerencia como hecha, pendiente o descartada")
+    @app_commands.describe(
+        id="ID de la sugerencia (visible en el embed)",
+        estado="Nuevo estado a asignar"
+    )
+    @app_commands.choices(estado=[
+        app_commands.Choice(name="✅ Hecha", value="hecha"),
+        app_commands.Choice(name="🟢 Pendiente", value="pendiente"),
+        app_commands.Choice(name="🔴 Descartada", value="descartada"),
+    ])
+    async def marcar_sugerencia(self, interaction: discord.Interaction, id: str, estado: app_commands.Choice[str]):
+        if not any(role.id == ADMIN_ROLE_ID for role in interaction.user.roles):
+            await interaction.response.send_message("❌ No tienes permisos para usar este comando.", ephemeral=True)
             return
 
-        if interaction.user.id != ADMIN_ID:
-            await interaction.response.send_message("❌ Solo administradores pueden cambiar el estado de sugerencias.", ephemeral=True)
+        clave = f"sugerencia:{id}"
+        if not redis_conn.exists(clave):
+            await interaction.response.send_message("❌ No se encontró esa sugerencia.", ephemeral=True)
             return
 
-        custom_id = interaction.data.get("custom_id", "")
-        if custom_id.startswith("pagina_"):
-            pagina_actual = 0
-            claves = self.paginas.get(interaction.user.id, [])
-            if not claves:
-                return
-
-            total_paginas = (len(claves) - 1) // MAX_SUGERENCIAS
-            for i in range(total_paginas + 1):
-                if interaction.message.embeds[0].footer.text.endswith(claves[i * MAX_SUGERENCIAS]):
-                    pagina_actual = i
-                    break
-
-            nueva_pagina = pagina_actual - 1 if "anterior" in custom_id else pagina_actual + 1
-            await self.mostrar_pagina(interaction, nueva_pagina)
-            return
-
-        for estado in ESTADOS:
-            if custom_id.startswith(f"{estado}_"):
-                clave_base = custom_id[len(estado)+1:].replace("_", ":", 1)
-                if self.redis.exists(clave_base):
-                    self.redis.hset(clave_base, "estado", estado)
-                    await interaction.response.send_message(f"✅ Estado actualizado a **{estado.capitalize()}**.", ephemeral=True)
-                    # Refrescar página actual
-                    claves = self.paginas.get(interaction.user.id, [])
-                    for i in range((len(claves) - 1) // MAX_SUGERENCIAS + 1):
-                        if clave_base in claves[i * MAX_SUGERENCIAS:(i + 1) * MAX_SUGERENCIAS]:
-                            await self.mostrar_pagina(interaction, i)
-                            break
-                else:
-                    await interaction.response.send_message("❌ No se encontró la sugerencia en Redis.", ephemeral=True)
-                return
+        redis_conn.hset(clave, "estado", estado.value)
+        await interaction.response.send_message(f"✅ Sugerencia `{id}` marcada como **{estado.name}**.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(VerSugerencias(bot))
