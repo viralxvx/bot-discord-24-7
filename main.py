@@ -129,6 +129,14 @@ async def on_ready():
     # 🧷 Mensaje anclado para testimonios
     await publicar_mensaje_anclado(bot)
 
+    # 🧠 Mensaje anclado para mejora-vx (forzado desde main.py)
+    mejora_cog = bot.get_cog("MejoraVX")
+    if mejora_cog:
+        await mejora_cog.limpiar_y_anclar_mensaje()
+        print("🧠 Mensaje anclado de mejora-vx forzado desde main.py.")
+    else:
+        print("❌ No se encontró el cog MejoraVX para forzar mensaje.")
+
     while True:
         await asyncio.sleep(60)
         print("⏳ Bot sigue vivo...")
