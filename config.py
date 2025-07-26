@@ -45,3 +45,7 @@ CANAL_GPT_ID             = int(get_env_variable("CANAL_GPT"))           # Canal 
 
 # Emojis permitidos en el canal 🧵go-viral
 EMOJIS_PERMITIDOS = ["🔥", "👍"]
+
+# ✅ NUEVA FUNCIÓN PARA MÓDULOS QUE USAN get_env_int()
+def get_env_int(name):
+    return int(get_env_variable(name))
