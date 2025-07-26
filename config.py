@@ -29,6 +29,7 @@ CANAL_FALTAS_ID          = int(get_env_variable("CANAL_FALTAS"))
 CANAL_LOGS_ID            = int(get_env_variable("CANAL_LOGS"))          # 📝logs
 CANAL_REPORTE_ID         = int(get_env_variable("CANAL_REPORTE"))       # ⛔reporte-incumplimiento
 CANAL_COMANDOS_ID        = int(get_env_variable("CANAL_COMANDOS"))
+CANAL_MEJORA_VX_ID       = int(get_env_variable("CANAL_MEJORA_VX"))     # 🧠 Canal de sugerencias públicas
 
 # Alias para compatibilidad premium
 CANAL_ANUNCIOS = int(get_env_variable("CANAL_ANUNCIOS"))
