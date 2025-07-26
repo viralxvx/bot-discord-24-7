@@ -12,11 +12,11 @@ class PublicarFuncion(commands.Cog):
 
     @app_commands.command(
         name="publicar_funcion",
-        description="(Solo admins) Publica una nueva función con formato profesional automáticamente."
+        description="(Solo admins) Publica una nueva función con formato premium (títulos y bloques automáticos)"
     )
     @app_commands.describe(
-        titulo="Título visual que aparece arriba del embed",
-        descripcion="Texto completo, pegado desde cualquier lugar (Word, Notion, Docs, etc.)"
+        titulo="Título visual general del anuncio",
+        descripcion="Texto completo con títulos y contenido. Puedes copiar desde Word o Notion sin preocuparte por el formato."
     )
     async def publicar_funcion(
         self,
@@ -24,6 +24,7 @@ class PublicarFuncion(commands.Cog):
         titulo: str,
         descripcion: str
     ):
+        # Permisos
         if interaction.user.id != ADMIN_ID and not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("⛔ No tienes permisos para usar este comando.", ephemeral=True)
             return
@@ -33,37 +34,42 @@ class PublicarFuncion(commands.Cog):
             await interaction.response.send_message("❌ No se encontró el canal de funciones.", ephemeral=True)
             return
 
-        # 🔍 LIMPIEZA INTELIGENTE
+        # Limpieza básica
         texto = descripcion.replace('"""', '').replace("```", '').strip()
-        texto = re.sub(r'\r\n|\r', '\n', texto)  # Estilo Word a Unix
-        texto = re.sub(r'\n{3,}', '\n\n', texto)  # Reemplaza 3+ saltos por doble
-        texto = re.sub(r'[ \t]+', ' ', texto)  # Espacios y tabs en exceso
+        texto = re.sub(r'\r\n|\r', '\n', texto)
+        texto = re.sub(r'\n{3,}', '\n\n', texto)
+        texto = re.sub(r'[ \t]+', ' ', texto)
 
-        # 📚 INTENTA DETECTAR BLOQUES LÓGICOS
-        bloques = re.split(r'\n\s*\n', texto)
-        bloques = [bloque.strip() for bloque in bloques if bloque.strip()]
+        # Detección de bloques
+        bloques_crudos = re.split(r'\n\s*\n', texto)
+        bloques = [b.strip() for b in bloques_crudos if b.strip()]
 
-        # 🖼️ EMBED
         embed = discord.Embed(
             title=f"🎉 {titulo.strip()}",
             color=0x0057b8
         )
         embed.set_thumbnail(url="https://drive.google.com/uc?export=download&id=1LGwse5dI_Q_PpQhhfpLBudteATKoy4Hj")
 
-        # 🔎 Si es demasiado largo, convierte en campos
-        if len(bloques) == 1:
-            embed.description = bloques[0]
-        else:
-            for i, bloque in enumerate(bloques):
-                # Título invisible para que no se repita
-                embed.add_field(name="‎" if i == 0 else "​", value=bloque, inline=False)
+        # Separación: si el bloque empieza con emoji + texto = título del field
+        for bloque in bloques:
+            lineas = bloque.split('\n')
+            if len(lineas) > 1 and re.match(r'^([^\w\s]{1,2}|[\w\s]{1,4})? ?[\w\*\[]+', lineas[0]):
+                titulo_bloque = lineas[0].strip()
+                contenido = '\n'.join(lineas[1:]).strip()
+                embed.add_field(name=titulo_bloque, value=contenido or "‎", inline=False)
+            else:
+                embed.add_field(name="‎", value=bloque, inline=False)
 
         embed.set_footer(text="Publicado por VXbot | Sistema premium")
         mensaje = await canal_funciones.send(embed=embed)
 
-        url = f"https://discord.com/channels/{canal_funciones.guild.id}/{canal_funciones.id}/{mensaje.id}"
-        await interaction.response.send_message(f"✅ Función publicada con éxito. [Ver en canal]({url})", ephemeral=True)
+        url_funcion = f"https://discord.com/channels/{canal_funciones.guild.id}/{canal_funciones.id}/{mensaje.id}"
+        await interaction.response.send_message(
+            f"✅ ¡Función publicada! [Ver publicación en el canal]({url_funcion})",
+            ephemeral=True
+        )
 
 async def setup(bot):
     await bot.add_cog(PublicarFuncion(bot))
+
 
