@@ -43,9 +43,15 @@ class Testimonio(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         autor_id = interaction.user.id
-        canal = interaction.guild.get_channel(CANAL_TESTIMONIOS)
 
-        if not canal:
+        # Si el comando se ejecuta directamente en el canal de testimonios, publica ahí
+        canal_destino = (
+            interaction.channel
+            if interaction.channel.id == CANAL_TESTIMONIOS
+            else interaction.guild.get_channel(CANAL_TESTIMONIOS)
+        )
+
+        if not canal_destino:
             await interaction.followup.send("❌ No se pudo encontrar el canal de testimonios.", ephemeral=True)
             return
 
@@ -72,10 +78,15 @@ class Testimonio(commands.Cog):
             anonimo=anonimo
         )
 
-        mensaje = await canal.send(embed=embed)
+        # Publicar el embed como mensaje nuevo (no como respuesta)
+        mensaje = await canal_destino.send(embed=embed)
         redis_conn.hset(f"vx:testimonio:{autor_id}", "mensaje_id", mensaje.id)
 
-        await interaction.followup.send("✅ ¡Gracias por compartir tu experiencia! Tu testimonio ya fue publicado en el canal oficial.", ephemeral=True)
+        # Confirmar al usuario en privado
+        if interaction.channel.id == CANAL_TESTIMONIOS:
+            await interaction.followup.send("✅ ¡Gracias! Tu testimonio ya fue publicado arriba 👆", ephemeral=True)
+        else:
+            await interaction.followup.send("✅ ¡Gracias! Tu testimonio fue publicado en 📣 testimonios-vx", ephemeral=True)
 
 
 async def setup(bot):
