@@ -11,9 +11,10 @@ class MejoraVX(commands.Cog):
         self.bot = bot
 
     async def limpiar_y_anclar_mensaje(self):
-        canal = self.bot.get_channel(CANAL_MEJORA_VX_ID)
-        if not canal:
-            log_error("❌ No se encontró el canal 🧠┃mejora-vx.", self.bot, scope="mejora_vx")
+        try:
+            canal = await self.bot.fetch_channel(CANAL_MEJORA_VX_ID)
+        except Exception as e:
+            await log_error(f"No se pudo acceder al canal mejora-vx: {e}", self.bot, scope="mejora_vx")
             return
 
         try:
@@ -27,7 +28,7 @@ class MejoraVX(commands.Cog):
             await log_success("Mensaje fijo publicado y anclado correctamente.", self.bot, title="🧠 Mejora VX", scope="mejora_vx")
 
         except Exception as e:
-            log_error(f"❌ Error en mejora_vx.py: {e}", self.bot, scope="mejora_vx")
+            await log_error(f"❌ Error al limpiar o fijar mensaje en mejora-vx: {e}", self.bot, scope="mejora_vx")
 
     @commands.Cog.listener()
     async def on_ready(self):
