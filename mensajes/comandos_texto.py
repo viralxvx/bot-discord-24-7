@@ -51,3 +51,19 @@ INSTRUCCIONES_COMANDOS = """
 
 ⚠️ **Este canal es exclusivo para comandos.**
 """
+
+# 🔹 NUEVO BLOQUE PARA /sugerencia
+INSTRUCCIONES_SUGERENCIAS = """
+🧠 **Sistema de Sugerencias VX**
+
+¿Tienes una idea para mejorar el sistema o automatizar funciones?
+
+Usa el comando:
+`/sugerencia` → Envía una mejora pública al canal 🧠 mejora-vx
+
+👨‍💼 Solo administradores:
+`/ver_sugerencias` → Ver últimas ideas
+`/marcar_sugerencia` → Actualizar estado (hecha, pendiente, descartada)
+
+Gracias por construir con nosotros un sistema más inteligente.
+"""
