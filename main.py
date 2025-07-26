@@ -4,6 +4,7 @@ import os
 import asyncio
 from datetime import datetime, timezone
 from utils.logger import custom_log
+from startup.post_fijado import publicar_mensaje_anclado  # NUEVO IMPORT para mensaje anclado
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -31,22 +32,21 @@ EXTENSIONES = [
     "comandos.novedades",
     "comandos.publicar_funcion",
     "canales.soporte",  # Importante: dejar este nombre así para el get_cog
-    "comandos.migrar_paneles",   # <--- PANEL PREMIUM MIGRATION
-    "comandos.forzar_panel",     # <--- NUEVO: COMANDO PREMIUM INDIVIDUAL
-    "comandos.idea_viral_proxy",  # <--- NUEVO comando proxy hacia el microservicio
+    "comandos.migrar_paneles",   # PANEL PREMIUM MIGRATION
+    "comandos.forzar_panel",     # NUEVO: COMANDO PREMIUM INDIVIDUAL
+    "comandos.idea_viral_proxy",  # NUEVO comando proxy hacia el microservicio
     "comandos.hablar",
+    "comandos.testimonio",        # NUEVO: Comando de testimonio
+    "comandos.ver_testimonios"    # NUEVO: Comando admin de testimonios
 ]
 
-log_message = None  # Mensaje embed en canal de logs
-logs = []  # Lista para mensaje embed y consola Railway
+log_message = None
+logs = []
 
 def get_current_time():
     return datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
 
 async def sincronizar_todos_los_paneles(bot):
-    """
-    Recorre todos los humanos del servidor y sincroniza sus paneles premium.
-    """
     await bot.wait_until_ready()
     try:
         from utils.panel_embed import actualizar_panel_faltas
@@ -71,7 +71,6 @@ async def on_ready():
 
     logs.append(f"✅ Bot conectado como **{bot.user}**")
     logs.append(f"Hora: {get_current_time()}")
-
     print(f"✅ Bot conectado como {bot.user}")
     print(f"Hora: {get_current_time()}")
 
@@ -100,7 +99,6 @@ async def on_ready():
         logs.append(error_msg)
         print(error_msg)
 
-    # 🔧 FORZAMOS iniciar_soporte() tras cargar todas las extensiones
     await ejecutar_iniciar_soporte()
 
     logs_message = "\n".join(logs)
@@ -121,18 +119,19 @@ async def on_ready():
     if log_message:
         await log_message.edit(content=logs_message)
 
-    # === Sincroniza paneles premium al iniciar (nunca más paneles viejos) ===
     print("🔄 Sincronizando TODOS los paneles premium de faltas...")
     await sincronizar_todos_los_paneles(bot)
     print("✅ Sincronización de paneles completada.")
+
+    # 🧷 Mensaje anclado para testimonios
+    await publicar_mensaje_anclado(bot)
 
     while True:
         await asyncio.sleep(60)
         print("⏳ Bot sigue vivo...")
 
-# 🔁 FUNCIÓN adicional para ejecutar iniciar_soporte()
 async def ejecutar_iniciar_soporte():
-    await asyncio.sleep(2)  # Por si aún no terminó de cargar bien el bot
+    await asyncio.sleep(2)
     soporte_cog = bot.get_cog("Soporte")
     if soporte_cog:
         print("[DEBUG] Ejecutando iniciar_soporte desde main.py...")
@@ -140,7 +139,6 @@ async def ejecutar_iniciar_soporte():
     else:
         print("[ADVERTENCIA] No se encontró el cog 'Soporte'. No se pudo ejecutar iniciar_soporte().")
 
-# === RESTRICCIÓN DE CANAL FALTAS SOLO PARA PANELES (NO HUMANOS) ===
 @bot.event
 async def on_message(message):
     try:
