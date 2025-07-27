@@ -19,12 +19,12 @@ def analizar_bloque(texto):
         return {
             "telefono": telefono.group().replace(" ", "") if telefono else "",
             "email": email.group() if email else "",
-            "nombre": "",  # No se puede deducir en este tipo de PDF
-            "apellido": ""  # idem
+            "nombre": "",
+            "apellido": ""
         }
     return None
 
-async def extraer_contactos_desde_pdf(ruta_pdf, user_id, progreso_callback=None):
+async def extraer_contactos_desde_pdf(ruta_pdf, user_id, registrar_progreso=None):
     contactos = []
     try:
         doc = fitz.open(ruta_pdf)
@@ -43,17 +43,16 @@ async def extraer_contactos_desde_pdf(ruta_pdf, user_id, progreso_callback=None)
                 contacto = analizar_bloque(bloque)
                 if contacto:
                     contactos.append(contacto)
-        except Exception as e:
+        except Exception:
             continue
 
-        if progreso_callback:
+        if registrar_progreso:
             porcentaje = int((pagina_actual / total_paginas) * 100)
             faltan_estimado = max(1, total_paginas - pagina_actual)
-            await progreso_callback(pagina_actual, total_paginas, porcentaje, faltan_estimado)
+            await registrar_progreso(pagina_actual, total_paginas, porcentaje, faltan_estimado)
 
-        await asyncio.sleep(0.05)  # Simula tiempo
+        await asyncio.sleep(0.05)
 
-    # Eliminar duplicados por teléfono o email
     vistos = set()
     unicos = []
     for c in contactos:
@@ -62,7 +61,6 @@ async def extraer_contactos_desde_pdf(ruta_pdf, user_id, progreso_callback=None)
             vistos.add(clave)
             unicos.append(c)
 
-    # Guardar en Redis
     nombre_archivo = os.path.basename(ruta_pdf)
     clave_redis = f"pdf:{user_id}:{nombre_archivo}:contactos"
     redis_conn.set(clave_redis, json.dumps(unicos))
