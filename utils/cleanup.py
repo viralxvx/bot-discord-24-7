@@ -24,3 +24,10 @@ async def limpiar_canal_tras_una_hora(bot, canal_id: int, mensaje_bienvenida_id:
         custom_log(bot, "CLEANUP", "INFO", f"🧹 Canal {canal.name} limpiado. Solo queda el mensaje de bienvenida.")
     except Exception as e:
         custom_log(bot, "CLEANUP", "ERROR", f"❌ Error al limpiar canal {canal_id}: {e}")
+
+
+def agendar_eliminacion_mensaje(bot, canal_id: int, mensaje_bienvenida_id: int):
+    """
+    Dispara la tarea asincrónica para limpiar el canal luego de 1 hora.
+    """
+    bot.loop.create_task(limpiar_canal_tras_una_hora(bot, canal_id, mensaje_bienvenida_id))
