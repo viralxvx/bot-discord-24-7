@@ -14,7 +14,7 @@ MAX_CONTACTOS_POR_PÁGINA = 50
 REGEX_TELEFONO = re.compile(r'(\+1|809|829|849|1829)[0-9\-\+ ]{7,}')
 REGEX_UBICACION = re.compile(r'Provincia:\s*(.*?)\s*\|\s*Circ:\s*(\d+)\s*\|\s*Municipio:\s*(.*?)\s*(\||$)')
 
-async def extraer_contactos_desde_pdf(ruta_pdf: str, guardar_imagenes: bool = True, carpeta_salida: str = "data/contactos", registrar_progreso=None):
+async def extraer_contactos_desde_pdf(ruta_pdf: str, guardar_imagenes: bool = True, carpeta_salida: str = "data/contactos", registrar_progreso=None, clave_usuario: str = None):
     inicio = time.time()
     doc = fitz.open(ruta_pdf)
     total_paginas = len(doc)
@@ -74,7 +74,8 @@ async def extraer_contactos_desde_pdf(ruta_pdf: str, guardar_imagenes: bool = Tr
             else:
                 registrar_progreso(**progreso_info)
 
-    clave = f"pdf:{os.path.basename(ruta_pdf)}:contactos"
+    nombre_base = os.path.basename(ruta_pdf)
+    clave = f"pdf:{clave_usuario}:{nombre_base}:contactos" if clave_usuario else f"pdf:{nombre_base}:contactos"
     redis_conn.set(clave, json.dumps(contactos))
     redis_conn.expire(clave, 3600)
 
@@ -132,7 +133,7 @@ if __name__ == "__main__":
         print("[PROGRESO]", kwargs)
 
     async def run():
-        contactos = await extraer_contactos_desde_pdf("/mnt/data/Test.pdf", registrar_progreso=test_log)
+        contactos = await extraer_contactos_desde_pdf("/mnt/data/Test.pdf", registrar_progreso=test_log, clave_usuario="testuser")
         for c in contactos:
             print(c)
         print(f"Total: {len(contactos)} contactos procesados.")
