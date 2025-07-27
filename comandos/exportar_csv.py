@@ -15,16 +15,18 @@ class ExportarCSV(commands.Cog):
     async def exportar_csv(self, interaction: discord.Interaction, nombre_pdf: str):
         await interaction.response.defer(thinking=True)
 
+        user_id = str(interaction.user.id)
+
         try:
-            ruta_csv = exportar_contactos_csv(nombre_pdf)
+            ruta_csv = exportar_contactos_csv(nombre_pdf, user_id)
             await interaction.followup.send(
                 content=f"✅ Aquí está el archivo CSV generado para `{nombre_pdf}`:",
                 file=discord.File(ruta_csv, filename=f"contactos_{nombre_pdf.replace('.pdf', '')}.csv")
             )
-            custom_log(f"📤 CSV exportado: {nombre_pdf}")
+            custom_log("EXPORTAR_CSV", "INFO", f"📤 CSV exportado para {user_id} desde {nombre_pdf}")
         except Exception as e:
             await interaction.followup.send(f"❌ Error al exportar CSV: {e}")
-            custom_log(f"❌ Error al exportar CSV: {e}")
+            custom_log("EXPORTAR_CSV", "ERROR", f"❌ Error al exportar CSV: {e}")
 
 async def setup(bot):
     await bot.add_cog(ExportarCSV(bot))
