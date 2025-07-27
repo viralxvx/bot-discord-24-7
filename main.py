@@ -44,6 +44,7 @@ EXTENSIONES = [
     "canales.importar_pdf",        # Canal PDF to CSV 
     "comandos.procesar_pdf",
     "comandos.exportar_csv",
+    "comandos.procesar_pdf_url",
 ]
 
 log_message = None
