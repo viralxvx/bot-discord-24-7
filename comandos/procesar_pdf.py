@@ -32,12 +32,20 @@ class ProcesarPDF(commands.Cog):
         await archivo.save(ruta_local)
 
         try:
-            await interaction.followup.send(f"⏳ Procesando archivo: `{archivo.filename}`... Esto puede tardar varios minutos dependiendo del tamaño.")
+            progreso_msg = await interaction.followup.send(f"⏳ Procesando archivo: `{archivo.filename}`... Esto puede tardar varios minutos dependiendo del tamaño.")
 
             doc = fitz.open(ruta_local)
             total_paginas = len(doc)
             tiempo_inicio = time.time()
             fotos_detectadas = 0
+
+            def formato_tiempo(segundos):
+                if segundos >= 3600:
+                    return f"{segundos // 3600}h {(segundos % 3600) // 60}m"
+                elif segundos >= 60:
+                    return f"{segundos // 60}m {segundos % 60}s"
+                else:
+                    return f"{segundos}s"
 
             async def registrar_progreso(paginas, total, progreso, faltan):
                 nonlocal fotos_detectadas
@@ -51,10 +59,13 @@ class ProcesarPDF(commands.Cog):
                 llenos = int((progreso / 100) * bloques)
                 vacios = bloques - llenos
                 barra = "█" * llenos + "░" * vacios
+                estado = "✅" if progreso > 0 else "❌"
 
-                msg = f"📊 Progreso: [{barra}] {progreso}% | Página {paginas}/{total} | ⏳ Faltan: {faltan} seg."
-                await interaction.followup.send(msg)
-                custom_log("INFO", msg)
+                tiempo_legible = formato_tiempo(faltan)
+                msg = f"{estado} Progreso: [{barra}] {progreso}% | Página {paginas}/{total} | ⏳ Faltan: {tiempo_legible}"
+
+                await progreso_msg.edit(content=msg)
+                custom_log("PROCESAR_PDF", "INFO", msg)
 
             contactos = await extraer_contactos_desde_pdf(
                 ruta_local,
@@ -62,18 +73,19 @@ class ProcesarPDF(commands.Cog):
             )
 
             tiempo_total = int(time.time() - tiempo_inicio)
+            tiempo_legible = formato_tiempo(tiempo_total)
             resumen = (
                 f"✅ Se procesaron **{len(contactos)} contactos** desde `{archivo.filename}`\n"
                 f"📄 Total de páginas: {total_paginas}\n"
                 f"🖼️ Fotos detectadas: {fotos_detectadas}\n"
-                f"⏱️ Tiempo total: {tiempo_total} segundos"
+                f"⏱️ Tiempo total: {tiempo_legible}"
             )
-            await interaction.followup.send(resumen)
-            custom_log("INFO", resumen)
+            await progreso_msg.edit(content=resumen)
+            custom_log("PROCESAR_PDF", "INFO", resumen)
 
         except Exception as e:
             await interaction.followup.send(f"❌ Error al procesar el PDF: {e}")
-            custom_log("ERROR", f"❌ Error al procesar PDF: {e}")
+            custom_log("PROCESAR_PDF", "ERROR", f"❌ Error al procesar PDF: {e}")
 
 async def setup(bot):
     await bot.add_cog(ProcesarPDF(bot))
