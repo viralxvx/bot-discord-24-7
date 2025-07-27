@@ -8,8 +8,8 @@ from utils.redis_conn import redis_conn
 # =============================
 # EXPORTADOR A CSV DESDE REDIS
 # =============================
-def exportar_contactos_csv(nombre_archivo_pdf: str) -> str:
-    clave_redis = f"pdf:{nombre_archivo_pdf}:contactos"
+def exportar_contactos_csv(nombre_archivo_pdf: str, user_id: str) -> str:
+    clave_redis = f"pdf:{user_id}:{nombre_archivo_pdf}:contactos"
     datos_json = redis_conn.get(clave_redis)
 
     if not datos_json:
@@ -18,11 +18,12 @@ def exportar_contactos_csv(nombre_archivo_pdf: str) -> str:
     contactos = json.loads(datos_json)
 
     campos = [
-        "nombre", "telefono", "fecha_ingreso", "fecha_auditoria", "provincia", "municipio", "circunscripcion", "foto"
+        "nombre", "telefono", "fecha_ingreso", "fecha_auditoria",
+        "provincia", "municipio", "circunscripcion", "foto"
     ]
 
     tmp_dir = tempfile.gettempdir()
-    ruta_csv = os.path.join(tmp_dir, f"contactos_{nombre_archivo_pdf}.csv")
+    ruta_csv = os.path.join(tmp_dir, f"contactos_{user_id}_{nombre_archivo_pdf}.csv")
 
     with open(ruta_csv, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=campos)
@@ -36,5 +37,5 @@ def exportar_contactos_csv(nombre_archivo_pdf: str) -> str:
 # TEST LOCAL (opcional)
 # =============================
 if __name__ == "__main__":
-    ruta = exportar_contactos_csv("Test.pdf")
+    ruta = exportar_contactos_csv("Test.pdf", "123456")
     print(f"CSV generado: {ruta}")
