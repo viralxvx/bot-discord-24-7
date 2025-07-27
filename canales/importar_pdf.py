@@ -3,7 +3,12 @@ import discord
 from discord.ext import commands
 import os
 from mensajes.pdf_mensajes import mensaje_anclado_pdf
-from utils.logger import custom_log
+
+try:
+    from utils.logger import custom_log
+    usar_logger = True
+except:
+    usar_logger = False
 
 CANAL_IMPORTAR_PDF = int(os.getenv("CANAL_IMPORTAR_PDF"))
 
@@ -16,7 +21,7 @@ class ImportarPDF(commands.Cog):
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_IMPORTAR_PDF)
         if not canal:
-            custom_log("ERROR", "❌ Canal de importación PDF no encontrado.")
+            log("ERROR", "❌ Canal de importación PDF no encontrado.")
             return
 
         try:
@@ -30,9 +35,18 @@ class ImportarPDF(commands.Cog):
 
             mensaje = await canal.send(mensaje_anclado_pdf())
             await mensaje.pin()
-            custom_log("INFO", "📌 Mensaje anclado correctamente en canal de importación PDF.")
+            log("INFO", "📌 Mensaje anclado correctamente en canal de importación PDF.")
         except Exception as e:
-            custom_log("ERROR", f"❌ Error al fijar mensaje PDF: {e}")
+            log("ERROR", f"❌ Error al fijar mensaje PDF: {e}")
+
+def log(nivel, mensaje):
+    if usar_logger:
+        try:
+            custom_log(nivel, mensaje)
+        except Exception as err:
+            print(f"[LOGGER ERROR] {nivel}: {mensaje} | Fallo: {err}")
+    else:
+        print(f"[{nivel}] {mensaje}")
 
 async def setup(bot):
     await bot.add_cog(ImportarPDF(bot))
