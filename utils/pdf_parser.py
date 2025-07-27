@@ -52,8 +52,8 @@ if name == "__main__":
     import asyncio
 
     async def run():
-        data = await extraer_contactos_desde_pdf("/mnt/data/Test.pdf", user_id="preview")
-        for d in data:
-            print(d)
+        contactos = await extraer_contactos_desde_pdf("/mnt/data/Test.pdf", user_id="test_user")
+        for contacto in contactos:
+            print(contacto)
 
     asyncio.run(run())
