@@ -85,7 +85,7 @@ class ProcesarPDFUrl(commands.Cog):
                 await interaction.followup.send(msg)
                 log("INFO", msg)
 
-            contactos = extraer_contactos_desde_pdf(
+            contactos = await extraer_contactos_desde_pdf(
                 ruta_local,
                 registrar_progreso=registrar_progreso
             )
