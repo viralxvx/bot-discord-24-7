@@ -1,8 +1,9 @@
-# comandos/exportar_csv.py (con carga vía API HTTP si es grande)
+# comandos/exportar_csv.py (valida que el CSV no esté vacío antes de exportar)
 import discord
 from discord import app_commands
 from discord.ext import commands
 import os
+import csv
 import requests
 from utils.export_csv import exportar_contactos_csv
 from utils.logger import custom_log
@@ -20,11 +21,19 @@ class ExportarCSV(commands.Cog):
 
         try:
             ruta_csv = exportar_contactos_csv(nombre_pdf, user_id)
+
+            # Verificar si el archivo CSV tiene al menos una fila de datos además del encabezado
+            with open(ruta_csv, "r", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                filas = list(reader)
+                if len(filas) <= 1:
+                    await interaction.followup.send("⚠️ El archivo CSV está vacío. No hay contactos para exportar.")
+                    return
+
             tamano_mb = os.path.getsize(ruta_csv) / (1024 * 1024)
             nombre_remoto = f"contactos_{user_id}_{nombre_pdf.replace('.pdf','')}.csv"
 
             if tamano_mb > 7.8:
-                # Subir por API HTTP
                 with open(ruta_csv, "rb") as f:
                     files = {"file": (nombre_remoto, f)}
                     headers = {"Authorization": f"Bearer {os.getenv('HOSTGATOR_TOKEN')}"}
