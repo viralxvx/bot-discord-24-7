@@ -47,6 +47,7 @@ EXTENSIONES = [
     "comandos.procesar_pdf_url",
     "comandos.validar_link_pdf",
     "comandos.validar_telefonos_csv",
+    "cogs.pdf_listener",
 ]
 
 log_message = None
