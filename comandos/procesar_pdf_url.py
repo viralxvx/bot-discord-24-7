@@ -9,20 +9,8 @@ import time
 import fitz
 from utils.pdf_parser import extraer_contactos_desde_pdf
 
-try:
-    from utils.logger import custom_log
-    usar_log = True
-except:
-    usar_log = False
+from utils.logger import custom_log
 
-def log(level, message):
-    if usar_log:
-        try:
-            custom_log("PROCESAR_PDF_URL", level, message)
-        except Exception as e:
-            print(f"[{level}] {message} (LOG ERROR: {e})")
-    else:
-        print(f"[{level}] {message}")
 
 def formato_tiempo(segundos):
     if segundos >= 3600:
@@ -60,12 +48,12 @@ class ProcesarPDFUrl(commands.Cog):
 
                     if status != 200:
                         await progreso_msg.edit(content=f"❌ No se pudo descargar el archivo. Código HTTP {status}.")
-                        log("ERROR", f"❌ Código {status} al intentar acceder al link: {link}")
+                        custom_log("PROCESAR_PDF_URL", "ERROR", f"❌ Código {status} al intentar acceder al link: {link}")
                         return
 
                     if any(x in content_type for x in ["html", "text"]):
                         await progreso_msg.edit(content=f"⚠️ El archivo descargado **no es un PDF válido**. Tipo detectado: `{content_type}`")
-                        log("ERROR", f"❌ Contenido HTML descargado desde: {link} ({content_type})")
+                        custom_log("PROCESAR_PDF_URL", "ERROR", f"❌ Contenido HTML descargado desde: {link} ({content_type})")
                         return
 
                     with open(ruta_local, "wb") as f:
@@ -94,11 +82,12 @@ class ProcesarPDFUrl(commands.Cog):
                 msg = f"{estado} Progreso: [{barra}] {progreso}% | Página {paginas}/{total} | ⏳ Faltan: {tiempo_legible}"
 
                 await progreso_msg.edit(content=msg)
-                log("INFO", msg)
+                custom_log("PROCESAR_PDF_URL", "INFO", msg)
 
             contactos = await extraer_contactos_desde_pdf(
                 ruta_local,
-                registrar_progreso=registrar_progreso
+                registrar_progreso=registrar_progreso,
+                clave_usuario=str(interaction.user.id)
             )
 
             tiempo_total = int(time.time() - tiempo_inicio)
@@ -110,11 +99,11 @@ class ProcesarPDFUrl(commands.Cog):
                 f"⏱️ Tiempo total: {tiempo_legible}"
             )
             await progreso_msg.edit(content=resumen)
-            log("INFO", resumen)
+            custom_log("PROCESAR_PDF_URL", "INFO", resumen)
 
         except Exception as e:
             await interaction.followup.send(f"❌ Error al procesar PDF: {e}")
-            log("ERROR", f"❌ Excepción durante procesamiento PDF desde URL: {e}")
+            custom_log("PROCESAR_PDF_URL", "ERROR", f"❌ Excepción durante procesamiento PDF desde URL: {e}")
 
 async def setup(bot):
     await bot.add_cog(ProcesarPDFUrl(bot))
