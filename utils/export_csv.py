@@ -17,7 +17,10 @@ def exportar_contactos_csv(nombre_archivo_pdf: str) -> str:
 
     contactos = json.loads(datos_json)
 
-    campos = ["nombre", "telefono", "fecha_ingreso", "fecha_auditoria", "foto"]
+    campos = [
+        "nombre", "telefono", "fecha_ingreso", "fecha_auditoria", "provincia", "municipio", "circunscripcion", "foto"
+    ]
+
     tmp_dir = tempfile.gettempdir()
     ruta_csv = os.path.join(tmp_dir, f"contactos_{nombre_archivo_pdf}.csv")
 
