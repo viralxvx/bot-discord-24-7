@@ -8,9 +8,7 @@ import tempfile
 import time
 import fitz
 from utils.pdf_parser import extraer_contactos_desde_pdf
-
 from utils.logger import custom_log
-
 
 def formato_tiempo(segundos):
     if segundos >= 3600:
@@ -48,12 +46,12 @@ class ProcesarPDFUrl(commands.Cog):
 
                     if status != 200:
                         await progreso_msg.edit(content=f"❌ No se pudo descargar el archivo. Código HTTP {status}.")
-                        custom_log("PROCESAR_PDF_URL", "ERROR", f"❌ Código {status} al intentar acceder al link: {link}")
+                        custom_log(self.bot, "PROCESAR_PDF_URL", "ERROR", f"❌ Código {status} al intentar acceder al link: {link}")
                         return
 
                     if any(x in content_type for x in ["html", "text"]):
                         await progreso_msg.edit(content=f"⚠️ El archivo descargado **no es un PDF válido**. Tipo detectado: `{content_type}`")
-                        custom_log("PROCESAR_PDF_URL", "ERROR", f"❌ Contenido HTML descargado desde: {link} ({content_type})")
+                        custom_log(self.bot, "PROCESAR_PDF_URL", "ERROR", f"❌ Contenido HTML descargado desde: {link} ({content_type})")
                         return
 
                     with open(ruta_local, "wb") as f:
@@ -82,7 +80,7 @@ class ProcesarPDFUrl(commands.Cog):
                 msg = f"{estado} Progreso: [{barra}] {progreso}% | Página {paginas}/{total} | ⏳ Faltan: {tiempo_legible}"
 
                 await progreso_msg.edit(content=msg)
-                custom_log("PROCESAR_PDF_URL", "INFO", msg)
+                custom_log(self.bot, "PROCESAR_PDF_URL", "INFO", msg)
 
             contactos = await extraer_contactos_desde_pdf(
                 ruta_local,
@@ -99,11 +97,11 @@ class ProcesarPDFUrl(commands.Cog):
                 f"⏱️ Tiempo total: {tiempo_legible}"
             )
             await progreso_msg.edit(content=resumen)
-            custom_log("PROCESAR_PDF_URL", "INFO", resumen)
+            custom_log(self.bot, "PROCESAR_PDF_URL", "INFO", resumen)
 
         except Exception as e:
             await interaction.followup.send(f"❌ Error al procesar PDF: {e}")
-            custom_log("PROCESAR_PDF_URL", "ERROR", f"❌ Excepción durante procesamiento PDF desde URL: {e}")
+            custom_log(self.bot, "PROCESAR_PDF_URL", "ERROR", f"❌ Excepción durante procesamiento PDF desde URL: {e}")
 
 async def setup(bot):
     await bot.add_cog(ProcesarPDFUrl(bot))
