@@ -1,4 +1,3 @@
-# comandos/procesar_pdf.py
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -9,10 +8,11 @@ from utils.pdf_parser import extraer_contactos_desde_pdf
 from utils.logger import custom_log
 from utils.export_csv import exportar_contactos_csv
 from utils.gofile import subir_a_gofile
-from utils.discord_tools import generar_barra_progreso, limpiar_canal_despues
+from utils.progreso import generar_barra_progreso  # ✅ Corrección aquí
+from utils.discord_tools import limpiar_canal_despues  # ✅ Separado correctamente
 
 class ProcesarPDF(commands.Cog):
-    def __init__(self, bot):
+    def init__(self, bot):  # ✅ Corrección: __init en vez de init
         self.bot = bot
 
     @app_commands.command(name="procesar_pdf", description="Convierte un PDF a CSV extrayendo contactos")
