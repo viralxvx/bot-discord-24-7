@@ -4,123 +4,71 @@ from discord import app_commands
 from discord.ext import commands
 import os
 import aiohttp
-import tempfile
-import time
-import fitz
-from utils.pdf_parser import extraer_contactos_desde_pdf, extraer_datos_genericos_desde_pdf
+from utils.gofile import subir_a_gofile
+from utils.pdf_parser import extraer_contactos_desde_pdf
 from utils.logger import custom_log
-
-def formato_tiempo(segundos):
-    if segundos >= 3600:
-        return f"{segundos // 3600}h {(segundos % 3600) // 60}m"
-    elif segundos >= 60:
-        return f"{segundos // 60}m {segundos % 60}s"
-    else:
-        return f"{segundos}s"
-
-CANAL_IMPORTAR_PDF = os.getenv("CANAL_IMPORTAR_PDF")
+from utils.progreso import crear_barra_progreso
+from utils.export_csv import exportar_contactos_csv
+import asyncio
 
 class ProcesarPDFUrl(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="procesar_pdf_url", description="Procesa un PDF desde una URL directa (Dropbox, Drive, etc.)")
-    @app_commands.describe(link="URL directa del PDF")
-    async def procesar_pdf_url(self, interaction: discord.Interaction, link: str):
-        if str(interaction.channel_id) != CANAL_IMPORTAR_PDF:
-            await interaction.response.send_message("❌ Este comando solo puede usarse en el canal autorizado.", ephemeral=True)
-            return
-
+    @app_commands.command(name="procesar_pdf_url", description="Procesa un PDF desde una URL y extrae contactos")
+    @app_commands.describe(url="URL del archivo PDF")
+    async def procesar_pdf_url(self, interaction: discord.Interaction, url: str):
         await interaction.response.defer(thinking=True)
+        user_id = str(interaction.user.id)
 
-        nombre_pdf = link.split("/")[-1].split("?")[0] or "archivo.pdf"
-        ruta_local = os.path.join(tempfile.gettempdir(), nombre_pdf)
+        # Crear mensaje de progreso inicial
+        progreso_msg = await interaction.followup.send("🔄 Procesando archivo...")
 
         try:
-            canal = interaction.channel
-            progreso_msg = await canal.send(f"⏳ Procesando archivo: `{nombre_pdf}` desde enlace externo...")
+            # Descargar el archivo PDF
+            nombre_archivo = f"pdf_{user_id}.pdf"
+            ruta_pdf = f"temp/{nombre_archivo}"
 
             async with aiohttp.ClientSession() as session:
-                async with session.get(link) as resp:
-                    status = resp.status
-                    content_type = resp.headers.get("Content-Type", "").lower()
-
-                    if status != 200:
-                        await canal.send(f"❌ No se pudo descargar el archivo. Código HTTP {status}.")
-                        custom_log(self.bot, "PROCESAR_PDF_URL", "ERROR", f"❌ Código {status} al intentar acceder al link: {link}")
-                        return
-
-                    if any(x in content_type for x in ["html", "text"]):
-                        await canal.send(f"⚠️ El archivo descargado **no es un PDF válido**. Tipo detectado: `{content_type}`")
-                        custom_log(self.bot, "PROCESAR_PDF_URL", "ERROR", f"❌ Contenido HTML descargado desde: {link} ({content_type})")
-                        return
-
-                    with open(ruta_local, "wb") as f:
+                async with session.get(url) as resp:
+                    if resp.status != 200:
+                        raise Exception("No se pudo descargar el archivo PDF")
+                    with open(ruta_pdf, "wb") as f:
                         f.write(await resp.read())
 
-            doc = fitz.open(ruta_local)
-            total_paginas = len(doc)
-            tiempo_inicio = time.time()
-            fotos_detectadas = 0
+            await progreso_msg.edit(content="✅ Archivo descargado. Iniciando extracción de datos...")
 
-            async def registrar_progreso(paginas, total, progreso, faltan):
-                nonlocal fotos_detectadas
-                try:
-                    pagina = doc[paginas - 1]
-                    fotos_detectadas += len(pagina.get_images(full=True))
-                except:
-                    pass
+            async def registrar_progreso(pagina_actual, total_paginas):
+                porcentaje = int((pagina_actual / total_paginas) * 100)
+                barra = crear_barra_progreso(porcentaje)
+                await progreso_msg.edit(content=f"[Activo] ✅ Progreso: {barra} {porcentaje}% | Página {pagina_actual}/{total_paginas}")
 
-                bloques = 10
-                llenos = int((progreso / 100) * bloques)
-                vacios = bloques - llenos
-                barra = "█" * llenos + "░" * vacios
-                estado = "✅" if progreso > 0 else "❌"
+            contactos = await extraer_contactos_desde_pdf(ruta_pdf, user_id, registrar_progreso)
 
-                tiempo_legible = formato_tiempo(faltan)
-                msg = f"{estado} Progreso: [{barra}] {progreso}% | Página {paginas}/{total} | ⏳ Faltan: {tiempo_legible}"
+            if not contactos:
+                await progreso_msg.edit(content="⚠️ No se encontraron contactos válidos en el PDF.")
+                return
 
-                try:
-                    await progreso_msg.edit(content=msg)
-                except:
-                    await canal.send(msg)
-                custom_log(self.bot, "PROCESAR_PDF_URL", "INFO", msg)
+            # Exportar CSV
+            ruta_csv = exportar_contactos_csv(nombre_archivo, user_id)
+            await progreso_msg.edit(content=f"✅ Extracción completada. Subiendo CSV a gofile.io...")
 
-            contactos = await extraer_contactos_desde_pdf(
-                ruta_local,
-                registrar_progreso=registrar_progreso,
-                clave_usuario=str(interaction.user.id)
-            )
+            # Subir CSV a gofile.io
+            url_descarga = await subir_a_gofile(ruta_csv)
 
-            tiempo_total = int(time.time() - tiempo_inicio)
-            tiempo_legible = formato_tiempo(tiempo_total)
+            embed = discord.Embed(title="📄 PDF procesado exitosamente", color=0x2ecc71)
+            embed.add_field(name="Total contactos", value=str(len(contactos)), inline=True)
+            embed.add_field(name="Descargar CSV", value=f"[Haz clic aquí]({url_descarga})", inline=False)
+            embed.set_footer(text="Gracias por usar VXbot | El canal será limpiado en 1 hora")
 
-            if contactos and len(contactos) > 0:
-                resumen = (
-                    f"✅ Se procesaron **{len(contactos)} contactos** desde `{nombre_pdf}`\n"
-                    f"📄 Total de páginas: {total_paginas}\n"
-                    f"🖼️ Fotos detectadas: {fotos_detectadas}\n"
-                    f"⏱️ Tiempo total: {tiempo_legible}"
-                )
-                await progreso_msg.edit(content=resumen)
-                custom_log(self.bot, "PROCESAR_PDF_URL", "INFO", resumen)
-            else:
-                await progreso_msg.edit(content=f"⚠️ No se encontraron contactos estructurados. Intentando modo genérico...")
-                genericos = await extraer_datos_genericos_desde_pdf(ruta_local, clave_usuario=str(interaction.user.id))
-                if genericos:
-                    resumen = (
-                        f"✅ Se detectaron **{len(genericos)} registros genéricos** en `{nombre_pdf}`\n"
-                        f"🧠 Extraídos desde texto libre en {total_paginas} páginas\n"
-                        f"⏱️ Tiempo total: {tiempo_legible}"
-                    )
-                    await progreso_msg.edit(content=resumen)
-                    custom_log(self.bot, "PROCESAR_PDF_URL", "INFO", resumen)
-                else:
-                    await progreso_msg.edit(content="❌ No se encontraron datos útiles en el PDF.")
-                    custom_log(self.bot, "PROCESAR_PDF_URL", "WARNING", f"PDF sin datos extraíbles: {nombre_pdf}")
+            await progreso_msg.edit(content=None, embed=embed)
+
+            # Agendar limpieza del canal
+            await asyncio.sleep(3600)
+            await progreso_msg.delete()
 
         except Exception as e:
-            await canal.send(f"❌ Error al procesar PDF: {e}")
+            await progreso_msg.edit(content=f"❌ Error al procesar PDF: {e}")
             custom_log(self.bot, "PROCESAR_PDF_URL", "ERROR", f"❌ Excepción durante procesamiento PDF desde URL: {e}")
 
 async def setup(bot):
