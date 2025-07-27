@@ -1,67 +1,38 @@
-# comandos/procesar_pdf_url.py
+# comandos/procesar_pdf.py
 import discord
 from discord import app_commands
 from discord.ext import commands
 import os
-import aiohttp
 import tempfile
 import time
 import fitz
 from utils.pdf_parser import extraer_contactos_desde_pdf
-
-try:
-    from utils.logger import custom_log
-    usar_log = True
-except:
-    usar_log = False
-
-def log(level, message):
-    if usar_log:
-        try:
-            custom_log(level, message)
-        except Exception as e:
-            print(f"[{level}] {message} (LOG ERROR: {e})")
-    else:
-        print(f"[{level}] {message}")
+from utils.logger import custom_log
 
 CANAL_IMPORTAR_PDF = os.getenv("CANAL_IMPORTAR_PDF")
 
-class ProcesarPDFUrl(commands.Cog):
+class ProcesarPDF(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="procesar_pdf_url", description="Procesa un PDF desde una URL directa (Dropbox, Drive, etc.)")
-    @app_commands.describe(link="URL directa del PDF")
-    async def procesar_pdf_url(self, interaction: discord.Interaction, link: str):
+    @app_commands.command(name="procesar_pdf", description="Procesa un archivo PDF cargado directamente en Discord")
+    @app_commands.describe(archivo="Archivo PDF con los contactos")
+    async def procesar_pdf(self, interaction: discord.Interaction, archivo: discord.Attachment):
         if str(interaction.channel_id) != CANAL_IMPORTAR_PDF:
             await interaction.response.send_message("❌ Este comando solo puede usarse en el canal autorizado.", ephemeral=True)
             return
 
+        if not archivo.filename.endswith(".pdf"):
+            await interaction.response.send_message("❌ Solo se permiten archivos PDF.", ephemeral=True)
+            return
+
         await interaction.response.defer(thinking=True)
 
-        nombre_pdf = link.split("/")[-1].split("?")[0] or "archivo.pdf"
-        ruta_local = os.path.join(tempfile.gettempdir(), nombre_pdf)
+        ruta_local = os.path.join(tempfile.gettempdir(), archivo.filename)
+        await archivo.save(ruta_local)
 
         try:
-            await interaction.followup.send(f"⏳ Procesando archivo: `{nombre_pdf}` desde enlace externo... Esto puede tardar varios minutos dependiendo del tamaño.")
-
-            async with aiohttp.ClientSession() as session:
-                async with session.get(link) as resp:
-                    status = resp.status
-                    content_type = resp.headers.get("Content-Type", "").lower()
-
-                    if status != 200:
-                        await interaction.followup.send(f"❌ No se pudo descargar el archivo. Código HTTP {status}.")
-                        log("ERROR", f"❌ Código {status} al intentar acceder al link: {link}")
-                        return
-
-                    if any(x in content_type for x in ["html", "text"]):
-                        await interaction.followup.send(f"⚠️ El archivo descargado **no es un PDF válido**. Tipo detectado: `{content_type}`")
-                        log("ERROR", f"❌ Contenido HTML descargado desde: {link} ({content_type})")
-                        return
-
-                    with open(ruta_local, "wb") as f:
-                        f.write(await resp.read())
+            await interaction.followup.send(f"⏳ Procesando archivo: `{archivo.filename}`... Esto puede tardar varios minutos dependiendo del tamaño.")
 
             doc = fitz.open(ruta_local)
             total_paginas = len(doc)
@@ -83,7 +54,7 @@ class ProcesarPDFUrl(commands.Cog):
 
                 msg = f"📊 Progreso: [{barra}] {progreso}% | Página {paginas}/{total} | ⏳ Faltan: {faltan} seg."
                 await interaction.followup.send(msg)
-                log("INFO", msg)
+                custom_log("INFO", msg)
 
             contactos = await extraer_contactos_desde_pdf(
                 ruta_local,
@@ -92,17 +63,17 @@ class ProcesarPDFUrl(commands.Cog):
 
             tiempo_total = int(time.time() - tiempo_inicio)
             resumen = (
-                f"✅ Se procesaron **{len(contactos)} contactos** desde `{nombre_pdf}`\n"
+                f"✅ Se procesaron **{len(contactos)} contactos** desde `{archivo.filename}`\n"
                 f"📄 Total de páginas: {total_paginas}\n"
                 f"🖼️ Fotos detectadas: {fotos_detectadas}\n"
                 f"⏱️ Tiempo total: {tiempo_total} segundos"
             )
             await interaction.followup.send(resumen)
-            log("INFO", resumen)
+            custom_log("INFO", resumen)
 
         except Exception as e:
-            await interaction.followup.send(f"❌ Error al procesar PDF: {e}")
-            log("ERROR", f"❌ Excepción durante procesamiento PDF desde URL: {e}")
+            await interaction.followup.send(f"❌ Error al procesar el PDF: {e}")
+            custom_log("ERROR", f"❌ Error al procesar PDF: {e}")
 
 async def setup(bot):
-    await bot.add_cog(ProcesarPDFUrl(bot))
+    await bot.add_cog(ProcesarPDF(bot))
