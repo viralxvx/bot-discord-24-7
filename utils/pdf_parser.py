@@ -1,65 +1,93 @@
+# utils/pdf_parser.py
 import asyncio
 import re
 import os
 import json
+import fitz
 from utils.redis_conn import redis_conn
 
-REGEX_TELEFONO = r"\+?\d[\d\s\-]{7,}\d"
+REGEX_TELEFONO = r"(\+?\d[\d\s\-]{7,}\d)"
 REGEX_EMAIL = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 REGEX_FECHA = r"\d{1,2}/\d{1,2}/\d{2,4}"
 
-async def extraer_contactos_desde_pdf(ruta_pdf, user_id, registrar_progreso=None):
-    import fitz
+def analizar_bloque(texto):
+    """Extrae teléfono y email desde un bloque de texto"""
+    telefono = re.search(REGEX_TELEFONO, texto)
+    email = re.search(REGEX_EMAIL, texto)
+
+    if telefono or email:
+        return {
+            "telefono": telefono.group().replace(" ", "") if telefono else "",
+            "email": email.group() if email else "",
+            "nombre": "",  # No se puede deducir en este tipo de PDF
+            "apellido": ""  # idem
+        }
+    return None
+
+async def extraer_contactos_desde_pdf(ruta_pdf, user_id, progreso_callback=None):
     contactos = []
-    doc = fitz.open(ruta_pdf)
+    try:
+        doc = fitz.open(ruta_pdf)
+    except Exception as e:
+        raise Exception(f"No se pudo abrir el PDF: {e}")
+
     total_paginas = len(doc)
 
-    for i, pagina in enumerate(doc, start=1):
-        texto = pagina.get_text("text")
-        lineas = texto.splitlines()
-        for linea in lineas:
-            datos = analizar_linea(linea)
-            if datos and "email" in datos and "telefono" in datos:
-                contactos.append(datos)
+    for pagina_actual in range(1, total_paginas + 1):
+        try:
+            pagina = doc[pagina_actual - 1]
+            texto = pagina.get_text()
+            bloques = re.split(r"\n{2,}", texto)
 
-        if registrar_progreso:
-            porcentaje = int((i / total_paginas) * 100)
-            await registrar_progreso(i, total_paginas, porcentaje, 1)
+            for bloque in bloques:
+                contacto = analizar_bloque(bloque)
+                if contacto:
+                    contactos.append(contacto)
+        except Exception as e:
+            continue
 
-    contactos_unicos = {json.dumps(c, sort_keys=True) for c in contactos}
-    contactos = [json.loads(c) for c in contactos_unicos]
+        if progreso_callback:
+            porcentaje = int((pagina_actual / total_paginas) * 100)
+            faltan_estimado = max(1, total_paginas - pagina_actual)
+            await progreso_callback(pagina_actual, total_paginas, porcentaje, faltan_estimado)
 
+        await asyncio.sleep(0.05)  # Simula tiempo
+
+    # Eliminar duplicados por teléfono o email
+    vistos = set()
+    unicos = []
+    for c in contactos:
+        clave = c["telefono"] + c["email"]
+        if clave not in vistos:
+            vistos.add(clave)
+            unicos.append(c)
+
+    # Guardar en Redis
     nombre_archivo = os.path.basename(ruta_pdf)
-    clave = f"pdf:{user_id}:{nombre_archivo}:contactos"
-    redis_conn.set(clave, json.dumps(contactos), ex=3600)
+    clave_redis = f"pdf:{user_id}:{nombre_archivo}:contactos"
+    redis_conn.set(clave_redis, json.dumps(unicos))
 
-    return contactos
+    return unicos
 
 async def extraer_datos_genericos_desde_pdf(ruta_pdf, clave_usuario):
-    import fitz
-    doc = fitz.open(ruta_pdf)
-    registros = []
+    genericos = []
+    try:
+        doc = fitz.open(ruta_pdf)
+    except:
+        return []
+
     for pagina in doc:
-        texto = pagina.get_text("text")
+        texto = pagina.get_text()
         lineas = texto.splitlines()
         for linea in lineas:
-            datos = analizar_linea(linea)
-            if datos:
-                registros.append(datos)
-    nombre_archivo = os.path.basename(ruta_pdf)
-    clave = f"pdf:{clave_usuario}:{nombre_archivo}:genericos"
-    redis_conn.set(clave, json.dumps(registros), ex=3600)
-    return registros
+            if re.search(REGEX_TELEFONO, linea) or re.search(REGEX_EMAIL, linea):
+                genericos.append({
+                    "nombre": "",
+                    "email": re.search(REGEX_EMAIL, linea).group() if re.search(REGEX_EMAIL, linea) else "",
+                    "telefono": re.search(REGEX_TELEFONO, linea).group() if re.search(REGEX_TELEFONO, linea) else ""
+                })
 
-def analizar_linea(linea):
-    resultado = {}
-    if re.search(REGEX_TELEFONO, linea):
-        resultado["telefono"] = re.search(REGEX_TELEFONO, linea).group().replace(" ", "")
-    if re.search(REGEX_EMAIL, linea):
-        resultado["email"] = re.search(REGEX_EMAIL, linea).group()
-    if re.search(REGEX_FECHA, linea):
-        resultado["fecha"] = re.search(REGEX_FECHA, linea).group()
-    palabras = linea.strip().split()
-    if len(palabras) >= 2 and all(p[0].isupper() for p in palabras[:2]):
-        resultado["nombre"] = " ".join(palabras[:4])
-    return resultado if resultado else None
+    nombre_archivo = os.path.basename(ruta_pdf)
+    clave_redis = f"pdf:{clave_usuario}:{nombre_archivo}:genericos"
+    redis_conn.set(clave_redis, json.dumps(genericos))
+    return genericos
