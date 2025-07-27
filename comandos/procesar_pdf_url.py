@@ -18,11 +18,19 @@ except:
 def log(level, message):
     if usar_log:
         try:
-            custom_log(level, message)
+            custom_log("PROCESAR_PDF_URL", level, message)
         except Exception as e:
             print(f"[{level}] {message} (LOG ERROR: {e})")
     else:
         print(f"[{level}] {message}")
+
+def formato_tiempo(segundos):
+    if segundos >= 3600:
+        return f"{segundos // 3600}h {(segundos % 3600) // 60}m"
+    elif segundos >= 60:
+        return f"{segundos // 60}m {segundos % 60}s"
+    else:
+        return f"{segundos}s"
 
 CANAL_IMPORTAR_PDF = os.getenv("CANAL_IMPORTAR_PDF")
 
@@ -43,7 +51,7 @@ class ProcesarPDFUrl(commands.Cog):
         ruta_local = os.path.join(tempfile.gettempdir(), nombre_pdf)
 
         try:
-            await interaction.followup.send(f"⏳ Procesando archivo: `{nombre_pdf}` desde enlace externo... Esto puede tardar varios minutos dependiendo del tamaño.")
+            progreso_msg = await interaction.followup.send(f"⏳ Procesando archivo: `{nombre_pdf}` desde enlace externo... Esto puede tardar varios minutos dependiendo del tamaño.")
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(link) as resp:
@@ -51,12 +59,12 @@ class ProcesarPDFUrl(commands.Cog):
                     content_type = resp.headers.get("Content-Type", "").lower()
 
                     if status != 200:
-                        await interaction.followup.send(f"❌ No se pudo descargar el archivo. Código HTTP {status}.")
+                        await progreso_msg.edit(content=f"❌ No se pudo descargar el archivo. Código HTTP {status}.")
                         log("ERROR", f"❌ Código {status} al intentar acceder al link: {link}")
                         return
 
                     if any(x in content_type for x in ["html", "text"]):
-                        await interaction.followup.send(f"⚠️ El archivo descargado **no es un PDF válido**. Tipo detectado: `{content_type}`")
+                        await progreso_msg.edit(content=f"⚠️ El archivo descargado **no es un PDF válido**. Tipo detectado: `{content_type}`")
                         log("ERROR", f"❌ Contenido HTML descargado desde: {link} ({content_type})")
                         return
 
@@ -80,9 +88,12 @@ class ProcesarPDFUrl(commands.Cog):
                 llenos = int((progreso / 100) * bloques)
                 vacios = bloques - llenos
                 barra = "█" * llenos + "░" * vacios
+                estado = "✅" if progreso > 0 else "❌"
 
-                msg = f"📊 Progreso: [{barra}] {progreso}% | Página {paginas}/{total} | ⏳ Faltan: {faltan} seg."
-                await interaction.followup.send(msg)
+                tiempo_legible = formato_tiempo(faltan)
+                msg = f"{estado} Progreso: [{barra}] {progreso}% | Página {paginas}/{total} | ⏳ Faltan: {tiempo_legible}"
+
+                await progreso_msg.edit(content=msg)
                 log("INFO", msg)
 
             contactos = await extraer_contactos_desde_pdf(
@@ -91,13 +102,14 @@ class ProcesarPDFUrl(commands.Cog):
             )
 
             tiempo_total = int(time.time() - tiempo_inicio)
+            tiempo_legible = formato_tiempo(tiempo_total)
             resumen = (
                 f"✅ Se procesaron **{len(contactos)} contactos** desde `{nombre_pdf}`\n"
                 f"📄 Total de páginas: {total_paginas}\n"
                 f"🖼️ Fotos detectadas: {fotos_detectadas}\n"
-                f"⏱️ Tiempo total: {tiempo_total} segundos"
+                f"⏱️ Tiempo total: {tiempo_legible}"
             )
-            await interaction.followup.send(resumen)
+            await progreso_msg.edit(content=resumen)
             log("INFO", resumen)
 
         except Exception as e:
