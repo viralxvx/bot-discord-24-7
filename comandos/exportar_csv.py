@@ -8,6 +8,8 @@ import requests
 from utils.export_csv import exportar_contactos_csv
 from utils.logger import custom_log
 
+HOSTGATOR_UPLOAD_URL = os.getenv("HOSTGATOR_UPLOAD_URL")
+
 class ExportarCSV(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
