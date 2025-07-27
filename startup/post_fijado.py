@@ -2,15 +2,15 @@
 
 import discord
 from config import get_env_int
-from mensajes.pdf_mensajes import MENSAJE_ANCLADO
+from mensajes.pdf_mensajes import MENSAJE_ANCLADO_PDF as MENSAJE_ANCLADO
 from utils.redis_conn import redis_conn
 
-CANAL_IMPORTAR_PDF = get_env_int("CANAL_IMPORTAR_PDF")
+CANAL_IMPORTAR_PDF = get_env_int("CANAL_IMPORTAR_PDF")  # ✅ Corrección: esta es la variable correcta
 
 async def publicar_mensaje_anclado(bot):
     canal = bot.get_channel(CANAL_IMPORTAR_PDF)
     if canal is None:
-        print("❌ Canal de importación de PDF no encontrado.")
+        print("❌ Canal de importar PDF no encontrado.")
         return
 
     mensaje_id = redis_conn.get("vx:mensaje_anclado_pdf")
