@@ -1,35 +1,38 @@
 # mensajes/pdf_mensajes.py
 
-def get_panel_bienvenida_pdf():
-    return """
-📌 **Bienvenido al Servicio Profesional de Conversión PDF → CSV**
+MENSAJE_ANCLADO = """
+🎯 **Servicio Profesional de Conversión PDF → CSV**
 
-Este bot extrae automáticamente contactos desde documentos PDF y los convierte a CSV de forma 100% automática y visual.
+Este sistema transforma automáticamente archivos PDF en CSVs optimizados, extrayendo solo lo esencial:
 
----
+• 👤 Nombres y Apellidos  
+• 📧 Correos electrónicos  
+• 📞 Teléfonos (depurados y sin duplicados)
 
-📂 **Comandos disponibles:**
+⸻
 
-`/procesar_pdf`  
-🔁 Sube un archivo PDF (máx 10MB). El bot lo analiza, extrae nombres, apellidos, correos y teléfonos (si existen) y entrega un CSV. Todo el proceso incluye barra de progreso profesional, sin duplicación de mensajes.
+🔄 **Cómo funciona:**
 
-`/procesar_pdf_url`  
-🔗 Sube un PDF desde un enlace. Ideal para archivos grandes. Se visualiza todo el proceso hasta entregar el CSV vía gofile.io.
+1. **Arrastra un archivo PDF aquí**
+   - El bot lo procesará automáticamente (sin límite de tamaño gracias a gofile.io).
+2. **Verás el progreso en tiempo real**:
+   - Subida del archivo
+   - Conversión a CSV
+   - Exportación final
+3. **Recibirás un enlace de descarga directa al CSV final.**
 
-`/exportar_csv`  
-📤 Exporta el CSV final, incluso si el archivo original era muy grande. Si ya procesaste un PDF y solo necesitas el CSV, este comando lo genera y lo sube automáticamente.
+⸻
 
-`/validar_telefonos_csv`  
-📱 Revisa un archivo CSV y corrige automáticamente los números telefónicos, agregando códigos de área según el país. Usa el parámetro opcional `pais="RD"` si el archivo no incluye país.
+🧠 *El sistema es 100% automático, robusto y profesional. En una hora el canal será limpiado automáticamente para mantener el orden visual.*
 
----
+⚙️ También puedes usar comandos avanzados:
 
-⚠️ **Importante:**
-- Solo funciona con PDF que contengan texto legible. Archivos escaneados como imagen **no serán procesados**.
-- El sistema elimina duplicados y valida formatos automáticamente.
-- El canal se limpia automáticamente una hora después de completado el proceso para mantenerlo limpio.
+- `/procesar_pdf` → Arrastrando un archivo
+- `/procesar_pdf_url url=https://...` → Desde una URL
+- `/exportar_csv nombre_pdf=archivo.pdf` → Exportar manualmente si lo necesitas
+- `/validar_telefonos_csv archivo.csv pais=RD` → Validación y normalización profesional de teléfonos
 
----
+⸻
 
-🧠 Este sistema fue diseñado para miles de usuarios. Si ves esto, estás usando tecnología robusta, profesional y a prueba de fallos. Gracias por utilizar **VXbot**.
+💡 *Cualquier duda o asistencia, contacta al staff. Gracias por usar **VXbot**.*
 """
