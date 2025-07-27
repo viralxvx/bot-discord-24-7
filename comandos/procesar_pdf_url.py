@@ -37,7 +37,8 @@ class ProcesarPDFUrl(commands.Cog):
         ruta_local = os.path.join(tempfile.gettempdir(), nombre_pdf)
 
         try:
-            progreso_msg = await interaction.followup.send(f"⏳ Procesando archivo: `{nombre_pdf}` desde enlace externo... Esto puede tardar varios minutos dependiendo del tamaño.")
+            canal = interaction.channel
+            progreso_msg = await canal.send(f"⏳ Procesando archivo: `{nombre_pdf}` desde enlace externo...")
 
             async with aiohttp.ClientSession() as session:
                 async with session.get(link) as resp:
@@ -45,12 +46,12 @@ class ProcesarPDFUrl(commands.Cog):
                     content_type = resp.headers.get("Content-Type", "").lower()
 
                     if status != 200:
-                        await progreso_msg.edit(content=f"❌ No se pudo descargar el archivo. Código HTTP {status}.")
+                        await canal.send(f"❌ No se pudo descargar el archivo. Código HTTP {status}.")
                         custom_log(self.bot, "PROCESAR_PDF_URL", "ERROR", f"❌ Código {status} al intentar acceder al link: {link}")
                         return
 
                     if any(x in content_type for x in ["html", "text"]):
-                        await progreso_msg.edit(content=f"⚠️ El archivo descargado **no es un PDF válido**. Tipo detectado: `{content_type}`")
+                        await canal.send(f"⚠️ El archivo descargado **no es un PDF válido**. Tipo detectado: `{content_type}`")
                         custom_log(self.bot, "PROCESAR_PDF_URL", "ERROR", f"❌ Contenido HTML descargado desde: {link} ({content_type})")
                         return
 
@@ -79,7 +80,10 @@ class ProcesarPDFUrl(commands.Cog):
                 tiempo_legible = formato_tiempo(faltan)
                 msg = f"{estado} Progreso: [{barra}] {progreso}% | Página {paginas}/{total} | ⏳ Faltan: {tiempo_legible}"
 
-                await progreso_msg.edit(content=msg)
+                try:
+                    await progreso_msg.edit(content=msg)
+                except:
+                    await canal.send(msg)
                 custom_log(self.bot, "PROCESAR_PDF_URL", "INFO", msg)
 
             contactos = await extraer_contactos_desde_pdf(
@@ -116,7 +120,7 @@ class ProcesarPDFUrl(commands.Cog):
                     custom_log(self.bot, "PROCESAR_PDF_URL", "WARNING", f"PDF sin datos extraíbles: {nombre_pdf}")
 
         except Exception as e:
-            await interaction.followup.send(f"❌ Error al procesar PDF: {e}")
+            await canal.send(f"❌ Error al procesar PDF: {e}")
             custom_log(self.bot, "PROCESAR_PDF_URL", "ERROR", f"❌ Excepción durante procesamiento PDF desde URL: {e}")
 
 async def setup(bot):
