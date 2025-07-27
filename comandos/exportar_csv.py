@@ -1,11 +1,11 @@
-# comandos/exportar_csv.py (con FTP automático si es muy grande)
+# comandos/exportar_csv.py (con carga vía API HTTP si es grande)
 import discord
 from discord import app_commands
 from discord.ext import commands
 import os
+import requests
 from utils.export_csv import exportar_contactos_csv
 from utils.logger import custom_log
-from utils.upload_ftp import subir_a_ftp
 
 class ExportarCSV(commands.Cog):
     def __init__(self, bot):
@@ -24,15 +24,25 @@ class ExportarCSV(commands.Cog):
             nombre_remoto = f"contactos_{user_id}_{nombre_pdf.replace('.pdf','')}.csv"
 
             if tamano_mb > 7.8:
-                # Subir por FTP si supera el límite de Discord (~8MB)
-                url = subir_a_ftp(ruta_csv, nombre_remoto)
-                embed = discord.Embed(title="📤 CSV exportado por FTP", color=0xf39c12)
-                embed.add_field(name="Archivo", value=nombre_remoto, inline=False)
-                embed.add_field(name="Tamaño", value=f"{tamano_mb:.2f} MB", inline=True)
-                embed.add_field(name="Descarga directa", value=url, inline=False)
-                embed.set_footer(text=f"Usuario: {interaction.user.display_name}")
-                await interaction.followup.send(embed=embed)
-                custom_log(self.bot, "EXPORTAR_CSV", "INFO", f"📤 CSV subido por FTP: {url}")
+                # Subir por API HTTP
+                with open(ruta_csv, "rb") as f:
+                    files = {"file": (nombre_remoto, f)}
+                    headers = {"Authorization": f"Bearer {os.getenv('HOSTGATOR_TOKEN')}"}
+                    response = requests.post("https://innovaguard.shop/api/upload_csv.php", files=files, headers=headers)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    url = data.get("url", "")
+                    embed = discord.Embed(title="📤 CSV exportado por API", color=0xf39c12)
+                    embed.add_field(name="Archivo", value=nombre_remoto, inline=False)
+                    embed.add_field(name="Tamaño", value=f"{tamano_mb:.2f} MB", inline=True)
+                    embed.add_field(name="Descarga directa", value=url, inline=False)
+                    embed.set_footer(text=f"Usuario: {interaction.user.display_name}")
+                    await interaction.followup.send(embed=embed)
+                    custom_log(self.bot, "EXPORTAR_CSV", "INFO", f"📤 CSV subido vía API: {url}")
+                else:
+                    raise Exception(f"API respondió con error {response.status_code}: {response.text}")
+
             else:
                 embed = discord.Embed(title="📤 CSV generado con éxito", color=0x3498db)
                 embed.add_field(name="Archivo procesado", value=nombre_pdf, inline=False)
