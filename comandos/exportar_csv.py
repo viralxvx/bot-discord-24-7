@@ -1,10 +1,11 @@
-# comandos/exportar_csv.py
+# comandos/exportar_csv.py (con FTP automático si es muy grande)
 import discord
 from discord import app_commands
 from discord.ext import commands
 import os
 from utils.export_csv import exportar_contactos_csv
 from utils.logger import custom_log
+from utils.upload_ftp import subir_a_ftp
 
 class ExportarCSV(commands.Cog):
     def __init__(self, bot):
@@ -19,14 +20,35 @@ class ExportarCSV(commands.Cog):
 
         try:
             ruta_csv = exportar_contactos_csv(nombre_pdf, user_id)
-            await interaction.followup.send(
-                content=f"✅ Aquí está el archivo CSV generado para `{nombre_pdf}`:",
-                file=discord.File(ruta_csv, filename=f"contactos_{nombre_pdf.replace('.pdf', '')}.csv")
-            )
-            custom_log("EXPORTAR_CSV", "INFO", f"📤 CSV exportado para {user_id} desde {nombre_pdf}")
+            tamano_mb = os.path.getsize(ruta_csv) / (1024 * 1024)
+            nombre_remoto = f"contactos_{user_id}_{nombre_pdf.replace('.pdf','')}.csv"
+
+            if tamano_mb > 7.8:
+                # Subir por FTP si supera el límite de Discord (~8MB)
+                url = subir_a_ftp(ruta_csv, nombre_remoto)
+                embed = discord.Embed(title="📤 CSV exportado por FTP", color=0xf39c12)
+                embed.add_field(name="Archivo", value=nombre_remoto, inline=False)
+                embed.add_field(name="Tamaño", value=f"{tamano_mb:.2f} MB", inline=True)
+                embed.add_field(name="Descarga directa", value=url, inline=False)
+                embed.set_footer(text=f"Usuario: {interaction.user.display_name}")
+                await interaction.followup.send(embed=embed)
+                custom_log(self.bot, "EXPORTAR_CSV", "INFO", f"📤 CSV subido por FTP: {url}")
+            else:
+                embed = discord.Embed(title="📤 CSV generado con éxito", color=0x3498db)
+                embed.add_field(name="Archivo procesado", value=nombre_pdf, inline=False)
+                embed.add_field(name="Usuario", value=interaction.user.display_name, inline=True)
+                embed.set_footer(text="Usa este archivo para importarlo en tu sistema o herramienta de listas.")
+
+                await interaction.followup.send(
+                    content=None,
+                    file=discord.File(ruta_csv, filename=f"contactos_{nombre_pdf.replace('.pdf', '')}.csv"),
+                    embed=embed
+                )
+                custom_log(self.bot, "EXPORTAR_CSV", "INFO", f"📤 CSV exportado directo desde Discord: {nombre_pdf}")
+
         except Exception as e:
             await interaction.followup.send(f"❌ Error al exportar CSV: {e}")
-            custom_log("EXPORTAR_CSV", "ERROR", f"❌ Error al exportar CSV: {e}")
+            custom_log(self.bot, "EXPORTAR_CSV", "ERROR", f"❌ Error al exportar CSV: {e}")
 
 async def setup(bot):
     await bot.add_cog(ExportarCSV(bot))
