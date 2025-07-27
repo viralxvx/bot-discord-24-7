@@ -6,6 +6,7 @@ import os
 import aiohttp
 import tempfile
 import time
+import fitz
 from utils.pdf_parser import extraer_contactos_desde_pdf
 
 try:
@@ -62,8 +63,25 @@ class ProcesarPDFUrl(commands.Cog):
                     with open(ruta_local, "wb") as f:
                         f.write(await resp.read())
 
+            doc = fitz.open(ruta_local)
+            total_paginas = len(doc)
+            tiempo_inicio = time.time()
+            fotos_detectadas = 0
+
             async def registrar_progreso(paginas, total, progreso, faltan):
-                msg = f"📄 Página {paginas}/{total} | {progreso}% completado | ⏳ Estimado restante: {faltan} seg."
+                nonlocal fotos_detectadas
+                try:
+                    pagina = doc[paginas - 1]
+                    fotos_detectadas += len(pagina.get_images(full=True))
+                except:
+                    pass
+
+                bloques = 10
+                llenos = int((progreso / 100) * bloques)
+                vacios = bloques - llenos
+                barra = "█" * llenos + "░" * vacios
+
+                msg = f"📊 Progreso: [{barra}] {progreso}% | Página {paginas}/{total} | ⏳ Faltan: {faltan} seg."
                 await interaction.followup.send(msg)
                 log("INFO", msg)
 
@@ -72,8 +90,15 @@ class ProcesarPDFUrl(commands.Cog):
                 registrar_progreso=registrar_progreso
             )
 
-            await interaction.followup.send(f"✅ Se procesaron **{len(contactos)} contactos** desde `{nombre_pdf}`.")
-            log("INFO", f"✅ PDF procesado desde URL: {nombre_pdf} ({len(contactos)} contactos)")
+            tiempo_total = int(time.time() - tiempo_inicio)
+            resumen = (
+                f"✅ Se procesaron **{len(contactos)} contactos** desde `{nombre_pdf}`\n"
+                f"📄 Total de páginas: {total_paginas}\n"
+                f"🖼️ Fotos detectadas: {fotos_detectadas}\n"
+                f"⏱️ Tiempo total: {tiempo_total} segundos"
+            )
+            await interaction.followup.send(resumen)
+            log("INFO", resumen)
 
         except Exception as e:
             await interaction.followup.send(f"❌ Error al procesar PDF: {e}")
