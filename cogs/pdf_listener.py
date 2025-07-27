@@ -19,11 +19,9 @@ class PDFListener(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message):
-        # Ignorar si el mensaje no es en el canal PDF, o si es del bot
         if message.channel.id != CANAL_IMPORTAR_PDF or message.author.bot:
             return
 
-        # Buscar un adjunto que sea PDF
         for archivo in message.attachments:
             if archivo.filename.lower().endswith(".pdf"):
                 await self.procesar_pdf(message, archivo)
@@ -35,12 +33,12 @@ class PDFListener(commands.Cog):
         progreso_msg = await crear_mensaje_progreso(canal, "Procesando PDF...")
 
         try:
-            # Descargar archivo temporalmente
+            # Guardar archivo en ruta temporal
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-                await archivo.save(tmp)
-                ruta_pdf = tmp.name  # ✅ CORREGIDO
+                ruta_pdf = tmp.name
 
-            # Extraer contactos
+            await archivo.save(ruta_pdf)  # ✅ GUARDAMOS USANDO LA RUTA, NO EL OBJETO tmp
+
             async def actualizar_progreso(p):
                 barra = generar_barra_progreso(p)
                 await actualizar_mensaje_progreso(progreso_msg, f"[Activo] ✅ Progreso: {barra} {p}%")
@@ -55,10 +53,7 @@ class PDFListener(commands.Cog):
                 await actualizar_mensaje_progreso(progreso_msg, "⚠️ No se encontraron contactos válidos.")
                 return
 
-            # Exportar CSV
             ruta_csv = exportar_contactos_csv(archivo.filename, user_id, contactos)
-
-            # Subir a gofile.io
             url_csv = await subir_a_gofile(ruta_csv)
 
             embed = discord.Embed(title="✅ PDF procesado con éxito", color=0x2ecc71)
