@@ -42,7 +42,7 @@ class ImportarPDF(commands.Cog):
 def log(nivel, mensaje):
     if usar_logger:
         try:
-            custom_log(nivel, mensaje)
+            custom_log(None, "IMPORTAR_PDF", nivel, mensaje)
         except Exception as err:
             print(f"[LOGGER ERROR] {nivel}: {mensaje} | Fallo: {err}")
     else:
