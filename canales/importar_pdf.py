@@ -1,8 +1,9 @@
 # canales/importar_pdf.py
+
 import discord
 from discord.ext import commands
 import os
-from mensajes.pdf_mensajes import mensaje_anclado_pdf
+from mensajes.pdf_mensajes import MENSAJE_ANCLADO_PDF  # ✅ Corrección aquí
 
 try:
     from utils.logger import custom_log
@@ -13,7 +14,7 @@ except:
 CANAL_IMPORTAR_PDF = int(os.getenv("CANAL_IMPORTAR_PDF"))
 
 class ImportarPDF(commands.Cog):
-    def __init__(self, bot):
+    def init__(self, bot):  # ✅ Corrección de init → __init
         self.bot = bot
         self.bot.loop.create_task(self.publicar_mensaje_anclado())
 
@@ -33,7 +34,7 @@ class ImportarPDF(commands.Cog):
                 except:
                     continue
 
-            mensaje = await canal.send(mensaje_anclado_pdf())
+            mensaje = await canal.send(MENSAJE_ANCLADO_PDF)  # ✅ Corrección aquí
             await mensaje.pin()
             log("INFO", "📌 Mensaje anclado correctamente en canal de importación PDF.")
         except Exception as e:
