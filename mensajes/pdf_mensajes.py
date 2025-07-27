@@ -1,34 +1,35 @@
 # mensajes/pdf_mensajes.py
 
-mensaje_anclado_pdf = """
-📥 **¡Bienvenido al sistema PDF → CSV profesional!**
+MENSAJE_ANCLADO_PDF = """
+📌 **Bienvenido al sistema profesional de extracción de contactos desde PDF**
 
-Este canal está optimizado para convertir archivos **PDF** que contengan listas de **nombres, apellidos, correos electrónicos y teléfonos** en un archivo **CSV limpio y sin duplicados**.
+🚀 Este sistema permite procesar automáticamente archivos PDF que contengan listas de:
+- **Nombres**
+- **Apellidos**
+- **Correos electrónicos**
+- **Números de teléfono**
 
-⸻
-🎯 **¿Qué puedes hacer aquí?**
+🔄 Todo el proceso es:
+- Completamente automático
+- Profesional y visual (con barra de progreso y porcentajes)
+- A prueba de fallos (sin límites de tamaño gracias a gofile.io)
 
-1. **Sube un archivo PDF** con tus datos (no debe estar escaneado como imagen).
-2. El bot detectará automáticamente los campos válidos y comenzará la conversión.
-3. Verás una **barra de progreso profesional** indicando el estado.
-4. Al finalizar, recibirás un **enlace de descarga (gofile.io)** del CSV.
+📎 **Instrucciones:**
+1. Sube un archivo PDF aquí.
+2. Espera mientras se procesa (verás el progreso en vivo).
+3. Al finalizar, recibirás un **CSV depurado** con todos los contactos extraídos (sin duplicados).
+4. El enlace de descarga estará disponible por 7 días.
 
-⸻
-⚙️ **¿Qué datos extrae?**
-• Nombres  
-• Apellidos  
-• Correos electrónicos  
-• Números de teléfono  
-*(Si falta alguno, se extraen los demás)*
+✅ Formatos compatibles:
+- PDF estructurados con columnas o listas claras.
+- No importa si faltan algunos datos (el sistema extrae lo que encuentra).
 
-⸻
-🧼 **Limpieza automática:**  
-Este canal se limpiará **automáticamente en 1 hora** para mantenerlo estético.
+⛔ **Evita subir archivos de solo imágenes o escaneos sin texto reconocible**.
 
-⸻
-❗**Importante:**  
-No se permiten archivos mayores a 100MB.  
-El sistema no funciona con documentos escaneados o imágenes.
+🧼 Todos los archivos y mensajes se eliminan automáticamente una hora después.
 
-✨ ¡Automático, profesional y a prueba de fallos!
+⚙️ Servicio diseñado para uso masivo y profesional.
+
+—
+VXbot 🤖
 """
