@@ -40,7 +40,10 @@ EXTENSIONES = [
     "comandos.hablar",
     "comandos.testimonio",        # NUEVO: Comando de testimonio
     "comandos.ver_testimonios",   # NUEVO: Comando admin de testimonios
-    "canales.mejora_vx"           # NUEVO: Canal de sugerencias públicas
+    "canales.mejora_vx",           # NUEVO: Canal de sugerencias públicas
+    "canales.importar_pdf",        # Canal PDF to CSV 
+    "comandos.procesar_pdf",
+    "comandos.exportar_csv",
 ]
 
 log_message = None
