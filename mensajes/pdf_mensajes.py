@@ -1,53 +1,35 @@
 # mensajes/pdf_mensajes.py
 
-def mensaje_anclado_pdf():
-    return (
-        """
-📥 **IMPORTADOR VX DE CONTACTOS MASIVOS (PDF)**
+def get_panel_bienvenida_pdf():
+    return """
+📌 **Bienvenido al Servicio Profesional de Conversión PDF → CSV**
 
-Bienvenido al sistema inteligente de importación de contactos para campañas VX.
-
-Puedes cargar aquí archivos PDF grandes (hasta 10,000 páginas o más), y el bot:
-
-1. 📎 Extraerá automáticamente todos los datos:
-   - Nombre completo
-   - Teléfono
-   - Fechas (registro y auditoría)
-   - Foto (si está embebida)
-
-2. 🧠 Guardará todo en la base de datos VX
-
-3. 📤 Te permitirá exportar un archivo `.CSV` profesional para:
-   - Campañas en X (Twitter Ads)
-   - Meta (Facebook/Instagram)
-   - WhatsApp masivo
-   - Mailrelay / Substack
-   - CRM
+Este bot extrae automáticamente contactos desde documentos PDF y los convierte a CSV de forma 100% automática y visual.
 
 ---
 
-### 🛠️ CÓMO USAR
+📂 **Comandos disponibles:**
 
-**1. Carga tu PDF aquí**
-> Usa el comando:  
 `/procesar_pdf`  
-y adjunta el archivo PDF.
+🔁 Sube un archivo PDF (máx 10MB). El bot lo analiza, extrae nombres, apellidos, correos y teléfonos (si existen) y entrega un CSV. Todo el proceso incluye barra de progreso profesional, sin duplicación de mensajes.
 
-**2. Espera confirmación**
-> El bot te dirá cuántos contactos fueron detectados.
+`/procesar_pdf_url`  
+🔗 Sube un PDF desde un enlace. Ideal para archivos grandes. Se visualiza todo el proceso hasta entregar el CSV vía gofile.io.
 
-**3. Exporta el resultado**
-> Usa:  
-`/exportar_csv nombre_pdf: nombre_del_archivo.pdf`  
-Y recibirás tu archivo `.csv` descargable.
+`/exportar_csv`  
+📤 Exporta el CSV final, incluso si el archivo original era muy grande. Si ya procesaste un PDF y solo necesitas el CSV, este comando lo genera y lo sube automáticamente.
+
+`/validar_telefonos_csv`  
+📱 Revisa un archivo CSV y corrige automáticamente los números telefónicos, agregando códigos de área según el país. Usa el parámetro opcional `pais="RD"` si el archivo no incluye país.
 
 ---
 
-### 🔒 REGLAS
+⚠️ **Importante:**
+- Solo funciona con PDF que contengan texto legible. Archivos escaneados como imagen **no serán procesados**.
+- El sistema elimina duplicados y valida formatos automáticamente.
+- El canal se limpia automáticamente una hora después de completado el proceso para mantenerlo limpio.
 
-- Solo los administradores pueden usar este canal.
-- El archivo CSV se genera por 1 hora y luego se borra automáticamente.
-- Las fotos (si existen) se vinculan a cada contacto.
-- Si no hay foto, el sistema igual lo procesa sin errores.
-        """
-    )
+---
+
+🧠 Este sistema fue diseñado para miles de usuarios. Si ves esto, estás usando tecnología robusta, profesional y a prueba de fallos. Gracias por utilizar **VXbot**.
+"""
