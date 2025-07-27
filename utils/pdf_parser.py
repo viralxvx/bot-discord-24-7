@@ -48,7 +48,7 @@ def analizar_linea(linea):
 
 
 # Pruebas locales
-if name == "__main__":
+if __name__ == "__main__":
     import asyncio
 
     async def run():
