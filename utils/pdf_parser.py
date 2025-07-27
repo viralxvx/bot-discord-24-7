@@ -78,12 +78,16 @@ def guardar_foto(pagina, carpeta, nombre_contacto):
     if not imagenes:
         return None
 
-    xref = imagenes[0][0]  # Tomamos la primera imagen (si existe)
-    imagen = pagina._get_pixmap(xref)
-    nombre_archivo = f"{nombre_contacto.replace(' ', '_')}.jpg"
-    ruta = os.path.join(carpeta, nombre_archivo)
-    imagen.save(ruta)
-    return ruta
+    try:
+        xref = imagenes[0][0]  # Tomamos la primera imagen (si existe)
+        pix = fitz.Pixmap(pagina.parent, xref)
+        nombre_archivo = f"{nombre_contacto.replace(' ', '_')}.jpg"
+        ruta = os.path.join(carpeta, nombre_archivo)
+        pix.save(ruta)
+        return ruta
+    except Exception as e:
+        print(f"[ERROR] No se pudo guardar imagen para {nombre_contacto}: {e}")
+        return None
 
 # =========================
 # TEST LOCAL (opcional)
