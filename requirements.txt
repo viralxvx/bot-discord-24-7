@@ -7,3 +7,4 @@ pynacl
 aiolimiter
 aiogram==2.25.1
 requests
+PyMuPDF==1.23.22
