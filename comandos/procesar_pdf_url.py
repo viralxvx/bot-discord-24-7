@@ -7,7 +7,7 @@ import aiohttp
 import tempfile
 import time
 import fitz
-from utils.pdf_parser import extraer_contactos_desde_pdf
+from utils.pdf_parser import extraer_contactos_desde_pdf, extraer_datos_genericos_desde_pdf
 from utils.logger import custom_log
 
 def formato_tiempo(segundos):
@@ -90,14 +90,30 @@ class ProcesarPDFUrl(commands.Cog):
 
             tiempo_total = int(time.time() - tiempo_inicio)
             tiempo_legible = formato_tiempo(tiempo_total)
-            resumen = (
-                f"✅ Se procesaron **{len(contactos)} contactos** desde `{nombre_pdf}`\n"
-                f"📄 Total de páginas: {total_paginas}\n"
-                f"🖼️ Fotos detectadas: {fotos_detectadas}\n"
-                f"⏱️ Tiempo total: {tiempo_legible}"
-            )
-            await progreso_msg.edit(content=resumen)
-            custom_log(self.bot, "PROCESAR_PDF_URL", "INFO", resumen)
+
+            if contactos and len(contactos) > 0:
+                resumen = (
+                    f"✅ Se procesaron **{len(contactos)} contactos** desde `{nombre_pdf}`\n"
+                    f"📄 Total de páginas: {total_paginas}\n"
+                    f"🖼️ Fotos detectadas: {fotos_detectadas}\n"
+                    f"⏱️ Tiempo total: {tiempo_legible}"
+                )
+                await progreso_msg.edit(content=resumen)
+                custom_log(self.bot, "PROCESAR_PDF_URL", "INFO", resumen)
+            else:
+                await progreso_msg.edit(content=f"⚠️ No se encontraron contactos estructurados. Intentando modo genérico...")
+                genericos = await extraer_datos_genericos_desde_pdf(ruta_local, clave_usuario=str(interaction.user.id))
+                if genericos:
+                    resumen = (
+                        f"✅ Se detectaron **{len(genericos)} registros genéricos** en `{nombre_pdf}`\n"
+                        f"🧠 Extraídos desde texto libre en {total_paginas} páginas\n"
+                        f"⏱️ Tiempo total: {tiempo_legible}"
+                    )
+                    await progreso_msg.edit(content=resumen)
+                    custom_log(self.bot, "PROCESAR_PDF_URL", "INFO", resumen)
+                else:
+                    await progreso_msg.edit(content="❌ No se encontraron datos útiles en el PDF.")
+                    custom_log(self.bot, "PROCESAR_PDF_URL", "WARNING", f"PDF sin datos extraíbles: {nombre_pdf}")
 
         except Exception as e:
             await interaction.followup.send(f"❌ Error al procesar PDF: {e}")
