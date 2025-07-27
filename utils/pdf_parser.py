@@ -5,20 +5,16 @@ import os
 import time
 import unicodedata
 import hashlib
+import inspect
 from datetime import datetime
 from utils.redis_conn import redis_conn
 import json
 
-# =========================
-# CONFIGURACIÓN
-# =========================
 MAX_CONTACTOS_POR_PÁGINA = 50
 REGEX_TELEFONO = re.compile(r'(\+1|809|829|849|1829)[0-9\-\+ ]{7,}')
+REGEX_UBICACION = re.compile(r'Provincia:\s*(.*?)\s*\|\s*Circ:\s*(\d+)\s*\|\s*Municipio:\s*(.*?)\s*(\||$)')
 
-# =========================
-# FUNCIÓN PRINCIPAL
-# =========================
-def extraer_contactos_desde_pdf(ruta_pdf: str, guardar_imagenes: bool = True, carpeta_salida: str = "data/contactos", registrar_progreso=None):
+async def extraer_contactos_desde_pdf(ruta_pdf: str, guardar_imagenes: bool = True, carpeta_salida: str = "data/contactos", registrar_progreso=None):
     inicio = time.time()
     doc = fitz.open(ruta_pdf)
     total_paginas = len(doc)
@@ -31,12 +27,26 @@ def extraer_contactos_desde_pdf(ruta_pdf: str, guardar_imagenes: bool = True, ca
         texto = pagina.get_text()
         lineas = texto.splitlines()
 
+        ubicacion = {
+            "provincia": None,
+            "municipio": None,
+            "circunscripcion": None
+        }
+        for linea in lineas:
+            match = REGEX_UBICACION.search(linea)
+            if match:
+                ubicacion["provincia"] = match.group(1).strip()
+                ubicacion["circunscripcion"] = match.group(2).strip()
+                ubicacion["municipio"] = match.group(3).strip()
+                break
+
         buffer = []
         for linea in lineas:
             if re.search(REGEX_TELEFONO, linea):
                 buffer.append(linea.strip())
                 contacto = parsear_contacto(buffer)
                 if contacto:
+                    contacto.update(ubicacion)
                     if guardar_imagenes:
                         imagen_path = guardar_foto(pagina, carpeta_salida, contacto['nombre'])
                         if imagen_path:
@@ -51,12 +61,18 @@ def extraer_contactos_desde_pdf(ruta_pdf: str, guardar_imagenes: bool = True, ca
             progreso = int((idx + 1) / total_paginas * 100)
             estimado_total = transcurrido / ((idx + 1) / total_paginas)
             restante = estimado_total - transcurrido
-            registrar_progreso(
+
+            progreso_info = dict(
                 paginas=idx + 1,
                 total=total_paginas,
                 progreso=progreso,
                 faltan=int(restante)
             )
+
+            if inspect.iscoroutinefunction(registrar_progreso):
+                await registrar_progreso(**progreso_info)
+            else:
+                registrar_progreso(**progreso_info)
 
     clave = f"pdf:{os.path.basename(ruta_pdf)}:contactos"
     redis_conn.set(clave, json.dumps(contactos))
@@ -64,9 +80,7 @@ def extraer_contactos_desde_pdf(ruta_pdf: str, guardar_imagenes: bool = True, ca
 
     return contactos
 
-# =========================
-# PARSEADOR DE CONTACTOS
-# =========================
+
 def parsear_contacto(lineas):
     texto = " ".join(lineas)
     telefono = re.search(REGEX_TELEFONO, texto)
@@ -84,14 +98,13 @@ def parsear_contacto(lineas):
         "fecha_auditoria": fechas[1] if len(fechas) > 1 else None,
     }
 
-# =========================
-# GUARDAR FOTOS
-# =========================
+
 def limpiar_nombre_archivo(texto):
     texto = texto.strip().replace(" ", "_")
     texto = unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode('utf-8')
     texto = re.sub(r'[^a-zA-Z0-9_\-]', '', texto)
     return texto[:80]
+
 
 def guardar_foto(pagina, carpeta, nombre_contacto):
     imagenes = pagina.get_images(full=True)
@@ -111,14 +124,17 @@ def guardar_foto(pagina, carpeta, nombre_contacto):
         print(f"[ERROR] No se pudo guardar imagen para {nombre_contacto}: {e}")
         return None
 
-# =========================
-# TEST LOCAL
-# =========================
+
 if __name__ == "__main__":
-    def test_log(**kwargs):
+    import asyncio
+
+    async def test_log(**kwargs):
         print("[PROGRESO]", kwargs)
 
-    contactos = extraer_contactos_desde_pdf("/mnt/data/Test.pdf", registrar_progreso=test_log)
-    for c in contactos:
-        print(c)
-    print(f"Total: {len(contactos)} contactos procesados.")
+    async def run():
+        contactos = await extraer_contactos_desde_pdf("/mnt/data/Test.pdf", registrar_progreso=test_log)
+        for c in contactos:
+            print(c)
+        print(f"Total: {len(contactos)} contactos procesados.")
+
+    asyncio.run(run())
