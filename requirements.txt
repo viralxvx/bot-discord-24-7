@@ -9,3 +9,4 @@ aiogram==2.25.1
 requests
 PyMuPDF==1.23.22
 phonenumbers==8.13.32
+aiofiles==23.2.1
