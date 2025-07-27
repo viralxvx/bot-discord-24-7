@@ -45,6 +45,7 @@ EXTENSIONES = [
     "comandos.procesar_pdf",
     "comandos.exportar_csv",
     "comandos.procesar_pdf_url",
+    "comandos.validar_link_pdf",
 ]
 
 log_message = None
