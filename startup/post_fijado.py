@@ -2,54 +2,33 @@
 
 import discord
 from config import get_env_int
-from mensajes.testimonios_mensaje import MENSAJE_ANCLADO
-from mensajes.pdf_mensajes import get_panel_bienvenida_pdf
+from mensajes.pdf_mensajes import MENSAJE_ANCLADO
 from utils.redis_conn import redis_conn
 
-CANAL_TESTIMONIOS = get_env_int("CANAL_TESTIMONIOS")
-CANAL_PDF = get_env_int("CANAL_PDF")
+CANAL_IMPORTAR_PDF = get_env_int("CANAL_IMPORTAR_PDF")
 
 async def publicar_mensaje_anclado(bot):
-    # Publicar mensaje anclado en el canal de testimonios
-    await _publicar_unico_mensaje(
-        bot=bot,
-        canal_id=CANAL_TESTIMONIOS,
-        redis_key="vx:mensaje_anclado_testimonios",
-        contenido=MENSAJE_ANCLADO,
-        nombre="testimonios"
-    )
-
-    # Publicar mensaje anclado en el canal de PDF
-    await _publicar_unico_mensaje(
-        bot=bot,
-        canal_id=CANAL_PDF,
-        redis_key="vx:mensaje_anclado_pdf",
-        contenido=get_panel_bienvenida_pdf(),
-        nombre="PDF"
-    )
-
-async def _publicar_unico_mensaje(bot, canal_id, redis_key, contenido, nombre):
-    canal = bot.get_channel(canal_id)
+    canal = bot.get_channel(CANAL_IMPORTAR_PDF)
     if canal is None:
-        print(f"❌ Canal de {nombre} no encontrado.")
+        print("❌ Canal de importación de PDF no encontrado.")
         return
 
-    mensaje_id = redis_conn.get(redis_key)
+    mensaje_id = redis_conn.get("vx:mensaje_anclado_pdf")
 
     try:
         if mensaje_id:
             mensaje = await canal.fetch_message(int(mensaje_id))
-            await mensaje.edit(content=contenido)
-            print(f"🔄 Mensaje anclado de {nombre} actualizado correctamente.")
+            await mensaje.edit(content=MENSAJE_ANCLADO)
+            print("🔄 Mensaje anclado actualizado correctamente.")
         else:
-            nuevo = await canal.send(contenido)
+            nuevo = await canal.send(MENSAJE_ANCLADO)
             await nuevo.pin()
-            redis_conn.set(redis_key, nuevo.id)
-            print(f"📌 Mensaje anclado de {nombre} publicado y fijado.")
+            redis_conn.set("vx:mensaje_anclado_pdf", nuevo.id)
+            print("📌 Mensaje anclado publicado y fijado.")
     except discord.NotFound:
-        nuevo = await canal.send(contenido)
+        nuevo = await canal.send(MENSAJE_ANCLADO)
         await nuevo.pin()
-        redis_conn.set(redis_key, nuevo.id)
-        print(f"📌 Mensaje anclado de {nombre} creado nuevamente.")
+        redis_conn.set("vx:mensaje_anclado_pdf", nuevo.id)
+        print("📌 Mensaje anclado creado nuevamente.")
     except Exception as e:
-        print(f"❌ Error al publicar mensaje anclado en {nombre}: {e}")
+        print(f"❌ Error al publicar mensaje anclado: {e}")
