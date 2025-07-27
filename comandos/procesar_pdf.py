@@ -65,11 +65,12 @@ class ProcesarPDF(commands.Cog):
                 msg = f"{estado} Progreso: [{barra}] {progreso}% | Página {paginas}/{total} | ⏳ Faltan: {tiempo_legible}"
 
                 await progreso_msg.edit(content=msg)
-                custom_log("PROCESAR_PDF", "INFO", msg)
+                custom_log(self.bot, "PROCESAR_PDF", "INFO", msg)
 
             contactos = await extraer_contactos_desde_pdf(
                 ruta_local,
-                registrar_progreso=registrar_progreso
+                registrar_progreso=registrar_progreso,
+                clave_usuario=str(interaction.user.id)
             )
 
             tiempo_total = int(time.time() - tiempo_inicio)
@@ -81,11 +82,11 @@ class ProcesarPDF(commands.Cog):
                 f"⏱️ Tiempo total: {tiempo_legible}"
             )
             await progreso_msg.edit(content=resumen)
-            custom_log("PROCESAR_PDF", "INFO", resumen)
+            custom_log(self.bot, "PROCESAR_PDF", "INFO", resumen)
 
         except Exception as e:
             await interaction.followup.send(f"❌ Error al procesar el PDF: {e}")
-            custom_log("PROCESAR_PDF", "ERROR", f"❌ Error al procesar PDF: {e}")
+            custom_log(self.bot, "PROCESAR_PDF", "ERROR", f"❌ Error al procesar PDF: {e}")
 
 async def setup(bot):
     await bot.add_cog(ProcesarPDF(bot))
