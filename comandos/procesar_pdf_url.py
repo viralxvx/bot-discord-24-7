@@ -5,6 +5,7 @@ from discord.ext import commands
 import os
 import aiohttp
 import tempfile
+import time
 from utils.pdf_parser import extraer_contactos_desde_pdf
 
 try:
@@ -41,6 +42,8 @@ class ProcesarPDFUrl(commands.Cog):
         ruta_local = os.path.join(tempfile.gettempdir(), nombre_pdf)
 
         try:
+            await interaction.followup.send(f"⏳ Procesando archivo: `{nombre_pdf}` desde enlace externo... Esto puede tardar varios minutos dependiendo del tamaño.")
+
             async with aiohttp.ClientSession() as session:
                 async with session.get(link) as resp:
                     status = resp.status
@@ -59,7 +62,16 @@ class ProcesarPDFUrl(commands.Cog):
                     with open(ruta_local, "wb") as f:
                         f.write(await resp.read())
 
-            contactos = extraer_contactos_desde_pdf(ruta_local)
+            async def registrar_progreso(paginas, total, progreso, faltan):
+                msg = f"📄 Página {paginas}/{total} | {progreso}% completado | ⏳ Estimado restante: {faltan} seg."
+                await interaction.followup.send(msg)
+                log("INFO", msg)
+
+            contactos = extraer_contactos_desde_pdf(
+                ruta_local,
+                registrar_progreso=registrar_progreso
+            )
+
             await interaction.followup.send(f"✅ Se procesaron **{len(contactos)} contactos** desde `{nombre_pdf}`.")
             log("INFO", f"✅ PDF procesado desde URL: {nombre_pdf} ({len(contactos)} contactos)")
 
