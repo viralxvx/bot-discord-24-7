@@ -1,9 +1,9 @@
-# cogs/pdf_listener.py
 import discord
 from discord.ext import commands
 import fitz
 import time
 import os
+import json
 from utils.pdf_parser import extraer_contactos_desde_pdf
 from utils.redis_conn import redis_conn
 from utils.logger import custom_log
@@ -18,10 +18,8 @@ class PDFListener(commands.Cog):
     async def on_message(self, message: discord.Message):
         if message.author.bot:
             return
-
         if str(message.channel.id) != CANAL_IMPORTAR_PDF:
             return
-
         if not message.attachments:
             return
 
@@ -49,7 +47,7 @@ class PDFListener(commands.Cog):
             else:
                 return f"{segundos}s"
 
-        async def actualizar_progreso(pagina_actual, total_paginas, porcentaje, faltan):
+        async def registrar_progreso(pagina_actual, total_paginas, porcentaje, faltan):
             nonlocal fotos_detectadas
             try:
                 pagina = doc[pagina_actual - 1]
@@ -69,12 +67,10 @@ class PDFListener(commands.Cog):
             contactos = await extraer_contactos_desde_pdf(
                 archivo_path,
                 user_id=message.author.id,
-                progreso_callback=actualizar_progreso
+                registrar_progreso=registrar_progreso
             )
 
             if contactos:
-                clave = f"pdf:{message.id}:{archivo_nombre}:contactos"
-                redis_conn.set(clave, str(contactos), ex=3600)
                 await progreso_msg.edit(content=f"✅ PDF procesado: {len(contactos)} contactos detectados.")
             else:
                 await progreso_msg.edit(content="⚠️ No se encontraron contactos en el PDF.")
