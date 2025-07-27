@@ -16,7 +16,7 @@ class ImportarPDF(commands.Cog):
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_IMPORTAR_PDF)
         if not canal:
-            custom_log("❌ Canal de importación PDF no encontrado.")
+            custom_log("ERROR", "❌ Canal de importación PDF no encontrado.")
             return
 
         try:
@@ -30,9 +30,9 @@ class ImportarPDF(commands.Cog):
 
             mensaje = await canal.send(mensaje_anclado_pdf())
             await mensaje.pin()
-            custom_log("📌 Mensaje anclado en canal de importación PDF.")
+            custom_log("INFO", "📌 Mensaje anclado correctamente en canal de importación PDF.")
         except Exception as e:
-            custom_log(f"❌ Error al fijar mensaje PDF: {e}")
+            custom_log("ERROR", f"❌ Error al fijar mensaje PDF: {e}")
 
 async def setup(bot):
     await bot.add_cog(ImportarPDF(bot))
