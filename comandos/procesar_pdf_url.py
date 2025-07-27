@@ -43,15 +43,17 @@ class ProcesarPDFUrl(commands.Cog):
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(link) as resp:
-                    if resp.status != 200:
-                        await interaction.followup.send(f"❌ No se pudo descargar el archivo. Código {resp.status}")
-                        log("ERROR", f"❌ Código HTTP {resp.status} al intentar descargar: {link}")
+                    status = resp.status
+                    content_type = resp.headers.get("Content-Type", "")
+
+                    if status != 200:
+                        await interaction.followup.send(f"❌ No se pudo descargar el archivo. Código HTTP {status}.")
+                        log("ERROR", f"❌ Código {status} al intentar acceder al link: {link}")
                         return
 
-                    content_type = resp.headers.get("Content-Type", "")
-                    if "pdf" not in content_type:
-                        await interaction.followup.send(f"❌ El contenido descargado no es un archivo PDF válido. Tipo: {content_type}")
-                        log("ERROR", f"❌ Contenido no-PDF descargado desde: {link}")
+                    if "pdf" not in content_type.lower():
+                        await interaction.followup.send(f"⚠️ El archivo descargado **no parece ser un PDF**. Tipo detectado: `{content_type}`")
+                        log("ERROR", f"❌ Contenido no válido (tipo: {content_type}) desde: {link}")
                         return
 
                     with open(ruta_local, "wb") as f:
@@ -63,7 +65,7 @@ class ProcesarPDFUrl(commands.Cog):
 
         except Exception as e:
             await interaction.followup.send(f"❌ Error al procesar PDF: {e}")
-            log("ERROR", f"❌ Error al procesar PDF desde URL: {e}")
+            log("ERROR", f"❌ Excepción durante procesamiento PDF desde URL: {e}")
 
 async def setup(bot):
     await bot.add_cog(ProcesarPDFUrl(bot))
