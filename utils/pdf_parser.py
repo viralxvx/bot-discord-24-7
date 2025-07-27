@@ -3,6 +3,8 @@ import fitz  # PyMuPDF
 import re
 import os
 import time
+import unicodedata
+import hashlib
 from datetime import datetime
 from utils.redis_conn import redis_conn
 import json
@@ -44,7 +46,6 @@ def extraer_contactos_desde_pdf(ruta_pdf: str, guardar_imagenes: bool = True, ca
             else:
                 buffer.append(linea.strip())
 
-        # Mostrar progreso cada 100 páginas
         if registrar_progreso and (idx + 1) % 100 == 0:
             transcurrido = time.time() - inicio
             progreso = int((idx + 1) / total_paginas * 100)
@@ -57,7 +58,6 @@ def extraer_contactos_desde_pdf(ruta_pdf: str, guardar_imagenes: bool = True, ca
                 faltan=int(restante)
             )
 
-    # Guardar en Redis
     clave = f"pdf:{os.path.basename(ruta_pdf)}:contactos"
     redis_conn.set(clave, json.dumps(contactos))
     redis_conn.expire(clave, 3600)
@@ -87,6 +87,12 @@ def parsear_contacto(lineas):
 # =========================
 # GUARDAR FOTOS
 # =========================
+def limpiar_nombre_archivo(texto):
+    texto = texto.strip().replace(" ", "_")
+    texto = unicodedata.normalize('NFKD', texto).encode('ascii', 'ignore').decode('utf-8')
+    texto = re.sub(r'[^a-zA-Z0-9_\-]', '', texto)
+    return texto[:80]
+
 def guardar_foto(pagina, carpeta, nombre_contacto):
     imagenes = pagina.get_images(full=True)
     if not imagenes:
@@ -95,7 +101,9 @@ def guardar_foto(pagina, carpeta, nombre_contacto):
     try:
         xref = imagenes[0][0]
         pix = fitz.Pixmap(pagina.parent, xref)
-        nombre_archivo = f"{nombre_contacto.replace(' ', '_')}.jpg"
+        nombre_archivo_limpio = limpiar_nombre_archivo(nombre_contacto)
+        hash_n = hashlib.md5(nombre_contacto.encode()).hexdigest()[:6]
+        nombre_archivo = f"{nombre_archivo_limpio}_{hash_n}.jpg"
         ruta = os.path.join(carpeta, nombre_archivo)
         pix.save(ruta)
         return ruta
