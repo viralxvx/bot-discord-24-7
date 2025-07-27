@@ -7,12 +7,12 @@ import aiohttp
 from utils.gofile import subir_a_gofile
 from utils.pdf_parser import extraer_contactos_desde_pdf
 from utils.logger import custom_log
-from utils.progreso import crear_barra_progreso
+from utils.progreso import generar_barra_progreso  # ✅ Corrección aquí
 from utils.export_csv import exportar_contactos_csv
 import asyncio
 
 class ProcesarPDFUrl(commands.Cog):
-    def __init__(self, bot):
+    def init__(self, bot):  # ✅ Corrección: __init en lugar de init
         self.bot = bot
 
     @app_commands.command(name="procesar_pdf_url", description="Procesa un PDF desde una URL y extrae contactos")
@@ -21,11 +21,9 @@ class ProcesarPDFUrl(commands.Cog):
         await interaction.response.defer(thinking=True)
         user_id = str(interaction.user.id)
 
-        # Crear mensaje de progreso inicial
         progreso_msg = await interaction.followup.send("🔄 Procesando archivo...")
 
         try:
-            # Descargar el archivo PDF
             nombre_archivo = f"pdf_{user_id}.pdf"
             ruta_pdf = f"temp/{nombre_archivo}"
 
@@ -40,8 +38,8 @@ class ProcesarPDFUrl(commands.Cog):
 
             async def registrar_progreso(pagina_actual, total_paginas):
                 porcentaje = int((pagina_actual / total_paginas) * 100)
-                barra = crear_barra_progreso(porcentaje)
-                await progreso_msg.edit(content=f"[Activo] ✅ Progreso: {barra} {porcentaje}% | Página {pagina_actual}/{total_paginas}")
+                barra = generar_barra_progreso(porcentaje)
+                await progreso_msg.edit(content=f"[Activo] ✅ Progreso: {barra} Página {pagina_actual}/{total_paginas}")
 
             contactos = await extraer_contactos_desde_pdf(ruta_pdf, user_id, registrar_progreso)
 
@@ -49,11 +47,9 @@ class ProcesarPDFUrl(commands.Cog):
                 await progreso_msg.edit(content="⚠️ No se encontraron contactos válidos en el PDF.")
                 return
 
-            # Exportar CSV
-            ruta_csv = exportar_contactos_csv(nombre_archivo, user_id)
-            await progreso_msg.edit(content=f"✅ Extracción completada. Subiendo CSV a gofile.io...")
+            ruta_csv = exportar_contactos_csv(nombre_archivo, user_id, contactos)
+            await progreso_msg.edit(content="✅ Extracción completada. Subiendo CSV a gofile.io...")
 
-            # Subir CSV a gofile.io
             url_descarga = await subir_a_gofile(ruta_csv)
 
             embed = discord.Embed(title="📄 PDF procesado exitosamente", color=0x2ecc71)
@@ -63,7 +59,6 @@ class ProcesarPDFUrl(commands.Cog):
 
             await progreso_msg.edit(content=None, embed=embed)
 
-            # Agendar limpieza del canal
             await asyncio.sleep(3600)
             await progreso_msg.delete()
 
