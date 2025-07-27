@@ -8,7 +8,7 @@ from utils.redis_conn import redis_conn
 # =============================
 # EXPORTADOR A CSV DESDE REDIS
 # =============================
-def exportar_contactos_csv(nombre_archivo_pdf: str, user_id: str) -> str:
+def exportar_contactos_csv(nombre_archivo_pdf: str, user_id: str, progreso_callback=None) -> str:
     clave_redis = f"pdf:{user_id}:{nombre_archivo_pdf}:contactos"
     datos_json = redis_conn.get(clave_redis)
 
