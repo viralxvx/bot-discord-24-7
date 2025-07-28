@@ -9,7 +9,7 @@ REGEX_TELEFONO = r"\+?\d[\d\s\-]{7,}\d"
 REGEX_EMAIL = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 REGEX_NOMBRE_COMPLETO = r"^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+$"
 
-async def extraer_contactos_desde_pdf(rutas_paginas, pdf_id):
+async def extraer_contactos_desde_pdf(rutas_paginas, pdf_id, user_id=None):
     contactos = []
     textos = []
 
@@ -21,7 +21,7 @@ async def extraer_contactos_desde_pdf(rutas_paginas, pdf_id):
 
     # Paso 2: Unir todo el texto y dividir por bloques
     texto_total = "\n".join(textos)
-    bloques = re.split(r"\n\s*\n", texto_total)  # Separador entre grupos visuales
+    bloques = re.split(r"\n\s*\n", texto_total)
 
     for bloque in bloques:
         lineas = bloque.strip().splitlines()
@@ -30,19 +30,16 @@ async def extraer_contactos_desde_pdf(rutas_paginas, pdf_id):
         for linea in lineas:
             linea = linea.strip()
 
-            # Detectar correo
             if not email:
                 match_email = re.search(REGEX_EMAIL, linea)
                 if match_email:
                     email = match_email.group()
 
-            # Detectar teléfono
             if not telefono:
                 match_telefono = re.search(REGEX_TELEFONO, linea)
                 if match_telefono:
                     telefono = re.sub(r"[^\d+]", "", match_telefono.group())
 
-            # Detectar nombre y apellido
             if not nombre or not apellido:
                 partes = linea.split()
                 if len(partes) >= 2 and all(p[0].isupper() for p in partes[:2]):
@@ -61,7 +58,6 @@ async def extraer_contactos_desde_pdf(rutas_paginas, pdf_id):
                 "telefono": telefono or ""
             })
 
-    # Paso 3: Eliminar duplicados
     contactos_unicos = []
     vistos = set()
     for contacto in contactos:
@@ -70,6 +66,5 @@ async def extraer_contactos_desde_pdf(rutas_paginas, pdf_id):
             vistos.add(clave)
             contactos_unicos.append(contacto)
 
-    # Guardar temporalmente en Redis
     redis_conn.set(f"pdf_contactos:{pdf_id}", json.dumps(contactos_unicos), ex=3600)
     return contactos_unicos
