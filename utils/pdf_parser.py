@@ -9,7 +9,7 @@ REGEX_TELEFONO = r"\+?\d[\d\s\-]{7,}\d"
 REGEX_EMAIL = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 REGEX_NOMBRE_COMPLETO = r"^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+$"
 
-async def extraer_contactos_desde_pdf(rutas_paginas, pdf_id, user_id=None, registrar_progreso=None):
+async def extraer_contactos_desde_pdf(rutas_paginas, pdf_id=None, user_id=None, registrar_progreso=None):
     contactos = []
     textos = []
 
@@ -64,9 +64,11 @@ async def extraer_contactos_desde_pdf(rutas_paginas, pdf_id, user_id=None, regis
             vistos.add(clave)
             contactos_unicos.append(contacto)
 
-    redis_conn.set(f"pdf_contactos:{pdf_id}", json.dumps(contactos_unicos), ex=3600)
+    if pdf_id:
+        redis_conn.set(f"pdf_contactos:{pdf_id}", json.dumps(contactos_unicos), ex=3600)
+
     return contactos_unicos
 
-# 🔧 Restaurado por compatibilidad con comandos.procesar_pdf
-async def extraer_datos_genericos_desde_pdf(rutas_paginas, pdf_id, user_id=None, registrar_progreso=None):
+# Compatibilidad con comandos.procesar_pdf
+async def extraer_datos_genericos_desde_pdf(rutas_paginas, pdf_id=None, user_id=None, registrar_progreso=None):
     return await extraer_contactos_desde_pdf(rutas_paginas, pdf_id, user_id, registrar_progreso)
