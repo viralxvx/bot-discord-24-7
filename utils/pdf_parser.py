@@ -66,3 +66,7 @@ async def extraer_contactos_desde_pdf(rutas_paginas, pdf_id, user_id=None, regis
 
     redis_conn.set(f"pdf_contactos:{pdf_id}", json.dumps(contactos_unicos), ex=3600)
     return contactos_unicos
+
+# 🔧 Restaurado por compatibilidad con comandos.procesar_pdf
+async def extraer_datos_genericos_desde_pdf(rutas_paginas, pdf_id, user_id=None, registrar_progreso=None):
+    return await extraer_contactos_desde_pdf(rutas_paginas, pdf_id, user_id, registrar_progreso)
