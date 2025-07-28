@@ -1,3 +1,4 @@
+# go viral
 import discord
 from discord.ext import commands
 from config import (
@@ -19,18 +20,17 @@ from mensajes.viral_texto import (
 )
 from utils.logger import log_discord
 from canales.faltas import registrar_falta
-from utils.panel_embed import actualizar_panel_faltas
 from datetime import datetime, timezone
 import asyncio
 import re
 import redis
 
 # ----- CONFIGURACIÓN REGLAS -----
-MAX_APOYOS = 9        # Posts a apoyar antes de publicar (0 para desactivar)
-MIN_TURNOS = 2        # Turnos de espera mínimo antes de publicar de nuevo
-INTERVALO_HORAS = 24  # Horas máximas de espera para volver a publicar
+MAX_APOYOS = 9         # Posts a apoyar antes de publicar (0 para desactivar)
+MIN_TURNOS = 2         # Turnos de espera mínimo antes de publicar de nuevo
+INTERVALO_HORAS = 24   # Horas máximas de espera para volver a publicar
 BIENVENIDA_TIEMPO = 120  # Segundos que dura el mensaje de bienvenida primer post
-NOTIF_TIEMPO = 15     # Segundos que duran los mensajes educativos de error en canal
+NOTIF_TIEMPO = 15      # Segundos que duran los mensajes educativos de error en canal
 
 class GoViral(commands.Cog):
     def __init__(self, bot):
@@ -39,6 +39,7 @@ class GoViral(commands.Cog):
         bot.loop.create_task(self.preload_apoyos_reacciones())
         bot.loop.create_task(self.limpiar_reacciones_no_permitidas())
         bot.loop.create_task(self.init_mensaje_fijo())
+        bot.loop.create_task(self.reconstruir_ultimo_apoyo_por_usuario())  # NUEVO: memoria perfecta
 
     async def preload_apoyos_reacciones(self):
         await self.bot.wait_until_ready()
@@ -68,6 +69,23 @@ class GoViral(commands.Cog):
         except Exception as e:
             await log_discord(self.bot, f"❌ [GO-VIRAL] Error sincronizando apoyos: {e}", "error", scope="go_viral")
 
+    async def reconstruir_ultimo_apoyo_por_usuario(self):
+        await self.bot.wait_until_ready()
+        canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
+        if not canal:
+            await log_discord(self.bot, "❌ [GO-VIRAL] No se encontró el canal para reconstruir último apoyo.", "error", scope="go_viral")
+            return
+        mapping = {}
+        async for msg in canal.history(limit=100, oldest_first=True):
+            if msg.author.bot:
+                continue
+            uid = str(msg.author.id)
+            mapping[uid] = msg.id  # Siempre queda el último mensaje válido
+        # Guardar en redis
+        for uid, msgid in mapping.items():
+            self.redis.set(f"go_viral:ultimo_apoyo_completo:{uid}", str(msgid))
+        await log_discord(self.bot, f"✅ [GO-VIRAL] Memoria reconstruida para {len(mapping)} usuarios.", "success", scope="go_viral")
+
     async def limpiar_reacciones_no_permitidas(self):
         await self.bot.wait_until_ready()
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
@@ -77,15 +95,18 @@ class GoViral(commands.Cog):
         await log_discord(self.bot, "🔄 [GO-VIRAL] Limpiando reacciones no permitidas en últimos 100 mensajes...", "info", scope="go_viral")
         try:
             async for msg in canal.history(limit=100, oldest_first=False):
+                # REGLA NUEVA: Si el post es propio, SOLO se permite 👍
                 for reaction in msg.reactions:
-                    if str(reaction.emoji) not in EMOJIS_PERMITIDOS:
-                        async for user in reaction.users():
-                            if not user.bot:
-                                try:
-                                    await reaction.remove(user)
-                                    await self.notificar_reaccion_no_permitida(msg.channel, user, msg)
-                                except Exception:
-                                    pass
+                    async for user in reaction.users():
+                        if not user.bot:
+                            # Si el mensaje es del usuario y la reacción NO es 👍, la borra
+                            if msg.author.id == user.id and str(reaction.emoji) != "👍":
+                                await reaction.remove(user)
+                                await self.notificar_reaccion_no_permitida(msg.channel, user, msg)
+                            # Si la reacción no es permitida por nadie, la borra
+                            elif str(reaction.emoji) not in EMOJIS_PERMITIDOS:
+                                await reaction.remove(user)
+                                await self.notificar_reaccion_no_permitida(msg.channel, user, msg)
             await log_discord(self.bot, "✅ [GO-VIRAL] Reacciones no permitidas eliminadas.", "success", scope="go_viral")
         except Exception as e:
             await log_discord(self.bot, f"❌ [GO-VIRAL] Error limpiando reacciones: {e}", "error", scope="go_viral")
@@ -131,10 +152,16 @@ class GoViral(commands.Cog):
             return
         emoji = str(payload.emoji)
         user = await self.bot.fetch_user(payload.user_id)
-        if user.bot:
-            return
         canal = self.bot.get_channel(CANAL_OBJETIVO_ID)
         mensaje = await canal.fetch_message(payload.message_id)
+        if user.bot:
+            return
+        # PROPIO: solo 👍 permitido
+        if mensaje.author.id == user.id and emoji != "👍":
+            await mensaje.clear_reaction(emoji)
+            await self.notificar_reaccion_no_permitida(canal, user, mensaje)
+            return
+        # General: solo 🔥 y 👍 permitidos
         if emoji not in EMOJIS_PERMITIDOS:
             await mensaje.clear_reaction(emoji)
             await self.notificar_reaccion_no_permitida(canal, user, mensaje)
@@ -151,7 +178,7 @@ class GoViral(commands.Cog):
             description=DESCRIPCION_SOLO_REACCION_EDU.format(usuario=user.mention),
             color=discord.Color.orange()
         )
-        notif = await canal.send(content=user.mention, embed=embed, delete_after=NOTIF_TIEMPO)
+        await canal.send(content=user.mention, embed=embed, delete_after=NOTIF_TIEMPO)
         try:
             await user.send(embed=discord.Embed(
                 title=TITULO_SOLO_REACCION_DM,
@@ -168,15 +195,6 @@ class GoViral(commands.Cog):
 
         user_id = str(message.author.id)
 
-        # ACTUALIZACIÓN INSTANTÁNEA DEL PANEL DE FALTAS
-        try:
-            from utils.panel_embed import actualizar_panel_faltas
-            now = datetime.now(timezone.utc)
-            self.redis.set(f"inactividad:{user_id}", now.isoformat())
-            await actualizar_panel_faltas(self.bot, message.author)
-        except Exception as e:
-            print(f"[GO-VIRAL] Error actualizando panel de faltas tras publicar: {e}")
-
         # --- 0. OVERRIDE: Permite 1 publicación libre ---
         if self.redis.get(f"go_viral:override:{user_id}") == "1":
             self.redis.delete(f"go_viral:override:{user_id}")
@@ -185,11 +203,21 @@ class GoViral(commands.Cog):
             await log_discord(self.bot, f"✅ [GO-VIRAL] OVERRIDE aplicado a {message.author}. Publica libremente.", "info", scope="go_viral")
             return
 
-        # --- 1. Validar formato de publicación (sólo URLs limpias) ---
+        # --- 1. Validar formato de publicación (sólo URLs limpias, CORRIGE SI ESTÁ MAL) ---
         url = limpiar_url_tweet(message.content)
         if not url:
             await message.delete()
-            await self.notif_full(message, TITULO_SOLO_URL_EDU, DESCRIPCION_SOLO_URL_EDU.format(usuario=message.author.mention), TITULO_SOLO_URL_DM, DESCRIPCION_SOLO_URL_DM, user_id, "Formato incorrecto de publicación")
+            # Trata de corregir automáticamente
+            url_corregida = extraer_url_tweet(message.content)
+            if url_corregida:
+                # Re-publica el mensaje como si fuera el usuario
+                canal = message.channel
+                new_msg = await canal.send(f"{message.author.mention} {url_corregida}")
+                # Copia todas las menciones originales si las hay (opcional)
+                await self.notif_full(new_msg, TITULO_SOLO_URL_EDU, DESCRIPCION_SOLO_URL_EDU.format(usuario=message.author.mention), TITULO_SOLO_URL_DM, DESCRIPCION_SOLO_URL_DM, user_id, "Formato incorrecto de publicación (corregido)")
+                await log_discord(self.bot, f"🔧 [GO-VIRAL] Corrigió automáticamente el enlace de {message.author}", "info", scope="go_viral")
+            else:
+                await self.notif_full(message, TITULO_SOLO_URL_EDU, DESCRIPCION_SOLO_URL_EDU.format(usuario=message.author.mention), TITULO_SOLO_URL_DM, DESCRIPCION_SOLO_URL_DM, user_id, "Formato incorrecto de publicación")
             return
 
         # --- 2. Primer post: Permitir publicar y enviar bienvenida educativa (1 vez) ---
@@ -268,7 +296,7 @@ class GoViral(commands.Cog):
 
     async def notif_full(self, message, titulo_embed, desc_embed, titulo_dm, desc_dm, user_id, motivo):
         embed = discord.Embed(title=titulo_embed, description=desc_embed, color=discord.Color.orange())
-        notif = await message.channel.send(content=message.author.mention, embed=embed, delete_after=NOTIF_TIEMPO)
+        await message.channel.send(content=message.author.mention, embed=embed, delete_after=NOTIF_TIEMPO)
         try:
             await message.author.send(embed=discord.Embed(title=titulo_dm, description=desc_dm, color=discord.Color.orange()))
         except:
@@ -278,7 +306,7 @@ class GoViral(commands.Cog):
 
     async def enviar_bienvenida(self, message):
         embed = discord.Embed(title=TITULO_BIENVENIDA, description=DESCRIPCION_BIENVENIDA, color=discord.Color.green())
-        msg = await message.channel.send(content=message.author.mention, embed=embed, delete_after=BIENVENIDA_TIEMPO)
+        await message.channel.send(content=message.author.mention, embed=embed, delete_after=BIENVENIDA_TIEMPO)
         try:
             await message.author.send(embed=embed)
         except:
@@ -312,6 +340,7 @@ class GoViral(commands.Cog):
         return ultima_pub, turnos_entre
 
 def limpiar_url_tweet(texto):
+    """Devuelve la URL solo si está limpia."""
     match = re.search(r"https?://x\.com/\w+/status/(\d+)", texto)
     if match:
         usuario = re.search(r"https?://x\.com/([^/]+)/status", texto)
@@ -319,6 +348,17 @@ def limpiar_url_tweet(texto):
             user = usuario.group(1)
             status_id = match.group(1)
             return f"https://x.com/{user}/status/{status_id}"
+    return None
+
+def extraer_url_tweet(texto):
+    """Intenta encontrar una URL de tweet aunque esté en formato sucio."""
+    url = re.findall(r"https?://x\.com/\S+", texto)
+    if url:
+        # Limpiar el final por si viene con parámetros o texto extra
+        base = url[0].split("?")[0]
+        # Si parece válida la retornamos, si no, None
+        if re.match(r"https?://x\.com/\w+/status/\d+", base):
+            return base
     return None
 
 async def setup(bot):
