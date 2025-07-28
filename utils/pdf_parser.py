@@ -9,17 +9,15 @@ REGEX_TELEFONO = r"\+?\d[\d\s\-]{7,}\d"
 REGEX_EMAIL = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
 REGEX_NOMBRE_COMPLETO = r"^[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\s+[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+$"
 
-async def extraer_contactos_desde_pdf(rutas_paginas, pdf_id, user_id=None):
+async def extraer_contactos_desde_pdf(rutas_paginas, pdf_id, user_id=None, registrar_progreso=None):
     contactos = []
     textos = []
 
-    # Paso 1: Leer todo el contenido de las páginas
     for ruta in rutas_paginas:
         with open(ruta, "r", encoding="utf-8") as archivo:
             contenido = archivo.read()
             textos.append(contenido)
 
-    # Paso 2: Unir todo el texto y dividir por bloques
     texto_total = "\n".join(textos)
     bloques = re.split(r"\n\s*\n", texto_total)
 
